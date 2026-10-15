@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Home,
   Users,
@@ -13,17 +13,21 @@ import {
   User,
   Settings,
   PlusCircle,
-  QrCode,
   LogOut,
+  Loader2,
 } from "lucide-react";
 import { SplitzyLogo } from "@/components/brand/SplitzyLogo";
 import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatPaise } from "@/lib/money";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, netBalancePaise, logout, notifications } = useAuth();
+  const { success, error } = useToast();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const unreadNotifsCount = notifications.filter((n) => !n.read).length;
 
@@ -43,10 +47,23 @@ export function Sidebar() {
     { label: "Settings", href: "/settings", icon: Settings },
   ];
 
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      success("Logged out successfully");
+      router.replace("/login");
+    } catch (err: any) {
+      error(err?.message || "Failed to log out");
+      setIsLoggingOut(false);
+    }
+  };
+
   return (
-    <aside className="hidden md:flex flex-col w-64 lg:w-72 shrink-0 bg-white border-r border-[#E5E7EB] min-h-screen sticky top-0 h-screen select-none z-30">
+    <aside className="hidden md:flex flex-col w-64 lg:w-72 shrink-0 bg-white dark:bg-slate-900 border-r border-[#E5E7EB] dark:border-slate-800 min-h-screen sticky top-0 h-screen select-none z-30 transition-colors">
       {/* Brand Header */}
-      <div className="p-6 border-b border-[#F1F5F9]">
+      <div className="p-6 border-b border-[#F1F5F9] dark:border-slate-800">
         <SplitzyLogo size="md" showTagline={true} href="/home" />
       </div>
 
@@ -76,13 +93,19 @@ export function Sidebar() {
                 flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-150
                 ${
                   isActive
-                    ? "bg-[#EFF6FF] text-[#2563EB]"
-                    : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-50"
+                    ? "bg-[#EFF6FF] dark:bg-blue-950/40 text-[#2563EB] dark:text-blue-400"
+                    : "text-[#64748B] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60"
                 }
               `}
             >
               <div className="flex items-center gap-3">
-                <Icon className={`w-5 h-5 ${isActive ? "text-[#2563EB] stroke-[2.2]" : "text-[#64748B]"}`} />
+                <Icon
+                  className={`w-5 h-5 ${
+                    isActive
+                      ? "text-[#2563EB] dark:text-blue-400 stroke-[2.2]"
+                      : "text-[#64748B] dark:text-slate-400"
+                  }`}
+                />
                 <span>{link.label}</span>
               </div>
               {link.badge !== undefined && (
@@ -96,8 +119,8 @@ export function Sidebar() {
       </div>
 
       {/* Desktop Balance Mini Preview Card */}
-      <div className="p-4 mx-4 mb-3 rounded-2xl bg-[#F8FAFC] border border-[#E5E7EB]">
-        <div className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
+      <div className="p-4 mx-4 mb-3 rounded-2xl bg-[#F8FAFC] dark:bg-slate-800/50 border border-[#E5E7EB] dark:border-slate-800 transition-colors">
+        <div className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-wider">
           Net Balance
         </div>
         <div
@@ -107,31 +130,37 @@ export function Sidebar() {
         >
           {netBalancePaise >= 0 ? `+${formatPaise(netBalancePaise)}` : formatPaise(netBalancePaise)}
         </div>
-        <div className="text-[11px] text-[#64748B] mt-0.5">
+        <div className="text-[11px] text-[#64748B] dark:text-slate-400 mt-0.5">
           {netBalancePaise >= 0 ? "You will receive" : "You need to pay"}
         </div>
       </div>
 
       {/* User Footer Profile */}
       {user && (
-        <div className="p-4 border-t border-[#F1F5F9] flex items-center justify-between bg-white">
+        <div className="p-4 border-t border-[#F1F5F9] dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 transition-colors">
           <Link href="/profile" className="flex items-center gap-3 min-w-0 flex-1 hover:opacity-85">
             <Avatar src={user.photoURL} name={user.displayName} size="sm" />
             <div className="min-w-0">
-              <div className="text-xs font-bold text-[#0F172A] truncate">
+              <div className="text-xs font-bold text-[#0F172A] dark:text-slate-100 truncate">
                 {user.displayName}
               </div>
-              <div className="text-[11px] text-[#2563EB] font-mono font-medium truncate">
+              <div className="text-[11px] text-[#2563EB] dark:text-blue-400 font-mono font-medium truncate">
                 {user.splitzyId}
               </div>
             </div>
           </Link>
           <button
-            onClick={() => logout()}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors disabled:opacity-50"
             title="Log out"
+            aria-label="Log out of JoySplit"
           >
-            <LogOut className="w-4 h-4" />
+            {isLoggingOut ? (
+              <Loader2 className="w-4 h-4 animate-spin text-red-500" />
+            ) : (
+              <LogOut className="w-4 h-4" />
+            )}
           </button>
         </div>
       )}

@@ -75,7 +75,7 @@ export default function GroupsPage() {
           ))}
         </div>
 
-        {/* Groups List (Screen 14 style) */}
+        {/* Groups List */}
         <div className="space-y-3">
           {filteredGroups.map((group) => {
             const balance = user
@@ -86,25 +86,29 @@ export default function GroupsPage() {
               <Link
                 key={group.id}
                 href={`/groups/${group.id}`}
-                className="bg-white p-4 rounded-3xl border border-slate-200/90 shadow-xs hover:border-blue-300 hover:shadow-md transition-all flex items-center justify-between"
+                className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md transition-all flex items-center justify-between"
               >
                 <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="relative w-13 h-13 rounded-2xl overflow-hidden shrink-0 border border-slate-100 shadow-2xs">
-                    <Image src={group.icon} alt={group.name} fill className="object-cover" />
+                  <div className="relative w-13 h-13 rounded-2xl overflow-hidden shrink-0 border border-slate-100 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 shadow-2xs flex items-center justify-center">
+                    {group.icon ? (
+                      <Image src={group.icon} alt={group.name} fill className="object-cover" />
+                    ) : (
+                      <Users className="w-6 h-6 text-slate-400" />
+                    )}
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-[#0F172A] truncate">{group.name}</h3>
-                    <p className="text-xs text-[#64748B] mt-0.5">{group.members.length} members</p>
+                    <h3 className="text-sm font-bold text-[#0F172A] dark:text-slate-100 truncate">{group.name}</h3>
+                    <p className="text-xs text-[#64748B] dark:text-slate-400 mt-0.5">{group.members.length} members</p>
                     {balance.allSettled || balance.netPaise === 0 ? (
                       <div className="mt-1">
                         <Badge variant="all_settled" size="sm" />
                       </div>
                     ) : balance.netPaise > 0 ? (
-                      <div className="text-xs font-bold text-emerald-600 mt-1">
+                      <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-1">
                         +{formatPaise(balance.netPaise)} to receive
                       </div>
                     ) : (
-                      <div className="text-xs font-bold text-[#EF4444] mt-1">
+                      <div className="text-xs font-bold text-[#EF4444] dark:text-red-400 mt-1">
                         {formatPaise(Math.abs(balance.netPaise))} you owe
                       </div>
                     )}
@@ -117,10 +121,10 @@ export default function GroupsPage() {
           })}
 
           {filteredGroups.length === 0 && (
-            <div className="bg-white rounded-3xl p-10 text-center border border-slate-200">
-              <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-bold text-[#0F172A]">No groups found</p>
-              <p className="text-xs text-[#64748B] mt-1">Try a different search query or create a new group.</p>
+            <div className="bg-white dark:bg-slate-900 rounded-3xl p-10 text-center border border-slate-200 dark:border-slate-800">
+              <Users className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+              <p className="text-sm font-bold text-[#0F172A] dark:text-slate-100">No groups found</p>
+              <p className="text-xs text-[#64748B] dark:text-slate-400 mt-1">Try a different search query or create a new group.</p>
             </div>
           )}
         </div>

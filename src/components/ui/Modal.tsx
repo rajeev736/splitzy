@@ -51,30 +51,30 @@ export function Modal({
       {/* Modal Dialog Content */}
       <div
         className={`
-          relative w-full ${maxWidthStyles[maxWidth]} bg-white
+          relative w-full ${maxWidthStyles[maxWidth]} bg-white dark:bg-slate-900
           rounded-t-3xl sm:rounded-3xl shadow-2xl z-10 overflow-hidden
-          border border-[#E5E7EB] transition-all transform max-h-[92vh] flex flex-col
+          border border-[#E5E7EB] dark:border-slate-800 transition-all transform max-h-[92vh] flex flex-col
         `}
       >
         {/* Mobile handle indicator */}
-        <div className="sm:hidden w-12 h-1.5 bg-slate-200 rounded-full mx-auto mt-3 mb-1" />
+        <div className="sm:hidden w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mt-3 mb-1" />
 
         {(title || showCloseButton) && (
           <div className="flex items-center justify-between px-6 pt-5 pb-3">
             <div>
               {title && (
-                <h3 className="text-lg font-bold text-[#0F172A] tracking-tight">
+                <h3 className="text-lg font-bold text-[#0F172A] dark:text-slate-100 tracking-tight">
                   {title}
                 </h3>
               )}
               {description && (
-                <p className="text-xs text-[#64748B] mt-0.5">{description}</p>
+                <p className="text-xs text-[#64748B] dark:text-slate-400 mt-0.5">{description}</p>
               )}
             </div>
             {showCloseButton && (
               <button
                 onClick={onClose}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 aria-label="Close"
               >
                 <X className="w-5 h-5" />

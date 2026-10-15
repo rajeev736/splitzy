@@ -77,7 +77,7 @@ export default function NotificationsPage() {
               className={`px-4 py-2 rounded-xl text-xs font-bold capitalize transition-all ${
                 filter === tab
                   ? "bg-[#2563EB] text-white shadow-xs"
-                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  : "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60"
               }`}
             >
               {tab === "all" ? "All" : tab}
@@ -85,8 +85,8 @@ export default function NotificationsPage() {
           ))}
         </div>
 
-        {/* Notifications List (Screen 1 in Notifications UI Showcase) */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs divide-y divide-slate-100 overflow-hidden">
+        {/* Notifications List */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden transition-colors">
           {filteredNotifs.map((notif) => {
             const isUnread = !notif.read;
 
@@ -95,34 +95,36 @@ export default function NotificationsPage() {
                 key={notif.id}
                 onClick={() => handleOpenNotif(notif)}
                 className={`p-4 flex items-start justify-between cursor-pointer transition-colors ${
-                  isUnread ? "bg-blue-50/20 hover:bg-blue-50/40" : "hover:bg-slate-50"
+                  isUnread
+                    ? "bg-blue-50/20 dark:bg-blue-950/20 hover:bg-blue-50/40 dark:hover:bg-blue-950/40"
+                    : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
                 }`}
               >
                 <div className="flex items-start gap-3.5 min-w-0">
                   <div className="relative shrink-0 mt-0.5">
                     {notif.type.includes("PAYMENT") ? (
-                      <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
                         <CreditCard className="w-5 h-5" />
                       </div>
                     ) : notif.type.includes("FRIEND") ? (
-                      <div className="w-10 h-10 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center">
                         <UserPlus className="w-5 h-5" />
                       </div>
                     ) : (
-                      <div className="w-10 h-10 rounded-full bg-blue-100 text-[#2563EB] flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 flex items-center justify-center">
                         <Users className="w-5 h-5" />
                       </div>
                     )}
                   </div>
 
                   <div className="min-w-0">
-                    <div className="text-xs sm:text-sm font-bold text-[#0F172A] leading-snug">
+                    <div className="text-xs sm:text-sm font-bold text-[#0F172A] dark:text-slate-100 leading-snug">
                       {notif.title}
                     </div>
-                    <p className="text-xs text-[#64748B] mt-0.5 leading-relaxed">
+                    <p className="text-xs text-[#64748B] dark:text-slate-400 mt-0.5 leading-relaxed">
                       {notif.message}
                     </p>
-                    <span className="text-[10px] text-slate-400 mt-1 block">
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 block">
                       {new Date(notif.createdAt).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
@@ -139,8 +141,8 @@ export default function NotificationsPage() {
           })}
 
           {filteredNotifs.length === 0 && (
-            <div className="p-10 text-center text-xs text-[#64748B]">
-              <Bell className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+            <div className="p-10 text-center text-xs text-[#64748B] dark:text-slate-400">
+              <Bell className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
               <span>No notifications in this category.</span>
             </div>
           )}

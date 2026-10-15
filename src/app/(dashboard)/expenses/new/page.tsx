@@ -57,13 +57,13 @@ function NewExpenseContent() {
   const [selectedGroupId, setSelectedGroupId] = useState(preselectedGroupId || groups[0]?.id || "");
   const [selectedFriendId, setSelectedFriendId] = useState(preselectedFriendId || friends[0]?.uid || "");
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
-  const [title, setTitle] = useState("Dinner at Thalassa");
-  const [amountRupees, setAmountRupees] = useState("2400");
-  const [payerId, setPayerId] = useState(user?.uid || friends[0]?.uid || "usr_aman");
-  const [recipientId, setRecipientId] = useState(user?.uid || friends[0]?.uid || "usr_aman");
-  const [recipientUpiId, setRecipientUpiId] = useState("aman@upi");
-  const [date, setDate] = useState("2026-10-12");
-  const [notes, setNotes] = useState("Dinner with beach view 🌴");
+  const [title, setTitle] = useState("");
+  const [amountRupees, setAmountRupees] = useState("");
+  const [payerId, setPayerId] = useState(user?.uid || friends[0]?.uid || "");
+  const [recipientId, setRecipientId] = useState(user?.uid || friends[0]?.uid || "");
+  const [recipientUpiId, setRecipientUpiId] = useState(user?.upiId || "");
+  const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [notes, setNotes] = useState("");
 
   // Step 2: Participants
   const fallbackGroup = {

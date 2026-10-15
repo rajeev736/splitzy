@@ -147,14 +147,14 @@ export default function FriendsPage() {
         </div>
 
         {/* Friends List */}
-        <div className="bg-white rounded-3xl border border-[#E5E7EB] divide-y divide-slate-100 shadow-xs">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-[#E5E7EB] dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 shadow-xs transition-colors">
           {filteredFriends.map((friend) => {
             const isMenuOpen = activeMenuFriendId === friend.uid;
 
             return (
               <div
                 key={friend.uid}
-                className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors relative"
+                className="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors relative"
               >
                 <div
                   className="flex items-center gap-3.5 min-w-0 cursor-pointer flex-1"
@@ -162,15 +162,15 @@ export default function FriendsPage() {
                 >
                   <Avatar src={friend.photoURL} name={friend.displayName} size="md" />
                   <div className="min-w-0">
-                    <div className="text-sm font-bold text-[#0F172A] truncate">
+                    <div className="text-sm font-bold text-[#0F172A] dark:text-slate-100 truncate">
                       {friend.displayName}
                     </div>
-                    <div className="text-xs font-mono text-[#64748B] flex items-center gap-1.5 mt-0.5">
+                    <div className="text-xs font-mono text-[#64748B] dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
                       <span>{friend.splitzyId}</span>
                       {friend.upiId && (
                         <>
                           <span>•</span>
-                          <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded font-sans text-[10px]">
+                          <span className="text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.2 rounded font-sans text-[10px]">
                             {friend.upiId}
                           </span>
                         </>
@@ -182,7 +182,7 @@ export default function FriendsPage() {
                 <div className="flex items-center gap-2 relative">
                   <Link
                     href={`/expenses/new?friend=${friend.uid}`}
-                    className="px-3 py-1.5 rounded-xl bg-blue-50 text-[#2563EB] hover:bg-blue-100 text-xs font-bold transition-colors"
+                    className="px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-[#2563EB] dark:text-blue-400 hover:bg-blue-100 text-xs font-bold transition-colors"
                   >
                     Split
                   </Link>
@@ -194,7 +194,7 @@ export default function FriendsPage() {
                         e.stopPropagation();
                         setActiveMenuFriendId(isMenuOpen ? null : friend.uid);
                       }}
-                      className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+                      className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                       aria-label="Friend options"
                     >
                       <MoreVertical className="w-4 h-4" />
@@ -204,14 +204,14 @@ export default function FriendsPage() {
                     {isMenuOpen && (
                       <div
                         ref={menuRef}
-                        className="absolute right-0 top-10 w-44 bg-white rounded-2xl shadow-xl border border-slate-100 py-1.5 z-30 animate-in fade-in zoom-in-95 duration-150"
+                        className="absolute right-0 top-10 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 py-1.5 z-30 animate-in fade-in zoom-in-95 duration-150"
                       >
                         <button
                           onClick={() => {
                             setActiveMenuFriendId(null);
                             setProfileModalFriend(friend);
                           }}
-                          className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
+                          className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2.5 transition-colors"
                         >
                           <User className="w-3.5 h-3.5 text-slate-400" />
                           View Profile
@@ -222,20 +222,20 @@ export default function FriendsPage() {
                             setActiveMenuFriendId(null);
                             router.push(`/expenses/new?friend=${friend.uid}`);
                           }}
-                          className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
+                          className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2.5 transition-colors"
                         >
                           <Receipt className="w-3.5 h-3.5 text-slate-400" />
                           Split Expense
                         </button>
 
-                        <div className="border-t border-slate-100 my-1" />
+                        <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
 
                         <button
                           onClick={() => {
                             setActiveMenuFriendId(null);
                             setRemoveModalFriend(friend);
                           }}
-                          className="w-full text-left px-3.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors"
+                          className="w-full text-left px-3.5 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-2.5 transition-colors"
                         >
                           <Trash2 className="w-3.5 h-3.5 text-red-500" />
                           Remove Friend
@@ -249,7 +249,7 @@ export default function FriendsPage() {
           })}
 
           {filteredFriends.length === 0 && (
-            <div className="p-8 text-center text-xs text-[#64748B]">
+            <div className="p-8 text-center text-xs text-[#64748B] dark:text-slate-400">
               No friends found matching "{searchQuery}".
             </div>
           )}
@@ -272,28 +272,28 @@ export default function FriendsPage() {
               />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-[#0F172A]">
+              <h3 className="text-lg font-bold text-[#0F172A] dark:text-slate-100">
                 {profileModalFriend.displayName}
               </h3>
-              <p className="text-xs font-mono text-[#64748B] mt-0.5">
+              <p className="text-xs font-mono text-[#64748B] dark:text-slate-400 mt-0.5">
                 JoySplit ID: {profileModalFriend.splitzyId}
               </p>
             </div>
 
-            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 text-left space-y-2.5 text-xs">
+            <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-4 border border-slate-100 dark:border-slate-700 text-left space-y-2.5 text-xs">
               <div className="flex items-center justify-between">
-                <span className="text-slate-500 flex items-center gap-1.5">
+                <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                   <AtSign className="w-3.5 h-3.5" /> UPI ID:
                 </span>
-                <span className="font-mono font-bold text-slate-800">
+                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
                   {profileModalFriend.upiId || "Not set"}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-500 flex items-center gap-1.5">
+                <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5" /> Member Since:
                 </span>
-                <span className="font-semibold text-slate-800">
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
                   {new Date(profileModalFriend.createdAt).toLocaleDateString("en-IN", {
                     month: "short",
                     year: "numeric",
@@ -333,17 +333,17 @@ export default function FriendsPage() {
           title="Remove Friend"
         >
           <div className="space-y-4 pt-1">
-            <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
+            <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-700">
               <Avatar
                 src={removeModalFriend.photoURL}
                 name={removeModalFriend.displayName}
                 size="md"
               />
               <div>
-                <div className="text-sm font-bold text-[#0F172A]">
+                <div className="text-sm font-bold text-[#0F172A] dark:text-slate-100">
                   {removeModalFriend.displayName}
                 </div>
-                <div className="text-xs font-mono text-slate-500">
+                <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
                   {removeModalFriend.splitzyId}
                 </div>
               </div>
@@ -351,20 +351,33 @@ export default function FriendsPage() {
 
             {/* Invariant check banner */}
             {!removalCheck.allowed ? (
-              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs space-y-2">
-                <div className="flex items-center gap-2 font-bold text-amber-900">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Unsettled Balance Detected</span>
+              <div className="p-3.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-2xl text-xs space-y-2">
+                <div className="flex items-center gap-2 font-bold text-red-900 dark:text-red-300">
+                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                  <span>Removal Blocked — Outstanding Debt</span>
                 </div>
-                <p className="text-amber-800 leading-relaxed">
+                <p className="text-red-800 dark:text-red-300 leading-relaxed">
                   {removalCheck.reason}
                 </p>
-                <p className="text-[11px] text-amber-700 font-semibold">
-                  Please settle all pending direct expenses with {removeModalFriend.displayName} before removing this friendship.
+                <p className="text-[11px] text-red-700 dark:text-red-400 font-semibold">
+                  You must settle all pending debts with {removeModalFriend.displayName} before removing this friendship.
+                </p>
+              </div>
+            ) : removalCheck.reason ? (
+              <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl text-xs space-y-2">
+                <div className="flex items-center gap-2 font-bold text-amber-900 dark:text-amber-300">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Notice: Outstanding Receivable</span>
+                </div>
+                <p className="text-amber-800 dark:text-amber-300 leading-relaxed">
+                  {removalCheck.reason}
+                </p>
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                  You may proceed to remove this friendship, but the balance will remain tracked in your financial history.
                 </p>
               </div>
             ) : (
-              <p className="text-xs text-slate-600 leading-relaxed">
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                 Are you sure you want to remove <strong>{removeModalFriend.displayName}</strong> from your friends? Historical expenses and group memberships will be preserved.
               </p>
             )}

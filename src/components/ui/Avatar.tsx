@@ -40,12 +40,12 @@ export function Avatar({
   // Deterministic pastel color for initials based on name string
   const getBgColor = (str: string) => {
     const colors = [
-      "bg-blue-100 text-blue-700",
-      "bg-amber-100 text-amber-800",
-      "bg-emerald-100 text-emerald-800",
-      "bg-purple-100 text-purple-800",
-      "bg-rose-100 text-rose-800",
-      "bg-indigo-100 text-indigo-800",
+      "bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300",
+      "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300",
+      "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300",
+      "bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300",
+      "bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300",
+      "bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300",
     ];
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -59,7 +59,7 @@ export function Avatar({
   return (
     <div className={`relative inline-flex shrink-0 ${sizeMap[size].dim} ${className}`}>
       {showImage ? (
-        <div className="relative w-full h-full rounded-full overflow-hidden border border-slate-200/60 shadow-xs">
+        <div className="relative w-full h-full rounded-full overflow-hidden border border-slate-200/60 dark:border-slate-700/60 shadow-xs">
           <Image
             src={src!}
             alt={name || "Avatar"}
@@ -72,7 +72,7 @@ export function Avatar({
         </div>
       ) : (
         <div
-          className={`w-full h-full rounded-full flex items-center justify-center font-bold tracking-tight border border-slate-200 shadow-xs ${getBgColor(
+          className={`w-full h-full rounded-full flex items-center justify-center font-bold tracking-tight border border-slate-200 dark:border-slate-700 shadow-xs ${getBgColor(
             name || "User"
           )}`}
         >

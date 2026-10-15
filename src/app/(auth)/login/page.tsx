@@ -21,6 +21,18 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [formError, setFormError] = useState("");
 
+  const navigateAfterLogin = () => {
+    let target = "/home";
+    if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem("joysplit_redirect_to");
+      if (saved && saved.startsWith("/") && !saved.startsWith("/login") && !saved.startsWith("/signup")) {
+        target = saved;
+        sessionStorage.removeItem("joysplit_redirect_to");
+      }
+    }
+    router.replace(target);
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
@@ -34,7 +46,7 @@ export default function LoginPage() {
     try {
       await login(email, password);
       toastSuccess("Welcome back to JoySplit!");
-      router.push("/home");
+      navigateAfterLogin();
     } catch (err: any) {
       const msg = err?.message || "Failed to log in. Please check credentials.";
       setFormError(msg);
@@ -49,7 +61,7 @@ export default function LoginPage() {
     try {
       await loginWithGoogle();
       toastSuccess("Logged in successfully with Google!");
-      router.push("/home");
+      navigateAfterLogin();
     } catch (err: any) {
       toastError(err?.message || "Google login failed");
     } finally {
@@ -58,12 +70,12 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-between p-6 max-w-md mx-auto">
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 flex flex-col justify-between p-6 max-w-md mx-auto transition-colors">
       {/* Top Bar with Back */}
       <div>
         <button
           onClick={() => router.back()}
-          className="w-10 h-10 rounded-full flex items-center justify-center text-slate-700 hover:bg-slate-100 transition-colors"
+          className="w-10 h-10 rounded-full flex items-center justify-center text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
           aria-label="Back"
         >
           <ArrowLeft className="w-5 h-5" />
@@ -74,10 +86,10 @@ export default function LoginPage() {
       <div className="my-auto py-4">
         <div className="flex flex-col items-center text-center mb-8">
           <SplitzyLogo size="lg" showText={true} />
-          <h1 className="text-2xl font-extrabold text-[#0F172A] mt-6 tracking-tight">
+          <h1 className="text-2xl font-extrabold text-[#0F172A] dark:text-slate-100 mt-6 tracking-tight">
             Welcome back
           </h1>
-          <p className="text-sm text-[#64748B] mt-1.5 max-w-xs">
+          <p className="text-sm text-[#64748B] dark:text-slate-400 mt-1.5 max-w-xs">
             Login to continue splitting bills with your friends.
           </p>
         </div>
@@ -105,7 +117,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="hover:text-slate-800 p-1"
+                  className="hover:text-slate-800 dark:hover:text-slate-200 p-1 text-slate-400"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -115,7 +127,7 @@ export default function LoginPage() {
             <div className="flex justify-end mt-2">
               <Link
                 href="/forgot-password"
-                className="text-xs font-semibold text-[#2563EB] hover:underline"
+                className="text-xs font-semibold text-[#2563EB] dark:text-blue-400 hover:underline"
               >
                 Forgot password?
               </Link>
@@ -123,7 +135,7 @@ export default function LoginPage() {
           </div>
 
           {formError && (
-            <div className="text-xs text-[#EF4444] font-medium bg-red-50 p-2.5 rounded-xl border border-red-200">
+            <div className="text-xs text-[#EF4444] font-medium bg-red-50 dark:bg-red-950/40 p-2.5 rounded-xl border border-red-200 dark:border-red-800">
               {formError}
             </div>
           )}
@@ -139,8 +151,8 @@ export default function LoginPage() {
           </Button>
 
           <div className="relative flex items-center justify-center py-2">
-            <div className="border-t border-slate-200 w-full" />
-            <span className="bg-[#F8FAFC] px-3 text-xs font-bold text-[#94A3B8] uppercase tracking-wider">
+            <div className="border-t border-slate-200 dark:border-slate-800 w-full" />
+            <span className="bg-[#F8FAFC] dark:bg-slate-950 px-3 text-xs font-bold text-[#94A3B8] dark:text-slate-500 uppercase tracking-wider">
               OR
             </span>
           </div>
@@ -149,7 +161,7 @@ export default function LoginPage() {
             type="button"
             onClick={handleGoogleLogin}
             disabled={isLoading}
-            className="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 hover:bg-slate-50 text-[#0F172A] font-semibold py-3 px-4 rounded-xl text-sm shadow-xs transition-all active:scale-[0.99]"
+            className="w-full flex items-center justify-center gap-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 text-[#0F172A] dark:text-slate-100 font-semibold py-3 px-4 rounded-xl text-sm shadow-xs transition-all active:scale-[0.99]"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
               <path
@@ -175,9 +187,9 @@ export default function LoginPage() {
       </div>
 
       {/* Bottom Link */}
-      <div className="text-center text-xs text-[#64748B] pt-4 pb-2">
+      <div className="text-center text-xs text-[#64748B] dark:text-slate-400 pt-4 pb-2">
         New to JoySplit?{" "}
-        <Link href="/signup" className="font-bold text-[#2563EB] hover:underline">
+        <Link href="/signup" className="font-bold text-[#2563EB] dark:text-blue-400 hover:underline">
           Create an account
         </Link>
       </div>

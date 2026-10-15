@@ -34,14 +34,14 @@ export function AppHeader({
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#E5E7EB] px-4 py-3 sm:px-6">
+    <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-950/90 backdrop-blur-md border-b border-[#E5E7EB] dark:border-slate-800 px-4 py-3 sm:px-6 transition-colors">
       <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
         {/* Left item */}
         <div className="flex items-center gap-3 min-w-0">
           {showBack && (
             <button
               onClick={handleBack}
-              className="w-9 h-9 rounded-full flex items-center justify-center text-slate-700 hover:bg-slate-100 active:scale-95 transition-all"
+              className="w-9 h-9 rounded-full flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all"
               aria-label="Go back"
             >
               <ArrowLeft className="w-5 h-5 stroke-[2.2]" />
@@ -54,21 +54,21 @@ export function AppHeader({
                 <Avatar src={user.photoURL} name={user.displayName} size="md" />
               </Link>
               <div>
-                <div className="text-base font-bold text-[#0F172A] leading-tight flex items-center gap-1.5">
+                <div className="text-base font-bold text-[#0F172A] dark:text-slate-100 leading-tight flex items-center gap-1.5">
                   <span>Hi {user.displayName.split(" ")[0]}!</span>
                   <span>👋</span>
                 </div>
-                <div className="text-xs text-[#64748B] font-medium">Good to see you again</div>
+                <div className="text-xs text-[#64748B] dark:text-slate-400 font-medium">Good to see you again</div>
               </div>
             </div>
           ) : (
             <div>
               {title && (
-                <h1 className="text-lg sm:text-xl font-bold text-[#0F172A] tracking-tight truncate">
+                <h1 className="text-lg sm:text-xl font-bold text-[#0F172A] dark:text-slate-100 tracking-tight truncate">
                   {title}
                 </h1>
               )}
-              {subtitle && <p className="text-xs text-[#64748B] font-medium">{subtitle}</p>}
+              {subtitle && <p className="text-xs text-[#64748B] dark:text-slate-400 font-medium">{subtitle}</p>}
             </div>
           )}
         </div>
@@ -81,12 +81,12 @@ export function AppHeader({
             <div className="flex items-center gap-1.5">
               <Link
                 href="/notifications"
-                className="relative w-9 h-9 rounded-full flex items-center justify-center text-slate-700 hover:bg-slate-100 transition-colors"
+                className="relative w-9 h-9 rounded-full flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 aria-label="Notifications"
               >
                 <Bell className="w-5 h-5 stroke-[2]" />
                 {unreadCount > 0 && (
-                  <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-[#EF4444] rounded-full ring-2 ring-white" />
+                  <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-[#EF4444] rounded-full ring-2 ring-white dark:ring-slate-900" />
                 )}
               </Link>
             </div>

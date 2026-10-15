@@ -98,9 +98,15 @@ console.log("✓ Direct balance calculation passed.");
 
 // 6. canRemoveFriend Invariant Rule
 console.log("\n6. Testing canRemoveFriend Invariant Rule:");
-const removeCheckBlocked = canRemoveFriend("usr_rajeev", "usr_sital", mockExpenses);
+// Sital owes Rajeev, so if Sital tries to remove Rajeev, it should be strictly blocked:
+const removeCheckBlocked = canRemoveFriend("usr_sital", "usr_rajeev", mockExpenses);
 assert(removeCheckBlocked.canRemove === false, "Removal should be blocked while Sital owes Rajeev");
 assert(removeCheckBlocked.unsettledPaise === 100000, "Unsettled paise should be 100000");
+
+// Rajeev is owed by Sital, so Rajeev can remove with warning under product policy:
+const removeCheckWarned = canRemoveFriend("usr_rajeev", "usr_sital", mockExpenses);
+assert(removeCheckWarned.canRemove === true, "Removal allowed when friend owes current user");
+assert(!!removeCheckWarned.warning, "Warning message must be provided");
 
 // Mark as paid and recheck
 const settledExpenses: Expense[] = [
@@ -109,7 +115,7 @@ const settledExpenses: Expense[] = [
     shares: mockExpenses[0].shares.map((s) => ({ ...s, status: "PAID" })),
   },
 ];
-const removeCheckAllowed = canRemoveFriend("usr_rajeev", "usr_sital", settledExpenses);
+const removeCheckAllowed = canRemoveFriend("usr_sital", "usr_rajeev", settledExpenses);
 assert(removeCheckAllowed.canRemove === true, "Removal should be allowed once balance is 0");
 console.log("✓ canRemoveFriend rule enforced successfully.");
 

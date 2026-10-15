@@ -11,14 +11,6 @@ import {
   SplitType,
   SharePaymentStatus,
 } from "@/lib/types";
-import {
-  INITIAL_USER,
-  INITIAL_FRIENDS,
-  INITIAL_GROUPS,
-  INITIAL_EXPENSES,
-  INITIAL_NOTIFICATIONS,
-  INITIAL_FRIEND_REQUESTS,
-} from "@/lib/mockDemoData";
 import { generateRandomSplitzyId } from "@/lib/firebase/splitzyId";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/config";
 import {
@@ -45,6 +37,7 @@ import {
   canRemoveFriend,
   canUserLeaveGroup,
   canDeleteGroup,
+  calculateNetBalances,
 } from "@/lib/money";
 
 interface AuthContextValue {
@@ -114,43 +107,48 @@ const STORAGE_KEYS = {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [friends, setFriends] = useState<UserProfile[]>(INITIAL_FRIENDS);
-  const [groups, setGroups] = useState<Group[]>(INITIAL_GROUPS);
-  const [expenses, setExpenses] = useState<Expense[]>(INITIAL_EXPENSES);
-  const [notifications, setNotifications] = useState<AppNotification[]>(INITIAL_NOTIFICATIONS);
-  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>(INITIAL_FRIEND_REQUESTS);
+  const [friends, setFriends] = useState<UserProfile[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
 
-  // Initialize and Hydrate from storage or defaults
+  // Initialize and Hydrate from storage or clean state
   useEffect(() => {
     try {
       const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
       if (storedUser) {
-        setUser(JSON.parse(storedUser));
-      } else {
-        // Default demo user active for immediate seamless experience
-        setUser(INITIAL_USER);
-        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(INITIAL_USER));
+        const parsed = JSON.parse(storedUser);
+        // Clean out legacy demo user if found
+        if (parsed?.uid === "usr_rajeev_demo" || parsed?.splitzyId === "JOY-9B2K4L") {
+          localStorage.removeItem(STORAGE_KEYS.USER);
+          localStorage.removeItem(STORAGE_KEYS.FRIENDS);
+          localStorage.removeItem(STORAGE_KEYS.GROUPS);
+          localStorage.removeItem(STORAGE_KEYS.EXPENSES);
+          localStorage.removeItem(STORAGE_KEYS.NOTIFICATIONS);
+          localStorage.removeItem(STORAGE_KEYS.FRIEND_REQUESTS);
+          setUser(null);
+        } else {
+          setUser(parsed);
+          const storedFriends = localStorage.getItem(STORAGE_KEYS.FRIENDS);
+          if (storedFriends) setFriends(JSON.parse(storedFriends));
+
+          const storedGroups = localStorage.getItem(STORAGE_KEYS.GROUPS);
+          if (storedGroups) setGroups(JSON.parse(storedGroups));
+
+          const storedExpenses = localStorage.getItem(STORAGE_KEYS.EXPENSES);
+          if (storedExpenses) setExpenses(JSON.parse(storedExpenses));
+
+          const storedNotifs = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
+          if (storedNotifs) setNotifications(JSON.parse(storedNotifs));
+
+          const storedReqs = localStorage.getItem(STORAGE_KEYS.FRIEND_REQUESTS);
+          if (storedReqs) setFriendRequests(JSON.parse(storedReqs));
+        }
       }
-
-      const storedFriends = localStorage.getItem(STORAGE_KEYS.FRIENDS);
-      if (storedFriends) setFriends(JSON.parse(storedFriends));
-
-      const storedGroups = localStorage.getItem(STORAGE_KEYS.GROUPS);
-      if (storedGroups) setGroups(JSON.parse(storedGroups));
-
-      const storedExpenses = localStorage.getItem(STORAGE_KEYS.EXPENSES);
-      if (storedExpenses) setExpenses(JSON.parse(storedExpenses));
-
-      const storedNotifs = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
-      if (storedNotifs) setNotifications(JSON.parse(storedNotifs));
-
-      const storedReqs = localStorage.getItem(STORAGE_KEYS.FRIEND_REQUESTS);
-      if (storedReqs) setFriendRequests(JSON.parse(storedReqs));
     } catch (e) {
       console.warn("Storage hydration warning:", e);
-      setUser(INITIAL_USER);
-    } finally {
-      setIsLoading(false);
+      setUser(null);
     }
   }, []);
 
@@ -188,17 +186,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Firebase Auth State Listener
   useEffect(() => {
-    if (!isFirebaseConfigured || !auth) return;
+    if (!isFirebaseConfigured || !auth) {
+      setIsLoading(false);
+      return;
+    }
 
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         if (db) {
-          const userDoc = await getDoc(doc(db, "users", fbUser.uid));
-          if (userDoc.exists()) {
-            persistUser(userDoc.data() as UserProfile);
+          try {
+            const userDoc = await getDoc(doc(db, "users", fbUser.uid));
+            if (userDoc.exists()) {
+              const uData = userDoc.data() as UserProfile;
+              persistUser(uData);
+            } else {
+              // User exists in Firebase Auth but profile doc in Firestore was deleted or not completed
+              console.warn("Auth user found without Firestore profile doc:", fbUser.uid);
+              persistUser(null);
+            }
+          } catch (err) {
+            console.error("Firestore user fetch error:", err);
+            persistUser(null);
           }
         }
+      } else {
+        // No authenticated Firebase user
+        persistUser(null);
+        setFriends([]);
+        setGroups([]);
+        setExpenses([]);
+        setNotifications([]);
+        setFriendRequests([]);
+        localStorage.removeItem(STORAGE_KEYS.USER);
+        localStorage.removeItem(STORAGE_KEYS.FRIENDS);
+        localStorage.removeItem(STORAGE_KEYS.GROUPS);
+        localStorage.removeItem(STORAGE_KEYS.EXPENSES);
+        localStorage.removeItem(STORAGE_KEYS.NOTIFICATIONS);
+        localStorage.removeItem(STORAGE_KEYS.FRIEND_REQUESTS);
       }
+      setIsLoading(false);
     });
 
     return () => unsubscribe();
@@ -276,11 +302,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsubsGroups = onSnapshot(
       qGroups,
       (snap) => {
-        if (!snap.empty) {
-          const gList: Group[] = [];
-          snap.forEach((d) => gList.push(d.data() as Group));
-          persistGroups(gList);
-        }
+        const gList: Group[] = [];
+        snap.forEach((d) => gList.push(d.data() as Group));
+        persistGroups(gList);
       },
       onError
     );
@@ -290,26 +314,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsubsExpenses = onSnapshot(
       qExpenses,
       (snap) => {
-        if (!snap.empty) {
-          const expList: Expense[] = [];
-          snap.forEach((d) => {
-            const exp = d.data() as Expense;
-            if (
-              exp.createdBy === user.uid ||
-              exp.payerId === user.uid ||
-              exp.recipientId === user.uid ||
-              exp.shares?.some((s) => s.userId === user.uid)
-            ) {
-              expList.push(exp);
-            }
-          });
-          if (expList.length > 0) {
-            expList.sort(
-              (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-            );
-            persistExpenses(expList);
+        const expList: Expense[] = [];
+        snap.forEach((d) => {
+          const exp = d.data() as Expense;
+          if (
+            exp.createdBy === user.uid ||
+            exp.payerId === user.uid ||
+            exp.recipientId === user.uid ||
+            exp.shares?.some((s) => s.userId === user.uid)
+          ) {
+            expList.push(exp);
           }
-        }
+        });
+        expList.sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        persistExpenses(expList);
       },
       onError
     );
@@ -322,14 +342,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsubsNotifs = onSnapshot(
       qNotifs,
       (snap) => {
-        if (!snap.empty) {
-          const nList: AppNotification[] = [];
-          snap.forEach((d) => nList.push(d.data() as AppNotification));
-          nList.sort(
-            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          );
-          persistNotifications(nList);
-        }
+        const nList: AppNotification[] = [];
+        snap.forEach((d) => nList.push(d.data() as AppNotification));
+        nList.sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        persistNotifications(nList);
       },
       onError
     );
@@ -355,24 +373,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         });
 
-        if (activeFriendUids.length > 0 || removedFriendUids.length > 0) {
+        if (activeFriendUids.length === 0) {
+          persistFriends([]);
+        } else {
           setFriends((prevFriends) => {
-            let updated = prevFriends.filter((f) => !removedFriendUids.includes(f.uid));
+            let updated = prevFriends.filter(
+              (f) => activeFriendUids.includes(f.uid) && !removedFriendUids.includes(f.uid)
+            );
             activeFriendUids.forEach((fUid) => {
               if (!updated.some((f) => f.uid === fUid) && db) {
-                getDoc(doc(db, "users", fUid)).then((uDoc) => {
-                  if (uDoc.exists()) {
-                    const uData = uDoc.data() as UserProfile;
-                    setFriends((curr) => {
-                      if (!curr.some((c) => c.uid === fUid)) {
-                        const next = [...curr, uData];
-                        persistFriends(next);
-                        return next;
-                      }
-                      return curr;
-                    });
-                  }
-                }).catch(() => {});
+                getDoc(doc(db, "users", fUid))
+                  .then((uDoc) => {
+                    if (uDoc.exists()) {
+                      const uData = uDoc.data() as UserProfile;
+                      setFriends((curr) => {
+                        if (!curr.some((c) => c.uid === fUid)) {
+                          const next = [...curr, uData];
+                          persistFriends(next);
+                          return next;
+                        }
+                        return curr;
+                      });
+                    }
+                  })
+                  .catch(() => {});
               }
             });
             persistFriends(updated);
@@ -404,24 +428,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (userDoc && userDoc.exists()) {
           persistUser(userDoc.data() as UserProfile);
           return;
+        } else {
+          throw new Error("User account exists but profile was not found. Please complete registration.");
         }
       }
-      // Demo / offline fallback: if matches demo email or new email
-      const matched = INITIAL_FRIENDS.find((f) => f.email === email);
-      if (matched) {
-        persistUser(matched);
-      } else {
-        const customUser: UserProfile = {
-          uid: `usr_${Date.now()}`,
-          email,
-          displayName: email.split("@")[0].replace(/[._]/g, " "),
-          splitzyId: generateRandomSplitzyId(),
-          upiId: `${email.split("@")[0]}@upi`,
-          photoURL: "/assets/avatar_boy.jpg",
-          createdAt: new Date().toISOString(),
-        };
-        persistUser(customUser);
-      }
+      throw new Error("Firebase authentication is required to sign in.");
     } finally {
       setIsLoading(false);
     }
@@ -504,17 +515,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // Offline demo fallback for Google login
-      const googleDemo: UserProfile = {
-        uid: `usr_google_${Date.now()}`,
-        email: "demo.google@joysplit.app",
-        displayName: "Google User",
-        splitzyId: generateRandomSplitzyId(),
-        upiId: "demogoogle@upi",
-        photoURL: "/assets/avatar_girl.jpg",
-        createdAt: new Date().toISOString(),
-      };
-      persistUser(googleDemo);
+      throw new Error("Firebase Authentication is not configured or available.");
     } finally {
       setIsLoading(false);
     }
@@ -530,6 +531,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     persistUser(null);
+    setFriends([]);
+    setGroups([]);
+    setExpenses([]);
+    setNotifications([]);
+    setFriendRequests([]);
+    localStorage.removeItem(STORAGE_KEYS.USER);
+    localStorage.removeItem(STORAGE_KEYS.FRIENDS);
+    localStorage.removeItem(STORAGE_KEYS.GROUPS);
+    localStorage.removeItem(STORAGE_KEYS.EXPENSES);
+    localStorage.removeItem(STORAGE_KEYS.NOTIFICATIONS);
+    localStorage.removeItem(STORAGE_KEYS.FRIEND_REQUESTS);
   };
 
   // Update profile
@@ -614,7 +626,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    persistNotifications([...newNotifs, ...notifications]);
     return groupId;
   };
 
@@ -718,7 +729,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    persistNotifications([...notifs, ...notifications]);
     return expenseId;
   };
 
@@ -778,8 +788,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (isFirebaseConfigured && db) {
         await setDoc(doc(db, "notifications", reportedNotif.id), reportedNotif);
       }
-
-      persistNotifications([reportedNotif, ...notifications]);
     }
   };
 
@@ -834,14 +842,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (isFirebaseConfigured && db) {
         await setDoc(doc(db, "notifications", confirmedNotif.id), confirmedNotif);
       }
-
-      persistNotifications([confirmedNotif, ...notifications]);
     }
   };
 
   // Recipient disputes payment receipt
   const disputePaymentReceipt = async (expenseId: string, memberUserId: string) => {
     if (!user) return;
+    const now = new Date().toISOString();
+
     const updated = expenses.map((exp) => {
       if (exp.id === expenseId) {
         const updatedShares = exp.shares.map((share) => {
@@ -866,6 +874,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     persistExpenses(updated);
+
+    const expense = expenses.find((e) => e.id === expenseId);
+    if (expense) {
+      const disputedNotif: AppNotification = {
+        id: `notif_${Date.now()}`,
+        userId: memberUserId,
+        title: "Payment Disputed",
+        message: `${user.displayName} disputed the payment reported for "${expense.title}"`,
+        type: "PAYMENT_DISPUTED",
+        data: {
+          expenseId,
+          actorId: user.uid,
+          actorName: user.displayName,
+        },
+        read: false,
+        createdAt: now,
+      };
+
+      if (isFirebaseConfigured && db) {
+        await setDoc(doc(db, "notifications", disputedNotif.id), disputedNotif);
+      }
+    }
   };
 
   // Send friend request by Splitzy ID
@@ -917,25 +947,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (!target) {
-      // Find in mock database
-      target = INITIAL_FRIENDS.find((f) => f.splitzyId.toUpperCase() === cleanId) || null;
-    }
-
-    if (!target) {
-      if (isFirebaseConfigured) {
-        return {
-          success: false,
-          message: `No user found with JoySplit ID "${cleanId}". Make sure the ID is correct.`,
-        };
-      }
-      target = {
-        uid: `usr_${cleanId.toLowerCase().replace(/[^a-z0-9]/g, "")}`,
-        displayName: `User ${cleanId.slice(-4)}`,
-        email: `${cleanId.toLowerCase()}@joysplit.app`,
-        splitzyId: cleanId,
-        upiId: `${cleanId.toLowerCase()}@upi`,
-        photoURL: "/assets/avatar_girl.jpg",
-        createdAt: new Date().toISOString(),
+      return {
+        success: false,
+        message: `No user found with JoySplit ID "${cleanId}". Make sure the ID is correct.`,
       };
     }
 
@@ -1026,19 +1040,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!friends.some((f) => f.uid === newFriend.uid)) {
       persistFriends([...friends, newFriend]);
     }
-
-    // Add notification locally for immediate response
-    const notif: AppNotification = {
-      id: `notif_${Date.now()}`,
-      userId: req.senderId,
-      title: "Friend Request Accepted",
-      message: `${user.displayName} accepted your friend request!`,
-      type: "FRIEND_ACCEPTED",
-      data: { actorId: user.uid, actorName: user.displayName },
-      read: false,
-      createdAt: now,
-    };
-    persistNotifications([notif, ...notifications]);
   };
 
   // Reject friend request
@@ -1249,47 +1250,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (isFirebaseConfigured && db) {
       await setDoc(doc(db, "notifications", notifId), remNotif);
     }
-
-    persistNotifications([remNotif, ...notifications]);
   };
 
   // Notifications read handlers
-  const markNotificationRead = (id: string) => {
+  const markNotificationRead = async (id: string) => {
     const updated = notifications.map((n) => (n.id === id ? { ...n, read: true } : n));
     persistNotifications(updated);
+    if (isFirebaseConfigured && db) {
+      try {
+        await updateDoc(doc(db, "notifications", id), { read: true });
+      } catch (e) {
+        console.warn("Failed to mark notification read in Firestore:", e);
+      }
+    }
   };
 
-  const markAllNotificationsRead = () => {
+  const markAllNotificationsRead = async () => {
     const updated = notifications.map((n) => ({ ...n, read: true }));
     persistNotifications(updated);
+    if (isFirebaseConfigured && db && user) {
+      try {
+        const unread = notifications.filter((n) => !n.read);
+        for (const notif of unread) {
+          await updateDoc(doc(db, "notifications", notif.id), { read: true });
+        }
+      } catch (e) {
+        console.warn("Failed to mark all notifications read in Firestore:", e);
+      }
+    }
   };
 
-  // Balances calculation
-  let totalOwedToYouPaise = 0;
-  let totalYouOwePaise = 0;
-
-  if (user) {
-    expenses.forEach((exp) => {
-      const isCreatorOrPayer = exp.payerId === user.uid || exp.recipientId === user.uid;
-
-      if (isCreatorOrPayer) {
-        // People owe you
-        exp.shares.forEach((share) => {
-          if (share.userId !== user.uid && share.status !== "PAID") {
-            totalOwedToYouPaise += share.amountPaise;
-          }
-        });
-      } else {
-        // Check if you are in the shares
-        const myShare = exp.shares.find((s) => s.userId === user.uid);
-        if (myShare && myShare.status !== "PAID") {
-          totalYouOwePaise += myShare.amountPaise;
-        }
-      }
-    });
-  }
-
-  const netBalancePaise = totalOwedToYouPaise - totalYouOwePaise;
+  // Authoritative Balances calculation using centralized integer paise math engine
+  const { netBalancePaise, totalOwedToYouPaise, totalYouOwePaise } = user
+    ? calculateNetBalances(user.uid, expenses)
+    : { netBalancePaise: 0, totalOwedToYouPaise: 0, totalYouOwePaise: 0 };
 
   return (
     <AuthContext.Provider

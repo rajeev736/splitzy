@@ -242,24 +242,28 @@ export function canRemoveFriend(
   allowed: boolean;
   canRemove: boolean;
   reason?: string;
+  warning?: string;
   unsettledPaise: number;
 } {
   const direct = calculateDirectBalance(userA, userB, expenses);
-  const totalUnsettled = direct.userBOwesUserAPaise + direct.userAOwesUserBPaise;
 
-  if (totalUnsettled > 0) {
-    const details =
-      direct.userBOwesUserAPaise > 0 && direct.userAOwesUserBPaise > 0
-        ? `They owe you ${formatPaise(direct.userBOwesUserAPaise)}, and you owe them ${formatPaise(direct.userAOwesUserBPaise)}.`
-        : direct.userBOwesUserAPaise > 0
-        ? `They owe you ${formatPaise(direct.userBOwesUserAPaise)}.`
-        : `You owe them ${formatPaise(direct.userAOwesUserBPaise)}.`;
-
+  // If current user owes the friend money -> Strictly block removal!
+  if (direct.userAOwesUserBPaise > 0) {
     return {
       allowed: false,
       canRemove: false,
-      reason: `Cannot remove friend with an unsettled balance of ${formatPaise(totalUnsettled)}. ${details} Please settle all shared expenses first.`,
-      unsettledPaise: totalUnsettled,
+      reason: `You owe ${formatPaise(direct.userAOwesUserBPaise)} to this friend. You must settle this debt before removing them.`,
+      unsettledPaise: direct.userAOwesUserBPaise,
+    };
+  }
+
+  // If friend owes current user money -> Allow removal but clearly warn that the receivable remains outstanding!
+  if (direct.userBOwesUserAPaise > 0) {
+    return {
+      allowed: true,
+      canRemove: true,
+      warning: `This friend still owes you ${formatPaise(direct.userBOwesUserAPaise)}. Historical records will be preserved and you can still track or settle this balance later.`,
+      unsettledPaise: direct.userBOwesUserAPaise,
     };
   }
 

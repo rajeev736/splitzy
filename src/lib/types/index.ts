@@ -5,6 +5,7 @@ export interface UserProfile {
   splitzyId: string; // e.g. JOY-7K9M2Q or SPL-7K9M2Q
   upiId?: string;    // e.g. rajeev@upi
   photoURL?: string;
+  onboardingCompleted?: boolean;
   createdAt: string;
   updatedAt?: string;
 }

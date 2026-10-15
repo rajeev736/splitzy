@@ -91,6 +91,7 @@ export default function SignupPage() {
         splitzyId,
         upiId: upiId.trim() || undefined,
         photoURL: selectedAvatar,
+        onboardingCompleted: true,
       });
       toastSuccess("Profile configured successfully!");
       router.push("/home");

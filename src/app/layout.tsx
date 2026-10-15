@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { ToastProvider } from "@/context/ToastContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -36,11 +37,30 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col bg-[#F8FAFC] text-[#0F172A] font-sans">
-        <ToastProvider>
-          <AuthProvider>{children}</AuthProvider>
-        </ToastProvider>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} h-full antialiased`}>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                const stored = localStorage.getItem('joysplit_theme');
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                if (stored === 'dark' || (stored !== 'light' && prefersDark)) {
+                  document.documentElement.classList.add('dark');
+                } else {
+                  document.documentElement.classList.remove('dark');
+                }
+              } catch (_) {}
+            `,
+          }}
+        />
+      </head>
+      <body className="min-h-full flex flex-col bg-[#F8FAFC] dark:bg-slate-950 text-[#0F172A] dark:text-slate-100 font-sans transition-colors">
+        <ThemeProvider>
+          <ToastProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </ToastProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
