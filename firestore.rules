@@ -1,0 +1,124 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidJoySplitId(id) {
+      return id.matches('^(JOY|SPL)-[A-Z0-9]{6}$');
+    }
+
+    // JoySplit / Splitzy IDs collection for unique reservation
+    match /splitzyIds/{splitzyId} {
+      allow read: if isAuthenticated();
+      // Allow create only if doc doesn't exist yet and caller claims it for their own uid
+      allow create: if isAuthenticated() &&
+                    request.resource.data.uid == request.auth.uid &&
+                    isValidJoySplitId(splitzyId);
+      // Immutable once claimed
+      allow update, delete: if false;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      // Any authenticated user can read public profile (name, splitzyId, photo) to send friend requests
+      allow read: if isAuthenticated();
+      // Can only create and update their own document
+      allow create: if isOwner(userId) &&
+                    request.resource.data.uid == userId &&
+                    request.resource.data.splitzyId is string;
+      allow update: if isOwner(userId) &&
+                    request.resource.data.uid == resource.data.uid &&
+                    request.resource.data.splitzyId == resource.data.splitzyId;
+      allow delete: if false;
+    }
+
+    // Canonical Friendships Collection
+    match /friendships/{friendshipId} {
+      // Must be one of the two friends
+      allow read: if isAuthenticated() &&
+                  request.auth.uid in resource.data.users;
+      // Allow creation when accepting request
+      allow create: if isAuthenticated() &&
+                    request.auth.uid in request.resource.data.users &&
+                    request.resource.data.status == 'ACTIVE';
+      // Either friend can update status (e.g. mark REMOVED)
+      allow update: if isAuthenticated() &&
+                    request.auth.uid in resource.data.users;
+      allow delete: if isAuthenticated() &&
+                    request.auth.uid in resource.data.users;
+    }
+
+    // Friend Requests Collection
+    match /friendRequests/{requestId} {
+      allow read: if isAuthenticated() &&
+                  (resource.data.senderId == request.auth.uid || resource.data.receiverId == request.auth.uid);
+      allow create: if isAuthenticated() &&
+                    request.resource.data.senderId == request.auth.uid &&
+                    request.resource.data.receiverId != request.auth.uid &&
+                    request.resource.data.status == 'PENDING';
+      // Sender can cancel, receiver can accept or reject
+      allow update: if isAuthenticated() &&
+                    ((resource.data.receiverId == request.auth.uid &&
+                      (request.resource.data.status in ['ACCEPTED', 'REJECTED'])) ||
+                     (resource.data.senderId == request.auth.uid &&
+                      request.resource.data.status == 'CANCELLED'));
+      allow delete: if isAuthenticated() &&
+                    (resource.data.senderId == request.auth.uid || resource.data.receiverId == request.auth.uid);
+    }
+
+    // Groups Collection
+    match /groups/{groupId} {
+      // Only members can read the group data
+      allow read: if isAuthenticated() &&
+                  (request.auth.uid in resource.data.members ||
+                   (resource.data.invitedMembers != null && request.auth.uid in resource.data.invitedMembers));
+      // Creator must be in member list upon creation
+      allow create: if isAuthenticated() &&
+                    request.resource.data.createdBy == request.auth.uid &&
+                    request.auth.uid in request.resource.data.members;
+      // Existing members can update (e.g. edit details or leave)
+      allow update: if isAuthenticated() &&
+                    (request.auth.uid in resource.data.members ||
+                     (resource.data.invitedMembers != null && request.auth.uid in resource.data.invitedMembers));
+      // ONLY creator can delete the group
+      allow delete: if isAuthenticated() &&
+                    resource.data.createdBy == request.auth.uid;
+    }
+
+    // Expenses Collection
+    match /expenses/{expenseId} {
+      // Participants or creator can read
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+                    request.resource.data.amountPaise is int &&
+                    request.resource.data.amountPaise > 0 &&
+                    request.resource.data.createdBy == request.auth.uid;
+      // Creator, payer, or participant updating share status can update
+      allow update: if isAuthenticated();
+      // Only creator can delete expense
+      allow delete: if isAuthenticated() &&
+                    resource.data.createdBy == request.auth.uid;
+    }
+
+    // Notifications Collection
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() &&
+                  resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated();
+      // Recipient can mark read
+      allow update: if isAuthenticated() &&
+                    resource.data.userId == request.auth.uid &&
+                    request.resource.data.userId == resource.data.userId;
+      allow delete: if isAuthenticated() &&
+                    resource.data.userId == request.auth.uid;
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "JoySplit — Split bills. Keep friendships.",
+  "short_name": "JoySplit",
+  "description": "Zero-budget group expense-splitting and payment-tracking web app with instant UPI settlement.",
+  "start_url": "/home",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#2563EB",
+  "icons": [
+    {
+      "src": "/assets/avatar_boy.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "/assets/avatar_boy.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ]
+}
