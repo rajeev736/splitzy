@@ -26,16 +26,23 @@ import { formatPaise } from "@/lib/money";
 export default function NotificationsPage() {
   const router = useRouter();
   const {
+    user,
+    groups,
     notifications,
     markNotificationRead,
     markAllNotificationsRead,
     acceptFriendRequest,
     rejectFriendRequest,
+    acceptGroupInvite,
+    declineGroupInvite,
+    confirmPaymentReceipt,
+    disputePaymentReceipt,
   } = useAuth();
-  const { success } = useToast();
+  const { success, error: toastError } = useToast();
 
   const [filter, setFilter] = useState<"all" | "payments" | "friends" | "groups">("all");
   const [selectedNotif, setSelectedNotif] = useState<AppNotification | null>(null);
+  const [isProcessingInvite, setIsProcessingInvite] = useState(false);
 
   const filteredNotifs = notifications.filter((n) => {
     if (filter === "payments") return n.type.includes("PAYMENT");
@@ -47,6 +54,40 @@ export default function NotificationsPage() {
   const handleOpenNotif = (notif: AppNotification) => {
     markNotificationRead(notif.id);
     setSelectedNotif(notif);
+  };
+
+  const handleAcceptGroupInvite = async (groupId: string, friendRequestId?: string) => {
+    setIsProcessingInvite(true);
+    try {
+      const res = await acceptGroupInvite(groupId, {
+        acceptCombinedFriendship: Boolean(friendRequestId),
+        friendRequestId,
+      });
+      if (res.success) {
+        success(res.message || "You have joined the group!");
+        setSelectedNotif(null);
+        router.push(`/groups/${groupId}`);
+      } else {
+        toastError(res.message || "Failed to join group");
+      }
+    } catch (e: any) {
+      toastError(e?.message || "Failed to join group");
+    } finally {
+      setIsProcessingInvite(false);
+    }
+  };
+
+  const handleDeclineGroupInvite = async (groupId: string, friendRequestId?: string) => {
+    setIsProcessingInvite(true);
+    try {
+      await declineGroupInvite(groupId, friendRequestId);
+      success("Group invitation declined");
+      setSelectedNotif(null);
+    } catch (e: any) {
+      toastError(e?.message || "Failed to decline invitation");
+    } finally {
+      setIsProcessingInvite(false);
+    }
   };
 
   return (
@@ -133,9 +174,42 @@ export default function NotificationsPage() {
                   </div>
                 </div>
 
-                {isUnread && (
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#2563EB] shrink-0 mt-1.5 ml-2" />
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  {notif.type === "PAYMENT_REPORTED" && (
+                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (notif.data?.expenseId && notif.data?.actorId) {
+                            await confirmPaymentReceipt(notif.data.expenseId, notif.data.actorId);
+                            markNotificationRead(notif.id);
+                            success("Payment confirmed!");
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 transition-colors shadow-xs"
+                      >
+                        Yes, Received
+                      </button>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (notif.data?.expenseId && notif.data?.actorId) {
+                            await disputePaymentReceipt(notif.data.expenseId, notif.data.actorId);
+                            markNotificationRead(notif.id);
+                            toastError("Payment marked as not received");
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 text-[11px] font-bold hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                      >
+                        No
+                      </button>
+                    </div>
+                  )}
+
+                  {isUnread && (
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#2563EB] shrink-0" />
+                  )}
+                </div>
               </div>
             );
           })}
@@ -179,26 +253,182 @@ export default function NotificationsPage() {
             </div>
 
             <div className="space-y-2 pt-2">
-              {selectedNotif.data?.expenseId ? (
+              {/* Group Invitation Accept/Decline Handling */}
+              {selectedNotif.type === "GROUP_INVITE" && selectedNotif.data?.groupId ? (
+                (() => {
+                  const grp = groups.find((g) => g.id === selectedNotif.data?.groupId);
+                  const isAlreadyMember = user && grp?.members?.includes(user.uid);
+
+                  if (isAlreadyMember) {
+                    return (
+                      <Button
+                        fullWidth
+                        size="lg"
+                        onClick={() => {
+                          const grpId = selectedNotif.data?.groupId;
+                          setSelectedNotif(null);
+                          router.push(`/groups/${grpId}`);
+                        }}
+                      >
+                        View Group
+                      </Button>
+                    );
+                  }
+
+                  const isCombined = Boolean(selectedNotif.data?.friendRequestId);
+
+                  return (
+                    <div className="space-y-2">
+                      <Button
+                        fullWidth
+                        size="lg"
+                        isLoading={isProcessingInvite}
+                        onClick={() =>
+                          handleAcceptGroupInvite(
+                            selectedNotif.data!.groupId!,
+                            selectedNotif.data?.friendRequestId
+                          )
+                        }
+                      >
+                        {isCombined ? "Accept Group & Friend Request" : "Accept Group Invitation"}
+                      </Button>
+                      <Button
+                        fullWidth
+                        variant="secondary"
+                        size="md"
+                        disabled={isProcessingInvite}
+                        onClick={() =>
+                          handleDeclineGroupInvite(
+                            selectedNotif.data!.groupId!,
+                            selectedNotif.data?.friendRequestId
+                          )
+                        }
+                      >
+                        Decline
+                      </Button>
+                    </div>
+                  );
+                })()
+              ) : selectedNotif.type === "FRIEND_REQUEST" ? (
+                <Button
+                  fullWidth
+                  size="lg"
+                  onClick={() => {
+                    setSelectedNotif(null);
+                    router.push("/friends/requests?tab=received");
+                  }}
+                >
+                  View Received Request
+                </Button>
+              ) : selectedNotif.type === "FRIEND_ACCEPTED" ? (
+                <Button
+                  fullWidth
+                  size="lg"
+                  onClick={() => {
+                    setSelectedNotif(null);
+                    router.push("/friends");
+                  }}
+                >
+                  View Friends List
+                </Button>
+              ) : selectedNotif.type === "PAYMENT_REPORTED" ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      fullWidth
+                      variant="success"
+                      size="lg"
+                      onClick={async () => {
+                        const expId = selectedNotif.data?.expenseId;
+                        const actorId = selectedNotif.data?.actorId;
+                        if (expId && actorId) {
+                          await confirmPaymentReceipt(expId, actorId);
+                          success("Payment confirmed!");
+                          setSelectedNotif(null);
+                        }
+                      }}
+                    >
+                      Yes, Received
+                    </Button>
+                    <Button
+                      fullWidth
+                      variant="outline"
+                      size="lg"
+                      className="!text-red-600 !border-red-300 hover:bg-red-50 dark:hover:bg-red-950/40"
+                      onClick={async () => {
+                        const expId = selectedNotif.data?.expenseId;
+                        const actorId = selectedNotif.data?.actorId;
+                        if (expId && actorId) {
+                          await disputePaymentReceipt(expId, actorId);
+                          toastError("Payment marked as not received (disputed)");
+                          setSelectedNotif(null);
+                        }
+                      }}
+                    >
+                      No, Not Received
+                    </Button>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const expId = selectedNotif.data?.expenseId;
+                      setSelectedNotif(null);
+                      if (expId) {
+                        router.push(`/expenses/${expId}`);
+                      } else {
+                        router.push("/history");
+                      }
+                    }}
+                    className="w-full text-center text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline py-1"
+                  >
+                    View Full Expense Details
+                  </button>
+                </div>
+              ) : selectedNotif.type === "PAYMENT_CONFIRMED" ? (
                 <Button
                   fullWidth
                   size="lg"
                   onClick={() => {
                     const expId = selectedNotif.data?.expenseId;
                     setSelectedNotif(null);
-                    router.push(`/expenses/${expId}`);
+                    if (expId) {
+                      router.push(`/expenses/${expId}`);
+                    } else {
+                      router.push("/history");
+                    }
+                  }}
+                >
+                  View Confirmed Settlement
+                </Button>
+              ) : selectedNotif.type === "NEW_EXPENSE" || selectedNotif.data?.expenseId ? (
+                <Button
+                  fullWidth
+                  size="lg"
+                  onClick={() => {
+                    const expId = selectedNotif.data?.expenseId;
+                    setSelectedNotif(null);
+                    if (expId) {
+                      router.push(`/expenses/${expId}`);
+                    } else if (selectedNotif.data?.groupId) {
+                      router.push(`/groups/${selectedNotif.data.groupId}`);
+                    } else {
+                      router.push("/history");
+                    }
                   }}
                 >
                   View Expense
                 </Button>
-              ) : selectedNotif.data?.groupId ? (
+              ) : selectedNotif.type === "GROUP_MEMBER_LEFT" || selectedNotif.type === "GROUP_ACCEPTED" || selectedNotif.data?.groupId ? (
                 <Button
                   fullWidth
                   size="lg"
                   onClick={() => {
                     const grpId = selectedNotif.data?.groupId;
                     setSelectedNotif(null);
-                    router.push(`/groups/${grpId}`);
+                    if (grpId && groups.some((g) => g.id === grpId)) {
+                      router.push(`/groups/${grpId}`);
+                    } else {
+                      router.push("/groups");
+                    }
                   }}
                 >
                   View Group
@@ -209,7 +439,7 @@ export default function NotificationsPage() {
                   size="lg"
                   onClick={() => {
                     setSelectedNotif(null);
-                    router.push("/friends/requests");
+                    router.push("/friends/requests?tab=received");
                   }}
                 >
                   View Friend Requests

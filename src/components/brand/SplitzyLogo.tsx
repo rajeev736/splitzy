@@ -75,11 +75,11 @@ export function JoySplitLogo({
       <JoySplitLogoIcon className={iconSizes[size]} />
       {showText && (
         <div className="flex flex-col">
-          <span className={`font-bold tracking-tight text-[#0F172A] leading-tight ${textSizes[size]}`}>
+          <span className={`font-bold tracking-tight text-[#0F172A] dark:text-white leading-tight ${textSizes[size]}`}>
             JoySplit
           </span>
           {showTagline && (
-            <span className="text-[11px] text-[#64748B] font-medium tracking-normal -mt-0.5">
+            <span className="text-[11px] text-[#64748B] dark:text-slate-400 font-medium tracking-normal -mt-0.5">
               Split bills. Keep friendships.
             </span>
           )}

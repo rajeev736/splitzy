@@ -59,8 +59,10 @@ export interface Group {
   createdBy: string;
   creatorName?: string;
   members: string[]; // active member UIDs
+  formerMembers?: string[]; // departed former member UIDs (preserved for history)
   invitedMembers?: string[]; // pending invited member UIDs
   memberDetails: Record<string, GroupMemberInfo>;
+  formerMemberDetails?: Record<string, GroupMemberInfo>;
   status?: "ACTIVE" | "ARCHIVED" | "DELETED";
   createdAt: string;
   updatedAt?: string;
@@ -86,7 +88,11 @@ export interface Expense {
   groupId?: string;
   groupName?: string;
   groupIcon?: string;
+  expenseType?: "group" | "friend" | "personal";
   isDirect?: boolean;
+  isPersonal?: boolean;
+  category?: string;
+  participantUids?: string[];
   title: string;
   amountPaise: number;
   payerId: string;
@@ -127,6 +133,8 @@ export type NotificationType =
   | "FRIEND_REMOVED"
   | "GROUP_INVITE"
   | "GROUP_INVITE_ACCEPTED"
+  | "GROUP_ACCEPTED"
+  | "GROUP_MEMBER_LEFT"
   | "NEW_EXPENSE"
   | "PAYMENT_REPORTED"
   | "PAYMENT_CONFIRMED"
@@ -141,8 +149,10 @@ export interface AppNotification {
   type: NotificationType;
   data?: {
     groupId?: string;
+    groupName?: string;
     expenseId?: string;
     friendRequestId?: string;
+    inviteType?: string;
     actorId?: string;
     actorName?: string;
     amountPaise?: number;

@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   User,
@@ -16,19 +16,38 @@ import {
   Camera,
   AtSign,
   ArrowRight,
+  UserCheck,
+  LogOut,
+  RefreshCw,
+  MailCheck,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { generateRandomSplitzyId } from "@/lib/firebase/splitzyId";
+import { getFriendlyAuthErrorMessage } from "@/lib/firebase/errors";
 
-export default function SignupPage() {
+type SignupStep = "account" | "verify" | "profile";
+
+function SignupForm() {
   const router = useRouter();
-  const { signup, updateProfile, loginWithGoogle } = useAuth();
+  const searchParams = useSearchParams();
+  const {
+    user,
+    fbUser,
+    isEmailVerified,
+    signup,
+    updateProfile,
+    loginWithGoogle,
+    logout,
+    sendVerificationEmail,
+    reloadUser,
+    isLoading: authLoading,
+  } = useAuth();
   const { error: toastError, success: toastSuccess } = useToast();
 
-  const [step, setStep] = useState<"account" | "profile">("account");
+  const [step, setStep] = useState<SignupStep>("account");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,15 +56,93 @@ export default function SignupPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Profile setup fields
-  const [splitzyId, setSplitzyId] = useState("JOY-7K9M2Q");
+  // Email verification screen states
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [isCheckingVerification, setIsCheckingVerification] = useState(false);
+
+  // Profile setup fields - dynamically initialized with a clean random ID
+  const [splitzyId, setSplitzyId] = useState<string>(() => generateRandomSplitzyId());
   const [upiId, setUpiId] = useState("");
   const [selectedAvatar, setSelectedAvatar] = useState("/assets/avatar_boy.jpg");
   const [copiedId, setCopiedId] = useState(false);
 
+  // Read URL query params
   useEffect(() => {
-    setSplitzyId(generateRandomSplitzyId());
-  }, []);
+    const emailParam = searchParams.get("email");
+    if (emailParam && !email) {
+      setEmail(emailParam);
+    }
+    const stepParam = searchParams.get("step");
+    if (stepParam === "verify") {
+      setStep("verify");
+    } else if (stepParam === "profile") {
+      setStep("profile");
+    }
+  }, [searchParams, email]);
+
+  // Synchronize authentication and onboarding state
+  useEffect(() => {
+    if (user) {
+      if (user.onboardingCompleted) {
+        // Handled in already-authenticated screen
+      } else {
+        const isPasswordAccount = fbUser?.providerData?.some(
+          (p: any) => p.providerId === "password"
+        );
+        // If registered with password and not verified, keep on verification step
+        if (isPasswordAccount && !isEmailVerified) {
+          setStep("verify");
+        } else if (isEmailVerified || step === "profile") {
+          setStep("profile");
+        }
+
+        if (user.displayName && !fullName) {
+          setFullName(user.displayName);
+        }
+        if (user.splitzyId) {
+          setSplitzyId(user.splitzyId);
+        }
+        if (user.upiId && !upiId) {
+          setUpiId(user.upiId);
+        }
+        if (user.photoURL) {
+          setSelectedAvatar(user.photoURL);
+        }
+      }
+    }
+  }, [user, fbUser, isEmailVerified, step, fullName, upiId]);
+
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
+
+  // Auto-polling for email verification (without requiring manual reload)
+  useEffect(() => {
+    if (step !== "verify" || isEmailVerified) return;
+
+    let isMounted = true;
+    const pollInterval = setInterval(async () => {
+      try {
+        const verified = await reloadUser();
+        if (verified && isMounted) {
+          toastSuccess("Email verified! Let's set up your profile.");
+          setStep("profile");
+        }
+      } catch (e) {
+        // Ignore background polling errors
+      }
+    }, 2500);
+
+    return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
+    };
+  }, [step, isEmailVerified, reloadUser, toastSuccess]);
 
   const handleAccountSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,33 +167,99 @@ export default function SignupPage() {
 
     setIsLoading(true);
     try {
-      await signup(fullName, email, password);
-      // Pre-fill suggested UPI ID
+      const generatedId = generateRandomSplitzyId();
+      setSplitzyId(generatedId);
+      await signup(fullName.trim(), email.trim(), password, generatedId);
       setUpiId(`${fullName.toLowerCase().replace(/[^a-z0-9]/g, "")}@upi`);
-      setStep("profile");
-      toastSuccess("Account created! Let's set up your profile.");
+      setStep("verify");
+      setResendCooldown(60);
+      toastSuccess("Account created! A verification link was sent to your email.");
     } catch (err: any) {
-      setErrorMsg(err?.message || "Failed to create account");
-      toastError(err?.message || "Failed to create account");
+      console.error("Signup submission error:", err);
+      const friendly = getFriendlyAuthErrorMessage(err);
+      setErrorMsg(friendly);
+      toastError(friendly);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleGoogleSignup = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    setErrorMsg("");
+    try {
+      const res = await loginWithGoogle();
+      if (res.onboardingCompleted) {
+        toastSuccess("Welcome back to Splitzy!");
+        router.push("/home");
+      } else {
+        setStep("profile");
+        toastSuccess("Signed in with Google! Let's complete your profile.");
+      }
+    } catch (err: any) {
+      const friendly = getFriendlyAuthErrorMessage(err);
+      setErrorMsg(friendly);
+      toastError(friendly);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCheckVerification = async () => {
+    setIsCheckingVerification(true);
+    try {
+      const isVerified = await reloadUser();
+      if (isVerified) {
+        toastSuccess("Email verified successfully! Setting up your profile...");
+        setStep("profile");
+      } else {
+        toastError("Email is not verified yet. Please check your inbox or spam folder.");
+      }
+    } catch (err: any) {
+      toastError(err?.message || "Failed to check verification status.");
+    } finally {
+      setIsCheckingVerification(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (resendCooldown > 0) return;
+    try {
+      await sendVerificationEmail();
+      setResendCooldown(60);
+      toastSuccess("A new verification link has been sent to your email.");
+    } catch (err: any) {
+      const friendly = getFriendlyAuthErrorMessage(err);
+      toastError(friendly);
+    }
+  };
+
   const handleProfileComplete = async () => {
+    if (!user) {
+      toastError("Your session expired. Please log in again.");
+      router.push("/login");
+      return;
+    }
+
+    if (!fullName.trim()) {
+      toastError("Please enter your name.");
+      return;
+    }
+
     setIsLoading(true);
     try {
       await updateProfile({
-        displayName: fullName,
-        splitzyId,
-        upiId: upiId.trim() || undefined,
+        displayName: fullName.trim() || user.displayName || "User",
+        upiId: upiId.trim() || "",
         photoURL: selectedAvatar,
         onboardingCompleted: true,
       });
       toastSuccess("Profile configured successfully!");
       router.push("/home");
-    } catch (err) {
-      toastError("Could not update profile");
+    } catch (err: any) {
+      console.error("Profile update error:", err);
+      toastError(err?.message || "Could not update profile. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -108,28 +271,99 @@ export default function SignupPage() {
     setTimeout(() => setCopiedId(false), 2000);
   };
 
+  // If already authenticated with completed profile
+  if (!authLoading && user && user.onboardingCompleted) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 flex flex-col justify-between p-6 max-w-md mx-auto transition-colors">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => router.back()}
+            className="w-10 h-10 rounded-full flex items-center justify-center text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+            aria-label="Back"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="my-auto py-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto mb-4 border border-blue-200 dark:border-blue-900 shadow-sm">
+            <UserCheck className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-extrabold text-[#0F172A] dark:text-slate-100 mb-2">
+            Already Signed In
+          </h2>
+          <p className="text-sm text-[#64748B] dark:text-slate-400 mb-6 max-w-xs mx-auto">
+            You are currently signed in as <span className="font-semibold text-slate-800 dark:text-slate-200">{user.displayName}</span> ({user.email}).
+          </p>
+
+          <div className="space-y-3">
+            <Button
+              fullWidth
+              size="lg"
+              onClick={() => router.push("/home")}
+              rightIcon={<ArrowRight className="w-4 h-4" />}
+            >
+              Continue to Dashboard
+            </Button>
+            <Button
+              fullWidth
+              variant="outline"
+              size="lg"
+              onClick={async () => {
+                await logout();
+                setFullName("");
+                setEmail("");
+                setPassword("");
+                setConfirmPassword("");
+                setStep("account");
+                toastSuccess("Signed out successfully");
+              }}
+              leftIcon={<LogOut className="w-4 h-4" />}
+            >
+              Sign out of this account
+            </Button>
+          </div>
+        </div>
+
+        <div className="py-2" />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-between p-6 max-w-md mx-auto">
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 flex flex-col justify-between p-6 max-w-md mx-auto transition-colors">
       {/* Top Bar with Back */}
       <div>
         <button
-          onClick={() => (step === "profile" ? setStep("account") : router.back())}
-          className="w-10 h-10 rounded-full flex items-center justify-center text-slate-700 hover:bg-slate-100 transition-colors"
+          onClick={() => {
+            if (step === "profile") {
+              if (user) {
+                router.push("/home");
+              } else {
+                setStep("account");
+              }
+            } else if (step === "verify") {
+              setStep("account");
+            } else {
+              router.back();
+            }
+          }}
+          className="w-10 h-10 rounded-full flex items-center justify-center text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
           aria-label="Back"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
       </div>
 
-      {step === "account" ? (
-        /* Screen 7: Sign Up Screen */
+      {step === "account" && (
+        /* Screen 1: Sign Up Form */
         <div className="my-auto py-2">
           <div className="mb-6">
-            <h1 className="text-2xl font-extrabold text-[#0F172A] tracking-tight">
+            <h1 className="text-2xl font-extrabold text-[#0F172A] dark:text-slate-100 tracking-tight">
               Create your <br />
-              <span className="text-[#2563EB]">account</span>
+              <span className="text-[#2563EB] dark:text-blue-500">account</span>
             </h1>
-            <p className="text-sm text-[#64748B] mt-1.5">
+            <p className="text-sm text-[#64748B] dark:text-slate-400 mt-1.5">
               Join Splitzy and start splitting bills with your friends.
             </p>
           </div>
@@ -139,7 +373,10 @@ export default function SignupPage() {
               label="Full name"
               type="text"
               value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              onChange={(e) => {
+                setFullName(e.target.value);
+                setErrorMsg("");
+              }}
               placeholder="e.g. Rajeev Ranjan"
               leftIcon={<User className="w-4 h-4" />}
               required
@@ -149,7 +386,10 @@ export default function SignupPage() {
               label="Email address"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setErrorMsg("");
+              }}
               placeholder="name@example.com"
               leftIcon={<Mail className="w-4 h-4" />}
               required
@@ -159,14 +399,17 @@ export default function SignupPage() {
               label="Password"
               type={showPassword ? "text" : "password"}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setErrorMsg("");
+              }}
               placeholder="At least 6 characters"
               leftIcon={<Lock className="w-4 h-4" />}
               rightAction={
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="hover:text-slate-800 p-1"
+                  className="hover:text-slate-800 dark:hover:text-slate-200 p-1 text-slate-400"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -178,14 +421,17 @@ export default function SignupPage() {
               label="Confirm password"
               type={showPassword ? "text" : "password"}
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+              onChange={(e) => {
+                setConfirmPassword(e.target.value);
+                setErrorMsg("");
+              }}
               placeholder="Re-enter your password"
               leftIcon={<Lock className="w-4 h-4" />}
               required
             />
 
             {errorMsg && (
-              <div className="text-xs text-[#EF4444] font-medium bg-red-50 p-2.5 rounded-xl border border-red-200">
+              <div className="text-xs text-[#EF4444] font-medium bg-red-50 dark:bg-red-950/40 p-2.5 rounded-xl border border-red-200 dark:border-red-800">
                 {errorMsg}
               </div>
             )}
@@ -201,8 +447,8 @@ export default function SignupPage() {
             </Button>
 
             <div className="relative flex items-center justify-center py-2">
-              <div className="border-t border-slate-200 w-full" />
-              <span className="bg-[#F8FAFC] px-3 text-xs font-bold text-[#94A3B8] uppercase tracking-wider">
+              <div className="border-t border-slate-200 dark:border-slate-800 w-full" />
+              <span className="bg-[#F8FAFC] dark:bg-slate-950 px-3 text-xs font-bold text-[#94A3B8] dark:text-slate-500 uppercase tracking-wider">
                 OR
               </span>
             </div>
@@ -210,19 +456,8 @@ export default function SignupPage() {
             <button
               type="button"
               disabled={isLoading}
-              onClick={async () => {
-                setIsLoading(true);
-                try {
-                  await loginWithGoogle();
-                  toastSuccess("Signed in with Google successfully!");
-                  router.push("/home");
-                } catch (e: any) {
-                  toastError(e?.message || "Google sign-in failed");
-                } finally {
-                  setIsLoading(false);
-                }
-              }}
-              className="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 hover:bg-slate-50 text-[#0F172A] font-semibold py-3 px-4 rounded-xl text-sm shadow-xs transition-all active:scale-[0.99]"
+              onClick={handleGoogleSignup}
+              className="w-full flex items-center justify-center gap-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-[#0F172A] dark:text-slate-100 font-semibold py-3 px-4 rounded-xl text-sm shadow-xs transition-all active:scale-[0.99]"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path
@@ -246,28 +481,88 @@ export default function SignupPage() {
             </button>
           </form>
         </div>
-      ) : (
-        /* Screen 8: Profile Setup Screen */
+      )}
+
+      {step === "verify" && (
+        /* Screen 2: Email Verification Pending */
+        <div className="my-auto py-4 text-center">
+          <div className="w-16 h-16 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto mb-4 border border-blue-200 dark:border-blue-900 shadow-sm animate-pulse">
+            <MailCheck className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-extrabold text-[#0F172A] dark:text-slate-100 mb-2">
+            Verify your email
+          </h2>
+          <p className="text-sm text-[#64748B] dark:text-slate-400 mb-2 max-w-xs mx-auto">
+            We sent a verification link to:
+          </p>
+          <div className="inline-block bg-slate-100 dark:bg-slate-900 px-3 py-1.5 rounded-lg text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4">
+            {email || fbUser?.email || "your email"}
+          </div>
+          <p className="text-xs text-[#64748B] dark:text-slate-400 mb-6 max-w-xs mx-auto leading-relaxed">
+            Click the link in the email to verify. This page will <strong>automatically continue</strong> to profile setup without reloading once verified!
+          </p>
+
+          <div className="space-y-3">
+            <Button
+              fullWidth
+              size="lg"
+              isLoading={isCheckingVerification}
+              onClick={handleCheckVerification}
+              rightIcon={<ArrowRight className="w-4 h-4" />}
+            >
+              I have verified my email
+            </Button>
+
+            <button
+              type="button"
+              disabled={resendCooldown > 0}
+              onClick={handleResendVerification}
+              className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline py-2 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${resendCooldown > 0 ? "animate-spin" : ""}`} />
+              {resendCooldown > 0
+                ? `Resend link in ${resendCooldown}s`
+                : "Resend verification email"}
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                await logout();
+                router.push("/login");
+              }}
+              className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 font-medium pt-2"
+            >
+              Back to Login
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === "profile" && (
+        /* Screen 3: Profile Setup Screen */
         <div className="my-auto py-2">
           <div className="mb-6">
-            <h1 className="text-2xl font-extrabold text-[#0F172A] tracking-tight">
+            <h1 className="text-2xl font-extrabold text-[#0F172A] dark:text-slate-100 tracking-tight">
               Set up <br />
-              <span className="text-[#2563EB]">your profile</span>
+              <span className="text-[#2563EB] dark:text-blue-500">your profile</span>
             </h1>
-            <p className="text-sm text-[#64748B] mt-1.5">
-              Add a few details to get started.
+            <p className="text-sm text-[#64748B] dark:text-slate-400 mt-1.5">
+              Add a few details to get started with Splitzy.
             </p>
           </div>
 
           {/* Avatar selector */}
           <div className="flex flex-col items-center mb-6">
-            <div className="relative w-24 h-24 rounded-full overflow-hidden border-4 border-white shadow-lg mb-3">
+            <div className="relative w-24 h-24 rounded-full overflow-hidden border-4 border-white dark:border-slate-800 shadow-lg mb-3">
               <Image src={selectedAvatar} alt="Profile Avatar" fill className="object-cover" />
               <div className="absolute inset-0 bg-black/10 flex items-center justify-center pointer-events-none">
                 <Camera className="w-6 h-6 text-white drop-shadow-md" />
               </div>
             </div>
-            <span className="text-xs font-semibold text-[#64748B] mb-2">Choose your avatar</span>
+            <span className="text-xs font-semibold text-[#64748B] dark:text-slate-400 mb-2">
+              Choose your avatar
+            </span>
             <div className="flex items-center gap-3">
               {[
                 "/assets/avatar_boy.jpg",
@@ -280,7 +575,7 @@ export default function SignupPage() {
                   onClick={() => setSelectedAvatar(img)}
                   className={`relative w-11 h-11 rounded-full overflow-hidden border-2 transition-all ${
                     selectedAvatar === img
-                      ? "border-[#2563EB] scale-110 shadow-md ring-2 ring-blue-200"
+                      ? "border-[#2563EB] scale-110 shadow-md ring-2 ring-blue-200 dark:ring-blue-900"
                       : "border-transparent opacity-70 hover:opacity-100"
                   }`}
                 >
@@ -295,33 +590,35 @@ export default function SignupPage() {
               label="Full name"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
+              placeholder="e.g. Rajeev Ranjan"
               leftIcon={<User className="w-4 h-4" />}
+              required
             />
 
-            {/* JoySplit ID Card */}
+            {/* Splitzy ID Card */}
             <div>
-              <label className="text-xs font-semibold text-[#0F172A] mb-1.5 block">
-                JoySplit ID (unique)
+              <label className="text-xs font-semibold text-[#0F172A] dark:text-slate-200 mb-1.5 block">
+                Splitzy ID (unique)
               </label>
-              <div className="flex items-center justify-between p-3.5 bg-white border border-slate-200 rounded-xl">
+              <div className="flex items-center justify-between p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#2563EB] flex items-center justify-center font-bold text-xs">
+                  <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-[#2563EB] dark:text-blue-400 flex items-center justify-center font-bold text-xs">
                     ID
                   </div>
-                  <span className="font-mono font-bold text-[#0F172A] text-sm tracking-wider">
+                  <span className="font-mono font-bold text-[#0F172A] dark:text-slate-100 text-sm tracking-wider">
                     {splitzyId}
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={handleCopyId}
-                  className="p-1.5 text-slate-500 hover:text-[#2563EB] transition-colors"
+                  className="p-1.5 text-slate-500 hover:text-[#2563EB] dark:hover:text-blue-400 transition-colors"
                   title="Copy ID"
                 >
                   {copiedId ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
                 </button>
               </div>
-              <p className="text-[11px] text-[#64748B] mt-1">
+              <p className="text-[11px] text-[#64748B] dark:text-slate-400 mt-1">
                 Friends use this unique ID to find and add you.
               </p>
             </div>
@@ -331,7 +628,7 @@ export default function SignupPage() {
               value={upiId}
               onChange={(e) => setUpiId(e.target.value)}
               placeholder="yourname@upi"
-              hint="For receiving payments"
+              hint="For receiving payments directly"
               leftIcon={<AtSign className="w-4 h-4" />}
             />
 
@@ -350,12 +647,20 @@ export default function SignupPage() {
       )}
 
       {/* Bottom Link */}
-      <div className="text-center text-xs text-[#64748B] pt-4 pb-2">
+      <div className="text-center text-xs text-[#64748B] dark:text-slate-400 pt-4 pb-2">
         Already have an account?{" "}
-        <Link href="/login" className="font-bold text-[#2563EB] hover:underline">
+        <Link href="/login" className="font-bold text-[#2563EB] dark:text-blue-400 hover:underline">
           Login
         </Link>
       </div>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950" />}>
+      <SignupForm />
+    </Suspense>
   );
 }

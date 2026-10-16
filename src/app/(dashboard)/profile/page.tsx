@@ -24,19 +24,21 @@ import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Avatar } from "@/components/ui/Avatar";
 import { PhotoUploadModal } from "@/components/profile/PhotoUploadModal";
+import { LogoutConfirmModal } from "@/components/auth/LogoutConfirmModal";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { useTheme } from "@/context/ThemeContext";
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, friends, notifications, logout, updateProfile } = useAuth();
+  const { user, friends, notifications, updateProfile } = useAuth();
   const { success, error } = useToast();
   const { resolvedTheme, setTheme } = useTheme();
 
   const [copied, setCopied] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [nameInput, setNameInput] = useState(user?.displayName || "");
   const [upiInput, setUpiInput] = useState(user?.upiId || "");
 
@@ -78,18 +80,12 @@ export default function ProfilePage() {
   const handlePhotoUpdated = async (newPhotoURL: string | null) => {
     try {
       await updateProfile({
-        photoURL: newPhotoURL || undefined,
+        photoURL: newPhotoURL ? newPhotoURL : "",
       });
       success(newPhotoURL ? "Profile photo updated!" : "Profile photo removed.");
     } catch {
       error("Failed to update photo");
     }
-  };
-
-  const handleLogout = async () => {
-    await logout();
-    success("Logged out successfully");
-    router.push("/login");
   };
 
   const isDark = resolvedTheme === "dark";
@@ -274,7 +270,7 @@ export default function ProfilePage() {
 
         {/* Logout Button */}
         <button
-          onClick={handleLogout}
+          onClick={() => setIsLogoutModalOpen(true)}
           className="w-full p-4 rounded-2xl bg-white dark:bg-slate-900 border border-red-200 dark:border-red-950/60 hover:bg-red-50 dark:hover:bg-red-950/30 text-[#EF4444] font-bold text-sm flex items-center justify-center gap-2 shadow-xs transition-colors"
         >
           <LogOut className="w-4 h-4" />
@@ -317,6 +313,12 @@ export default function ProfilePage() {
         onClose={() => setIsPhotoModalOpen(false)}
         currentPhotoURL={user.photoURL}
         onPhotoUpdated={handlePhotoUpdated}
+      />
+
+      {/* Logout Confirmation Modal */}
+      <LogoutConfirmModal
+        isOpen={isLogoutModalOpen}
+        onClose={() => setIsLogoutModalOpen(false)}
       />
     </AppShell>
   );

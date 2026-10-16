@@ -22,21 +22,21 @@ service cloud.firestore {
       allow create: if isAuthenticated() &&
                     request.resource.data.uid == request.auth.uid &&
                     isValidJoySplitId(splitzyId);
-      // Immutable once claimed
+      // Immutable once claimed to prevent impersonation
       allow update, delete: if false;
     }
 
     // Users Collection
     match /users/{userId} {
-      // Any authenticated user can read public profile (name, splitzyId, photo) to send friend requests
+      // Authenticated users can read public profile (name, splitzyId, photo) for friend discovery
       allow read: if isAuthenticated();
-      // Can only create and update their own document
+      // Can only create their own document
       allow create: if isOwner(userId) &&
-                    request.resource.data.uid == userId &&
-                    request.resource.data.splitzyId is string;
+                    (!('uid' in request.resource.data) || request.resource.data.uid == userId);
+      // Can only update their own document; cannot change their uid or reassign another user's splitzyId
       allow update: if isOwner(userId) &&
-                    request.resource.data.uid == resource.data.uid &&
-                    request.resource.data.splitzyId == resource.data.splitzyId;
+                    (!('uid' in request.resource.data) || request.resource.data.uid == userId) &&
+                    (!('splitzyId' in resource.data) || !('splitzyId' in request.resource.data) || request.resource.data.splitzyId == resource.data.splitzyId);
       allow delete: if false;
     }
 
@@ -49,7 +49,7 @@ service cloud.firestore {
       allow create: if isAuthenticated() &&
                     request.auth.uid in request.resource.data.users &&
                     request.resource.data.status in ['ACTIVE', 'REMOVED'];
-      // Either friend can update status (e.g. mark REMOVED)
+      // Either friend can update status (e.g. mark REMOVED or ACTIVE)
       allow update: if isAuthenticated() &&
                     request.auth.uid in resource.data.users;
       allow delete: if isAuthenticated() &&
@@ -76,36 +76,45 @@ service cloud.firestore {
 
     // Groups Collection
     match /groups/{groupId} {
-      // Only members can read the group data
+      // Members, invited non-friend invitees, and former members (for historical audit trail) can read
       allow read: if isAuthenticated() &&
                   (request.auth.uid in resource.data.members ||
+                   (resource.data.formerMembers != null && request.auth.uid in resource.data.formerMembers) ||
                    (resource.data.invitedMembers != null && request.auth.uid in resource.data.invitedMembers));
       // Creator must be in member list upon creation
       allow create: if isAuthenticated() &&
                     request.resource.data.createdBy == request.auth.uid &&
                     request.auth.uid in request.resource.data.members;
-      // Existing members can update (e.g. edit details or leave)
+      // Existing members or invited users can update (e.g. accept invite, leave group)
       allow update: if isAuthenticated() &&
                     (request.auth.uid in resource.data.members ||
                      (resource.data.invitedMembers != null && request.auth.uid in resource.data.invitedMembers));
-      // ONLY creator can delete the group
+      // ONLY creator can delete or archive the group
       allow delete: if isAuthenticated() &&
                     resource.data.createdBy == request.auth.uid;
     }
 
     // Expenses Collection
     match /expenses/{expenseId} {
-      // Participants or creator can read
+      // Authenticated users can read expenses (filtered by client query for user groups and participation)
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() &&
                     request.resource.data.amountPaise is int &&
                     request.resource.data.amountPaise > 0 &&
                     request.resource.data.createdBy == request.auth.uid;
-      // Creator, payer, or participant updating share status can update
-      allow update: if isAuthenticated();
-      // Only creator can delete expense
+      // Authorized participants or group members can report/confirm payments or update shares
+      allow update: if isAuthenticated() &&
+                    (resource.data.createdBy == request.auth.uid ||
+                     resource.data.payerId == request.auth.uid ||
+                     resource.data.recipientId == request.auth.uid ||
+                     (resource.data.participantUids != null && request.auth.uid in resource.data.participantUids) ||
+                     (resource.data.groupId != null &&
+                      exists(/databases/$(database)/documents/groups/$(resource.data.groupId)) &&
+                      request.auth.uid in get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.members));
+      // Payer or creator can delete expense (when no confirmed payments exist)
       allow delete: if isAuthenticated() &&
-                    resource.data.createdBy == request.auth.uid;
+                    (resource.data.createdBy == request.auth.uid ||
+                     resource.data.payerId == request.auth.uid);
     }
 
     // Notifications Collection

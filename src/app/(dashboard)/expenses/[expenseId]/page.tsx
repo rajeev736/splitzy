@@ -31,6 +31,9 @@ import { Modal } from "@/components/ui/Modal";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { formatPaise } from "@/lib/money";
+import { doc, getDoc } from "firebase/firestore";
+import { db, isFirebaseConfigured } from "@/lib/firebase/config";
+import { Expense } from "@/lib/types";
 import { Suspense } from "react";
 
 function ExpenseDetailsContent() {
@@ -41,12 +44,16 @@ function ExpenseDetailsContent() {
   const {
     expenses,
     user,
+    isLoading,
     sendPaymentReminder,
     confirmPaymentReceipt,
     disputePaymentReceipt,
     deleteExpense,
   } = useAuth();
   const { success, error } = useToast();
+
+  const [fetchedExpense, setFetchedExpense] = useState<Expense | null>(null);
+  const [isFetching, setIsFetching] = useState(false);
 
   const [copiedUpi, setCopiedUpi] = useState(false);
   const [selectedShareUser, setSelectedShareUser] = useState<any | null>(null);
@@ -67,18 +74,65 @@ function ExpenseDetailsContent() {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
-  const expense = expenses.find((e) => e.id === expenseId) || expenses[0];
+  // Fetch expense directly from Firestore if not in local snapshot cache yet
+  useEffect(() => {
+    const existing = expenses.find((e) => e.id === expenseId);
+    if (!existing && expenseId && isFirebaseConfigured && db) {
+      setIsFetching(true);
+      getDoc(doc(db, "expenses", expenseId))
+        .then((snap) => {
+          if (snap.exists()) {
+            setFetchedExpense(snap.data() as Expense);
+          }
+        })
+        .catch((err) => console.warn("Failed to fetch expense directly:", err))
+        .finally(() => setIsFetching(false));
+    }
+  }, [expenseId, expenses]);
 
-  const myShare = expense.shares.find((s) => s.userId === user?.uid);
+  const expense = expenses.find((e) => e.id === expenseId) || fetchedExpense;
+
+  if (isLoading || (isFetching && !expense)) {
+    return (
+      <AppShell>
+        <AppHeader title="Expense Details" showBack={true} />
+        <div className="flex flex-col items-center justify-center min-h-[60vh] p-8">
+          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
+          <p className="text-xs text-slate-500 font-medium">Loading expense details...</p>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!expense) {
+    return (
+      <AppShell>
+        <AppHeader title="Expense Not Found" showBack={true} />
+        <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center space-y-4">
+          <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center">
+            <Receipt className="w-8 h-8" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-base font-bold text-slate-800 dark:text-white">Expense Not Found</h2>
+            <p className="text-xs text-slate-500 max-w-sm">
+              This expense may have been deleted, or you may not have permission to view it.
+            </p>
+          </div>
+          <Button onClick={() => router.push("/activity")}>Back to Activity</Button>
+        </div>
+      </AppShell>
+    );
+  }
+
+  const myShare = expense.shares?.find((s) => s.userId === user?.uid);
   const isRecipient = expense.recipientId === user?.uid;
   const isPayer = expense.payerId === user?.uid;
   const isCreator = expense.createdBy === user?.uid;
   const canDelete = isPayer || isCreator;
 
   // Invariant check: cannot delete if confirmed payments exist
-  const hasPaidMembers = expense.shares.some(
-    (s) => s.userId !== user?.uid && s.status === "PAID"
-  );
+  const hasPaidMembers =
+    expense.shares?.some((s) => s.userId !== user?.uid && s.status === "PAID") || false;
 
   const handleCopyUpi = () => {
     navigator.clipboard.writeText(expense.recipientUpiId);

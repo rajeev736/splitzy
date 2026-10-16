@@ -22,12 +22,13 @@ import { useToast } from "@/context/ToastContext";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatPaise } from "@/lib/money";
 
+import { LogoutConfirmModal } from "@/components/auth/LogoutConfirmModal";
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, netBalancePaise, logout, notifications } = useAuth();
-  const { success, error } = useToast();
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const { user, netBalancePaise, notifications } = useAuth();
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
   const unreadNotifsCount = notifications.filter((n) => !n.read).length;
 
@@ -47,21 +48,8 @@ export function Sidebar() {
     { label: "Settings", href: "/settings", icon: Settings },
   ];
 
-  const handleLogout = async () => {
-    if (isLoggingOut) return;
-    setIsLoggingOut(true);
-    try {
-      await logout();
-      success("Logged out successfully");
-      router.replace("/login");
-    } catch (err: any) {
-      error(err?.message || "Failed to log out");
-      setIsLoggingOut(false);
-    }
-  };
-
   return (
-    <aside className="hidden md:flex flex-col w-64 lg:w-72 shrink-0 bg-white dark:bg-slate-900 border-r border-[#E5E7EB] dark:border-slate-800 min-h-screen sticky top-0 h-screen select-none z-30 transition-colors">
+    <aside className="hidden md:flex flex-col w-64 lg:w-72 shrink-0 bg-white dark:bg-slate-900 border-r border-[#E5E7EB] dark:border-slate-800 min-h-screen sticky top-0 h-screen select-none z-40 pointer-events-auto transition-colors">
       {/* Brand Header */}
       <div className="p-6 border-b border-[#F1F5F9] dark:border-slate-800">
         <SplitzyLogo size="md" showTagline={true} href="/home" />
@@ -71,7 +59,7 @@ export function Sidebar() {
       <div className="p-4">
         <Link
           href="/expenses/new"
-          className="w-full flex items-center justify-center gap-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white py-3 px-4 rounded-xl font-semibold shadow-sm transition-all duration-150 active:scale-[0.98]"
+          className="w-full flex items-center justify-center gap-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white py-3 px-4 rounded-xl font-semibold shadow-sm transition-all duration-150 active:scale-[0.98] cursor-pointer"
         >
           <PlusCircle className="w-5 h-5" />
           <span>Add Expense</span>
@@ -90,7 +78,7 @@ export function Sidebar() {
               key={link.href}
               href={link.href}
               className={`
-                flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-150
+                flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-150 cursor-pointer
                 ${
                   isActive
                     ? "bg-[#EFF6FF] dark:bg-blue-950/40 text-[#2563EB] dark:text-blue-400"
@@ -150,20 +138,20 @@ export function Sidebar() {
             </div>
           </Link>
           <button
-            onClick={handleLogout}
-            disabled={isLoggingOut}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors disabled:opacity-50"
+            onClick={() => setIsLogoutModalOpen(true)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
             title="Log out"
-            aria-label="Log out of JoySplit"
+            aria-label="Log out of Splitzy"
           >
-            {isLoggingOut ? (
-              <Loader2 className="w-4 h-4 animate-spin text-red-500" />
-            ) : (
-              <LogOut className="w-4 h-4" />
-            )}
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
       )}
+
+      <LogoutConfirmModal
+        isOpen={isLogoutModalOpen}
+        onClose={() => setIsLogoutModalOpen(false)}
+      />
     </aside>
   );
 }

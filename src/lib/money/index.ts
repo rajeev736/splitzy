@@ -164,6 +164,11 @@ export function calculateNetBalances(
   }
 
   expenses.forEach((exp) => {
+    // Personal expenses are private and do not affect shared balances
+    if (exp.isPersonal || exp.expenseType === "personal") {
+      return;
+    }
+
     const isPayerOrRecipient = exp.payerId === userId || exp.recipientId === userId;
 
     if (isPayerOrRecipient) {
@@ -206,6 +211,10 @@ export function calculateDirectBalance(
   let userAOwesUserBPaise = 0;
 
   expenses.forEach((exp) => {
+    // Skip personal expenses
+    if (exp.isPersonal || exp.expenseType === "personal") {
+      return;
+    }
     // Check if userA was payer/recipient and userB had an unpaid share
     if (exp.payerId === userA || exp.recipientId === userA) {
       const shareB = exp.shares.find((s) => s.userId === userB);

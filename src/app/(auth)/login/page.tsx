@@ -1,18 +1,20 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, Mail, Lock, Eye, EyeOff, UserCheck, LogOut, ArrowRight, RefreshCw } from "lucide-react";
 import { SplitzyLogo } from "@/components/brand/SplitzyLogo";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
+import { getFriendlyAuthErrorMessage } from "@/lib/firebase/errors";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
-  const { login, loginWithGoogle } = useAuth();
+  const searchParams = useSearchParams();
+  const { user, login, loginWithGoogle, logout, sendVerificationEmail, isLoading: authLoading } = useAuth();
   const { error: toastError, success: toastSuccess } = useToast();
 
   const [email, setEmail] = useState("");
@@ -20,6 +22,16 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [formError, setFormError] = useState("");
+  const [showSignupOption, setShowSignupOption] = useState(false);
+  const [showVerificationNotice, setShowVerificationNotice] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState(false);
+
+  useEffect(() => {
+    const emailParam = searchParams.get("email");
+    if (emailParam) {
+      setEmail(emailParam);
+    }
+  }, [searchParams]);
 
   const navigateAfterLogin = () => {
     let target = "/home";
@@ -35,39 +47,136 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     setFormError("");
+    setShowSignupOption(false);
+    setShowVerificationNotice(false);
 
     if (!email.trim()) {
       setFormError("Please enter your email address");
       return;
     }
 
+    if (!password) {
+      setFormError("Please enter your password");
+      return;
+    }
+
     setIsLoading(true);
     try {
-      await login(email, password);
-      toastSuccess("Welcome back to JoySplit!");
+      await login(email.trim(), password);
+      toastSuccess("Welcome back to Splitzy!");
       navigateAfterLogin();
     } catch (err: any) {
-      const msg = err?.message || "Failed to log in. Please check credentials.";
-      setFormError(msg);
-      toastError(msg);
+      if (err?.code === "auth/email-not-verified") {
+        toastError("Please verify your email address before logging in.");
+        router.push(`/signup?step=verify&email=${encodeURIComponent(email.trim())}`);
+        return;
+      }
+      const friendlyMsg = getFriendlyAuthErrorMessage(err);
+      setFormError(friendlyMsg);
+      if (
+        err?.code === "auth/invalid-credential" ||
+        err?.code === "auth/user-not-found" ||
+        friendlyMsg.includes("create an account")
+      ) {
+        setShowSignupOption(true);
+      }
+      toastError(friendlyMsg);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleGoogleLogin = async () => {
+    if (isLoading) return;
     setIsLoading(true);
+    setFormError("");
+    setShowSignupOption(false);
+    setShowVerificationNotice(false);
     try {
-      await loginWithGoogle();
-      toastSuccess("Logged in successfully with Google!");
-      navigateAfterLogin();
+      const res = await loginWithGoogle();
+      if (res.onboardingCompleted) {
+        toastSuccess("Welcome back to Splitzy!");
+        navigateAfterLogin();
+      } else {
+        toastSuccess("Signed in! Please finish setting up your profile.");
+        router.replace("/signup?step=profile");
+      }
     } catch (err: any) {
-      toastError(err?.message || "Google login failed");
+      const friendlyMsg = getFriendlyAuthErrorMessage(err);
+      setFormError(friendlyMsg);
+      toastError(friendlyMsg);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleResendVerification = async () => {
+    setResendingEmail(true);
+    try {
+      await sendVerificationEmail();
+      toastSuccess("Verification email resent! Please check your inbox and spam folder.");
+    } catch (e: any) {
+      toastError(e?.message || "Could not resend verification email.");
+    } finally {
+      setResendingEmail(false);
+    }
+  };
+
+  // If already authenticated with completed profile
+  if (!authLoading && user && user.onboardingCompleted) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 flex flex-col justify-between p-6 max-w-md mx-auto transition-colors">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => router.back()}
+            className="w-10 h-10 rounded-full flex items-center justify-center text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+            aria-label="Back"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="my-auto py-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto mb-4 border border-blue-200 dark:border-blue-900 shadow-sm">
+            <UserCheck className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-extrabold text-[#0F172A] dark:text-slate-100 mb-2">
+            Already Signed In
+          </h2>
+          <p className="text-sm text-[#64748B] dark:text-slate-400 mb-6 max-w-xs mx-auto">
+            You are currently signed in as <span className="font-semibold text-slate-800 dark:text-slate-200">{user.displayName}</span> ({user.email}).
+          </p>
+
+          <div className="space-y-3">
+            <Button
+              fullWidth
+              size="lg"
+              onClick={() => router.push("/home")}
+              rightIcon={<ArrowRight className="w-4 h-4" />}
+            >
+              Continue to Dashboard
+            </Button>
+            <Button
+              fullWidth
+              variant="outline"
+              size="lg"
+              onClick={async () => {
+                await logout();
+                toastSuccess("Signed out successfully");
+              }}
+              leftIcon={<LogOut className="w-4 h-4" />}
+            >
+              Sign out of this account
+            </Button>
+          </div>
+        </div>
+
+        <div className="py-2" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 flex flex-col justify-between p-6 max-w-md mx-auto transition-colors">
@@ -99,7 +208,11 @@ export default function LoginPage() {
             label="Email address"
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              setFormError("");
+              setShowSignupOption(false);
+            }}
             placeholder="Enter your email"
             leftIcon={<Mail className="w-4 h-4" />}
             required
@@ -110,7 +223,10 @@ export default function LoginPage() {
               label="Password"
               type={showPassword ? "text" : "password"}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setFormError("");
+              }}
               placeholder="Enter your password"
               leftIcon={<Lock className="w-4 h-4" />}
               rightAction={
@@ -135,8 +251,33 @@ export default function LoginPage() {
           </div>
 
           {formError && (
-            <div className="text-xs text-[#EF4444] font-medium bg-red-50 dark:bg-red-950/40 p-2.5 rounded-xl border border-red-200 dark:border-red-800">
-              {formError}
+            <div className="text-xs text-[#EF4444] font-medium bg-red-50 dark:bg-red-950/40 p-3 rounded-xl border border-red-200 dark:border-red-800 space-y-2">
+              <p>{formError}</p>
+              {showSignupOption && (
+                <div className="pt-1 border-t border-red-200 dark:border-red-800/80">
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/signup?email=${encodeURIComponent(email.trim())}`)}
+                    className="inline-flex items-center gap-1.5 font-bold text-blue-600 dark:text-blue-400 hover:underline text-xs"
+                  >
+                    Create an account with this email <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+              {showVerificationNotice && (
+                <div className="pt-1 border-t border-red-200 dark:border-red-800/80 flex items-center justify-between">
+                  <span className="text-[11px] text-slate-600 dark:text-slate-300">Didn&apos;t receive email?</span>
+                  <button
+                    type="button"
+                    disabled={resendingEmail}
+                    onClick={handleResendVerification}
+                    className="inline-flex items-center gap-1 font-bold text-blue-600 dark:text-blue-400 hover:underline text-xs"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${resendingEmail ? "animate-spin" : ""}`} />
+                    Resend link
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -189,10 +330,21 @@ export default function LoginPage() {
       {/* Bottom Link */}
       <div className="text-center text-xs text-[#64748B] dark:text-slate-400 pt-4 pb-2">
         New to JoySplit?{" "}
-        <Link href="/signup" className="font-bold text-[#2563EB] dark:text-blue-400 hover:underline">
+        <Link
+          href={email.trim() ? `/signup?email=${encodeURIComponent(email.trim())}` : "/signup"}
+          className="font-bold text-[#2563EB] dark:text-blue-400 hover:underline"
+        >
           Create an account
         </Link>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950" />}>
+      <LoginForm />
+    </Suspense>
   );
 }

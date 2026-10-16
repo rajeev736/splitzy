@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Loader2,
   Image as ImageIcon,
+  Video,
 } from "lucide-react";
 
 interface PhotoUploadModalProps {
@@ -37,12 +38,25 @@ export function PhotoUploadModal({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Live Camera Stream State
+  const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const cameraFallbackInputRef = useRef<HTMLInputElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const loadedImageRef = useRef<HTMLImageElement | null>(null);
 
-  // Reset state when modal opens
+  const stopCameraStream = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+  }, []);
+
+  // Reset state when modal opens/closes
   useEffect(() => {
     if (isOpen) {
       setImageSrc(null);
@@ -51,8 +65,93 @@ export function PhotoUploadModal({
       setErrorMsg(null);
       setIsSaving(false);
       loadedImageRef.current = null;
+    } else {
+      stopCameraStream();
     }
-  }, [isOpen]);
+  }, [isOpen, stopCameraStream]);
+
+  // Clean up stream on unmount
+  useEffect(() => {
+    return () => {
+      stopCameraStream();
+    };
+  }, [stopCameraStream]);
+
+  // Start real camera preview using getUserMedia
+  const startCamera = async () => {
+    setErrorMsg(null);
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      // Fallback to camera capture file input for older mobile browsers
+      if (cameraFallbackInputRef.current) {
+        cameraFallbackInputRef.current.click();
+      } else {
+        setErrorMsg("Camera capture is not supported in this browser. Please use 'Upload Image'.");
+      }
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 640 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setIsCameraActive(true);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+    } catch (err: any) {
+      console.warn("Camera getUserMedia error:", err);
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        setErrorMsg("Camera permission was denied. Please allow camera permissions in your browser or use 'Upload Image'.");
+      } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+        setErrorMsg("No camera device was found on this device. Please use 'Upload Image'.");
+      } else {
+        // Fallback to capture input
+        if (cameraFallbackInputRef.current) {
+          cameraFallbackInputRef.current.click();
+        } else {
+          setErrorMsg("Could not start camera preview. Please choose 'Upload Image' instead.");
+        }
+      }
+    }
+  };
+
+  // Attach stream to video ref when isCameraActive turns true
+  useEffect(() => {
+    if (isCameraActive && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [isCameraActive]);
+
+  // Snap photo from live camera
+  const capturePhotoFromCamera = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 640;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Draw video frame to canvas
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+
+    stopCameraStream();
+
+    const img = new Image();
+    img.onload = () => {
+      loadedImageRef.current = img;
+      setImageSrc(dataUrl);
+      setZoom(1);
+      setPan({ x: 0, y: 0 });
+    };
+    img.src = dataUrl;
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     setErrorMsg(null);
@@ -87,7 +186,6 @@ export function PhotoUploadModal({
       }
     };
     reader.readAsDataURL(file);
-    // Clear input so same file can be selected again
     e.target.value = "";
   };
 
@@ -171,7 +269,6 @@ export function PhotoUploadModal({
     const ctx = exportCanvas.getContext("2d");
     if (!ctx) return null;
 
-    // Fill background
     ctx.fillStyle = "#FFFFFF";
     ctx.fillRect(0, 0, 192, 192);
 
@@ -187,7 +284,6 @@ export function PhotoUploadModal({
 
     ctx.drawImage(img, x, y, w, h);
 
-    // Prefer WebP for superior compression, fallback to JPEG
     try {
       return exportCanvas.toDataURL("image/webp", 0.82);
     } catch {
@@ -245,22 +341,58 @@ export function PhotoUploadModal({
         />
         <input
           type="file"
-          ref={cameraInputRef}
+          ref={cameraFallbackInputRef}
           onChange={handleFileSelect}
           accept="image/*"
           capture="user"
           className="hidden"
         />
 
-        {!imageSrc ? (
+        {/* Live Camera View */}
+        {isCameraActive ? (
+          <div className="space-y-4 py-2 text-center animate-in fade-in duration-200">
+            <div className="relative w-[240px] h-[240px] rounded-full overflow-hidden mx-auto shadow-md border-4 border-blue-600 bg-black">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Center your face in the circle and tap Capture.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={stopCameraStream}
+              >
+                Cancel Camera
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={capturePhotoFromCamera}
+                leftIcon={<Camera className="w-4 h-4" />}
+              >
+                Capture Photo
+              </Button>
+            </div>
+          </div>
+        ) : !imageSrc ? (
           <div className="space-y-4 py-2">
             <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl bg-slate-50/50 dark:bg-slate-900/50 text-center">
               <div className="w-16 h-16 rounded-full bg-blue-50 dark:bg-blue-950/50 text-[#2563EB] dark:text-blue-400 flex items-center justify-center mb-3">
                 <ImageIcon className="w-8 h-8" />
               </div>
-              <h4 className="text-sm font-bold text-[#0F172A] dark:text-slate-100">Upload Your Photo</h4>
+              <h4 className="text-sm font-bold text-[#0F172A] dark:text-slate-100">
+                Update Profile Photo
+              </h4>
               <p className="text-xs text-[#64748B] dark:text-slate-400 mt-1 max-w-xs">
-                Choose a clear image from your device or take a selfie to customize your profile avatar.
+                Take a photo using your camera or upload an image from your device.
               </p>
             </div>
 
@@ -269,19 +401,19 @@ export function PhotoUploadModal({
                 type="button"
                 variant="primary"
                 fullWidth
-                onClick={() => fileInputRef.current?.click()}
-                leftIcon={<Upload className="w-4 h-4" />}
+                onClick={startCamera}
+                leftIcon={<Camera className="w-4 h-4" />}
               >
-                Upload File
+                Take Photo
               </Button>
               <Button
                 type="button"
                 variant="outline"
                 fullWidth
-                onClick={() => cameraInputRef.current?.click()}
-                leftIcon={<Camera className="w-4 h-4" />}
+                onClick={() => fileInputRef.current?.click()}
+                leftIcon={<Upload className="w-4 h-4" />}
               >
-                Camera
+                Upload Image
               </Button>
             </div>
 
@@ -296,7 +428,7 @@ export function PhotoUploadModal({
                   className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30"
                   leftIcon={<Trash2 className="w-4 h-4" />}
                 >
-                  Remove Custom Photo
+                  Remove Photo
                 </Button>
               </div>
             )}
@@ -354,7 +486,7 @@ export function PhotoUploadModal({
                 disabled={isSaving}
                 leftIcon={<RotateCcw className="w-4 h-4" />}
               >
-                Change
+                Cancel
               </Button>
 
               <Button
@@ -372,7 +504,7 @@ export function PhotoUploadModal({
                   )
                 }
               >
-                {isSaving ? "Saving..." : "Set as Profile Photo"}
+                {isSaving ? "Saving..." : "Save Photo"}
               </Button>
             </div>
           </div>

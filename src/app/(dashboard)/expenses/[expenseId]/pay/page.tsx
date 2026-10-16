@@ -24,27 +24,94 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { formatPaise } from "@/lib/money";
 import { buildUPILink, SUPPORTED_UPI_APPS } from "@/lib/upi";
-import { Suspense } from "react";
+import { doc, getDoc } from "firebase/firestore";
+import { db, isFirebaseConfigured } from "@/lib/firebase/config";
+import { Expense } from "@/lib/types";
+import { Suspense, useEffect } from "react";
 
 function PayExpenseContent() {
   const params = useParams();
   const router = useRouter();
   const expenseId = params.expenseId as string;
 
-  const { expenses, user, reportPayment } = useAuth();
+  const { expenses, user, isLoading, reportPayment } = useAuth();
   const { success, info } = useToast();
 
-  const expense = expenses.find((e) => e.id === expenseId) || expenses[0];
-  const myShare = expense.shares.find((s) => s.userId === user?.uid) || {
-    amountPaise: 60000,
-    status: "PENDING",
+  const [fetchedExpense, setFetchedExpense] = useState<Expense | null>(null);
+  const [isFetching, setIsFetching] = useState(false);
+
+  // Fetch expense directly from Firestore if not in local snapshot cache yet
+  useEffect(() => {
+    const existing = expenses.find((e) => e.id === expenseId);
+    if (!existing && expenseId && isFirebaseConfigured && db) {
+      setIsFetching(true);
+      getDoc(doc(db, "expenses", expenseId))
+        .then((snap) => {
+          if (snap.exists()) {
+            setFetchedExpense(snap.data() as Expense);
+          }
+        })
+        .catch((err) => console.warn("Failed to fetch expense directly:", err))
+        .finally(() => setIsFetching(false));
+    }
+  }, [expenseId, expenses]);
+
+  const expense = expenses.find((e) => e.id === expenseId) || fetchedExpense;
+
+  const myShare = expense?.shares?.find((s) => s.userId === user?.uid) || {
+    amountPaise: 0,
+    status: "PENDING" as const,
   };
 
-  const [paymentNote, setPaymentNote] = useState(`${expense.title} - ${expense.groupName || "Splitzy"}`);
+  const [paymentNote, setPaymentNote] = useState(
+    expense ? `${expense.title} - ${expense.groupName || "Splitzy"}` : "Splitzy Expense"
+  );
   const [copiedUpi, setCopiedUpi] = useState(false);
   const [copiedAmount, setCopiedAmount] = useState(false);
   const [showAppChooser, setShowAppChooser] = useState(false);
   const [isReported, setIsReported] = useState(myShare.status === "PAYMENT_REPORTED");
+
+  useEffect(() => {
+    if (expense) {
+      setPaymentNote(`${expense.title} - ${expense.groupName || "Splitzy"}`);
+    }
+  }, [expense]);
+
+  useEffect(() => {
+    setIsReported(myShare.status === "PAYMENT_REPORTED");
+  }, [myShare.status]);
+
+  if (isLoading || (isFetching && !expense)) {
+    return (
+      <AppShell>
+        <AppHeader title="Pay Expense" showBack={true} />
+        <div className="flex flex-col items-center justify-center min-h-[60vh] p-8">
+          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
+          <p className="text-xs text-slate-500 font-medium">Loading payment details...</p>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!expense) {
+    return (
+      <AppShell>
+        <AppHeader title="Expense Not Found" showBack={true} />
+        <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center space-y-4">
+          <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-base font-bold text-slate-800 dark:text-white">Expense Not Found</h2>
+            <p className="text-xs text-slate-500 max-w-sm">
+              This expense may have been deleted, or you may not have permission to view it.
+            </p>
+          </div>
+          <Button onClick={() => router.push("/activity")}>Back to Activity</Button>
+        </div>
+      </AppShell>
+    );
+  }
 
   const amountRupeesString = (myShare.amountPaise / 100).toFixed(0);
 
