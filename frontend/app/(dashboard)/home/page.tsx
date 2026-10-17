@@ -56,6 +56,7 @@ import {
   useFriends,
   useGroups,
 } from "@/hooks/queries"
+import { PayPersonButton } from "@/components/shared/pay-person-button"
 import { calculateDirectBalance, formatPaise } from "@/lib/money"
 import type { UserProfile } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -386,7 +387,7 @@ function FriendBalanceSection({
                   {friend.splitzyId}
                 </ItemDescription>
               </ItemContent>
-              <ItemActions>
+              <ItemActions className="gap-2">
                 <span
                   className={cn(
                     "rounded-full px-2.5 py-1 text-xs font-bold",
@@ -397,8 +398,12 @@ function FriendBalanceSection({
                 >
                   {netBalancePaise > 0
                     ? `+ ${formatPaise(netBalancePaise)}`
-                    : formatPaise(Math.abs(netBalancePaise))}
+                    : `- ${formatPaise(Math.abs(netBalancePaise))}`}
                 </span>
+                {/* Where you owe someone, settle right here instead of hunting for the expense */}
+                {netBalancePaise < 0 && (
+                  <PayPersonButton personId={friend.uid} personName={friend.displayName} />
+                )}
               </ItemActions>
             </Item>
           ))}
