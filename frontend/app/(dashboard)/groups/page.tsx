@@ -11,6 +11,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 
 import { FilterPills } from "../_components/filter-pills"
 import { GroupListItem } from "../_components/group-list-item"
+import { GroupInvitations } from "./_components/group-invitations"
 import { AppHeader } from "@/components/layout/app-header"
 import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
@@ -64,10 +65,8 @@ export default function GroupsPage() {
         .filter(({ group, balance }) => {
           if (!group.name.toLowerCase().includes(search.toLowerCase()))
             return false
-          if (filter === "settled")
-            return balance.allSettled || balance.netPaise === 0
-          if (filter === "active")
-            return !balance.allSettled && balance.netPaise !== 0
+          if (filter === "settled") return balance.allSettled
+          if (filter === "active") return !balance.allSettled
           return true
         }),
     [groups, expenses, user, search, filter]
@@ -115,6 +114,8 @@ export default function GroupsPage() {
           onValueChange={setFilter}
         />
 
+        <GroupInvitations />
+
         {isPending ? (
           <ListSkeleton />
         ) : isError ? (
@@ -139,8 +140,12 @@ export default function GroupsPage() {
                   />
                 }
               >
-                {balance.allSettled || balance.netPaise === 0 ? (
+                {balance.allSettled ? (
                   <StatusBadge status="all_settled" className="mt-1" />
+                ) : balance.netPaise === 0 ? (
+                  <div className="mt-1 text-xs font-bold text-muted-foreground">
+                    Net ₹0 · payments still pending
+                  </div>
                 ) : balance.netPaise > 0 ? (
                   <div className="mt-1 text-xs font-bold text-success">
                     +{formatPaise(balance.netPaise)} to receive

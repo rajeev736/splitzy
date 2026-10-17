@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 
 /** Category of a notification, matching the filter tabs. */
 export function notificationCategory(type: NotificationType) {
-  if (type.includes("PAYMENT")) return "payments" as const
+  if (type.includes("PAYMENT") || type.includes("EXPENSE")) return "payments" as const
   if (type.includes("FRIEND")) return "friends" as const
   return "groups" as const
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { UserAdd01Icon, UserGroupIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -19,7 +20,7 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, 
 import { Spinner } from "@/components/ui/spinner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAcceptFriendRequest, useCancelFriendRequest, useRejectFriendRequest, useSendFriendRequest } from "@/hooks/mutations"
-import { useFriendRequests, useFriendSuggestions } from "@/hooks/queries"
+import { useFriendRequests, useFriendSuggestions, useGroupInvites } from "@/hooks/queries"
 
 type Tab = "received" | "sent"
 
@@ -40,6 +41,7 @@ function FriendRequestsContent() {
   const { user } = useSession()
   const requestsQuery = useFriendRequests()
   const suggestions = useFriendSuggestions()
+  const { data: groupInvites } = useGroupInvites()
   const acceptRequest = useAcceptFriendRequest()
   const rejectRequest = useRejectFriendRequest({ successMessage: "Friend request rejected" })
   const cancelRequest = useCancelFriendRequest()
@@ -89,6 +91,11 @@ function FriendRequestsContent() {
                     <ItemContent>
                       <ItemTitle className="font-bold">{req.senderName}</ItemTitle>
                       <ItemDescription className="font-mono text-xs">{req.senderSplitzyId}</ItemDescription>
+                      {req.groupId && groupInvites.some((g) => g.id === req.groupId) && (
+                        <Link href={`/groups/${req.groupId}`} className="text-[11px] font-medium text-primary hover:underline">
+                          Also invited you to &quot;{req.groupName || "a group"}&quot; — accept it separately
+                        </Link>
+                      )}
                     </ItemContent>
                   </div>
                   <ItemActions className="pt-2 sm:pt-0">

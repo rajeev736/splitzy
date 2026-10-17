@@ -1,4 +1,4 @@
-import { deleteDoc, doc, getDoc, setDoc, updateDoc } from "firebase/firestore"
+import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore"
 
 import { AppError } from "@/lib/errors"
 import { buildFirestoreExpense } from "@/lib/expenses/builder"
@@ -112,6 +112,7 @@ async function updateShareStatus(
 ): Promise<ExpenseShare[]> {
   const expense = await resolveExpense(expenseId, expenses)
   if (!expense) throw new AppError("Expense not found")
+  if (expense.deletedAt) throw new AppError("This expense was deleted")
 
   const share = expense.shares.find((s) => s.userId === memberUserId)
   const shares = expense.shares.map((s) => (s.userId === memberUserId ? patch(s) : s))
@@ -187,19 +188,50 @@ export function disputePaymentReceipt(user: UserProfile, expenses: Expense[], ex
   )
 }
 
-/** Delete an expense (payer/creator only, no confirmed member payments). */
+/**
+ * Delete an expense (payer/creator only, no confirmed or reported member payments).
+ * Soft delete: the document stays so history keeps the record, but it no
+ * longer counts towards any balance.
+ */
 export async function deleteExpense(user: UserProfile, expenses: Expense[], expenseId: string) {
   const exp = expenses.find((e) => e.id === expenseId)
   if (!exp) throw new AppError("Expense not found")
+  if (exp.deletedAt) throw new AppError("This expense has already been deleted")
   if (exp.payerId !== user.uid && exp.createdBy !== user.uid) {
     throw new AppError("Only the payer or creator can delete this expense")
   }
-  if (exp.shares.some((s) => s.userId !== user.uid && s.status === "PAID")) {
+  if (exp.shares.some((s) => s.userId !== exp.payerId && s.status === "PAID")) {
     throw new AppError("Cannot delete an expense that already has confirmed member payments.")
   }
+  if (exp.shares.some((s) => s.status === "PAYMENT_REPORTED")) {
+    throw new AppError("A member has reported a payment for this expense. Confirm or dispute it before deleting.")
+  }
 
+  const now = nowIso()
+  const patch = { deletedAt: now, deletedBy: user.uid, updatedAt: now }
   const firestore = getDb()
-  if (firestore) await deleteDoc(doc(firestore, "expenses", expenseId))
+  if (!firestore) return patch
+
+  await updateDoc(doc(firestore, "expenses", expenseId), patch)
+
+  if (exp.expenseType !== "personal" && !exp.isPersonal) {
+    for (const s of exp.shares.filter((s) => s.userId !== user.uid)) {
+      await sendNotification({
+        userId: s.userId,
+        title: "Expense Deleted",
+        message: `${user.displayName} deleted "${exp.title}" (₹${rupees(exp.amountPaise)}). It no longer counts towards your balance.`,
+        type: "EXPENSE_DELETED",
+        data: {
+          expenseId,
+          ...(exp.groupId ? { groupId: exp.groupId } : {}),
+          actorId: user.uid,
+          actorName: user.displayName,
+        },
+        createdAt: now,
+      }).catch((e) => console.warn("Failed to send delete notification:", e))
+    }
+  }
+  return patch
 }
 
 export async function sendPaymentReminder(user: UserProfile, expenses: Expense[], expenseId: string, targetUserId: string) {

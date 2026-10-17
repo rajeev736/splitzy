@@ -48,6 +48,7 @@ import {
   ItemActions,
   ItemContent,
   ItemDescription,
+  ItemFooter,
   ItemMedia,
   ItemTitle,
 } from "@/components/ui/item"
@@ -64,7 +65,7 @@ export default function CreateGroupPage() {
   const friends = friendsQuery.data
   const createGroup = useCreateGroup({
     successMessage: (data) =>
-      `Group "${(data as Group).name}" created successfully!`,
+      `Group "${(data as Group).name}" created! Invitations sent.`,
   })
 
   const [groupName, setGroupName] = React.useState("")
@@ -73,9 +74,12 @@ export default function CreateGroupPage() {
     React.useState<string>(DEFAULT_GROUP_ICON)
   // On initial load, select ZERO additional members by default. No hardcoded sample users.
   const [selectedMemberIds, setSelectedMemberIds] = React.useState<string[]>([])
+  // Non-friends found by JoySplit ID: always get a group invite, a friend request only if chosen
   const [selectedNonFriends, setSelectedNonFriends] = React.useState<
-    UserProfile[]
+    { user: UserProfile; sendFriendRequest: boolean }[]
   >([])
+  const [alsoSendFriendRequest, setAlsoSendFriendRequest] =
+    React.useState(false)
 
   const [memberSearch, setMemberSearch] = React.useState("")
   // The JoySplit ID actually looked up; "" keeps the search idle / clears the result.
@@ -95,18 +99,25 @@ export default function CreateGroupPage() {
   }
 
   const removeNonFriend = (uid: string) => {
-    setSelectedNonFriends((prev) => prev.filter((u) => u.uid !== uid))
+    setSelectedNonFriends((prev) => prev.filter((nf) => nf.user.uid !== uid))
   }
 
   const handleSearchId = () => {
     const clean = memberSearch.trim().toUpperCase()
     if (!clean) return
+    setAlsoSendFriendRequest(false)
     setSubmittedId(clean)
   }
 
-  const addNonFriendInvitee = (u: Partial<UserProfile>) => {
+  const addNonFriendInvitee = (
+    u: Partial<UserProfile>,
+    sendFriendRequest: boolean
+  ) => {
     if (!u.uid || !u.displayName) return
-    if (selectedNonFriends.some((nf) => nf.uid === u.uid)) return
+    if (selectedNonFriends.some((nf) => nf.user.uid === u.uid)) {
+      toast.info(`${u.displayName} is already on the invite list`)
+      return
+    }
     if (u.uid === user?.uid) {
       toast.error("You are already the creator and member of this group")
       return
@@ -120,10 +131,12 @@ export default function CreateGroupPage() {
       photoURL: u.photoURL,
       createdAt: new Date().toISOString(),
     }
-    setSelectedNonFriends((prev) => [...prev, full])
+    setSelectedNonFriends((prev) => [...prev, { user: full, sendFriendRequest }])
     resetSearch()
     toast.success(
-      `Added ${u.displayName} as proposed invitee (Combined Friend & Group Invite)`
+      sendFriendRequest
+        ? `${u.displayName} will get a group invite and a friend request`
+        : `${u.displayName} will get a group invite`
     )
   }
 
@@ -138,8 +151,13 @@ export default function CreateGroupPage() {
         name: groupName.trim(),
         description: description.trim(),
         icon: selectedIcon,
-        memberIds: selectedMemberIds,
-        pendingInviteUids: selectedNonFriends.map((nf) => nf.uid),
+        // Everyone joins by invitation: selected friends and people found by ID
+        invites: [
+          ...friends
+            .filter((f) => selectedMemberIds.includes(f.uid))
+            .map((f) => ({ user: f, sendFriendRequest: false })),
+          ...selectedNonFriends,
+        ],
       },
       { onSuccess: (group) => router.push(`/groups/${group.id}`) }
     )
@@ -238,9 +256,10 @@ export default function CreateGroupPage() {
           {/* Members */}
           <Card className="rounded-3xl">
             <CardHeader>
-              <CardTitle className="font-bold">Add Members</CardTitle>
+              <CardTitle className="font-bold">Invite Members</CardTitle>
               <CardDescription className="text-[11px]">
-                You are included automatically as creator
+                You join as creator. Everyone else gets a group invitation
+                and joins once they accept.
               </CardDescription>
               <CardAction>
                 <Badge variant="secondary" className="text-primary">
@@ -265,10 +284,10 @@ export default function CreateGroupPage() {
                   })}
                   {selectedNonFriends.map((nf) => (
                     <MemberChip
-                      key={nf.uid}
-                      user={nf}
-                      invite
-                      onRemove={() => removeNonFriend(nf.uid)}
+                      key={nf.user.uid}
+                      user={nf.user}
+                      invite={nf.sendFriendRequest ? "Invite + Friend" : "Invite"}
+                      onRemove={() => removeNonFriend(nf.user.uid)}
                     />
                   ))}
                 </div>
@@ -313,7 +332,7 @@ export default function CreateGroupPage() {
                   <Item
                     variant="muted"
                     size="sm"
-                    className="flex-nowrap rounded-2xl border-border"
+                    className="flex-wrap rounded-2xl border-border"
                   >
                     {searchResult.found && searchResult.user ? (
                       <>
@@ -359,7 +378,11 @@ export default function CreateGroupPage() {
                               size="sm"
                               variant="secondary"
                               onClick={() =>
-                                addNonFriendInvitee(searchResult.user!)
+                                addNonFriendInvitee(
+                                  searchResult.user!,
+                                  searchResult.status === "CAN_ADD" &&
+                                    alsoSendFriendRequest
+                                )
                               }
                             >
                               <HugeiconsIcon
@@ -370,6 +393,40 @@ export default function CreateGroupPage() {
                             </Button>
                           )}
                         </ItemActions>
+                        {searchResult.status !== "SELF" &&
+                          searchResult.status !== "FRIENDS" && (
+                            <ItemFooter className="flex-col items-stretch gap-1 border-t pt-2">
+                              {searchResult.status === "CAN_ADD" ? (
+                                <Field orientation="horizontal" className="gap-2">
+                                  <Checkbox
+                                    id="also-friend-request"
+                                    checked={alsoSendFriendRequest}
+                                    onCheckedChange={(checked) =>
+                                      setAlsoSendFriendRequest(checked)
+                                    }
+                                  />
+                                  <FieldLabel
+                                    htmlFor="also-friend-request"
+                                    className="text-[11px] font-semibold"
+                                  >
+                                    Also send a friend request
+                                  </FieldLabel>
+                                </Field>
+                              ) : (
+                                <span className="text-[11px] text-muted-foreground">
+                                  {searchResult.status === "REQUEST_SENT"
+                                    ? "Friend request already sent."
+                                    : "They already sent you a friend request."}
+                                </span>
+                              )}
+                              <span className="text-[10px] text-muted-foreground">
+                                {alsoSendFriendRequest &&
+                                searchResult.status === "CAN_ADD"
+                                  ? "They'll get a group invitation and a friend request, and can accept each one separately."
+                                  : "They'll get a group invitation only and join once they accept it."}
+                              </span>
+                            </ItemFooter>
+                          )}
                       </>
                     ) : (
                       <div className="flex items-center gap-2 text-xs text-warning">
@@ -460,11 +517,12 @@ export default function CreateGroupPage() {
 
 function MemberChip({
   user,
-  invite = false,
+  invite,
   onRemove,
 }: {
   user: UserProfile
-  invite?: boolean
+  /** Label for a pending invitee (e.g. "Invite"); omit for directly added friends. */
+  invite?: string
   onRemove: () => void
 }) {
   return (
@@ -475,7 +533,7 @@ function MemberChip({
       <UserAvatar src={user.photoURL} name={user.displayName} size="xs" />
       <span>{user.displayName}</span>
       {invite && (
-        <span className="rounded bg-muted px-1 text-[10px]">Invite</span>
+        <span className="rounded bg-muted px-1 text-[10px]">{invite}</span>
       )}
       <Button
         type="button"

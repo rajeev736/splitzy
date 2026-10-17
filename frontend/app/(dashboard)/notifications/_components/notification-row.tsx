@@ -47,7 +47,12 @@ export function NotificationRow({
         <ItemTitle className="line-clamp-none text-xs font-bold sm:text-sm">{notif.title}</ItemTitle>
         <ItemDescription className="line-clamp-none text-xs leading-relaxed">{notif.message}</ItemDescription>
         <span className="mt-1 block text-[10px] text-muted-foreground">
-          {new Date(notif.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          {new Date(notif.createdAt).toLocaleString([], {
+            day: "numeric",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
         </span>
       </ItemContent>
 

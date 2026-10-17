@@ -36,8 +36,8 @@ export function DeleteExpenseDialog({
       description={
         hasPaidMembers ? undefined : (
           <>
-            Are you sure you want to delete <strong>&quot;{title}&quot;</strong> ({formatPaise(amountPaise)})? This
-            action cannot be undone.
+            Are you sure you want to delete <strong>&quot;{title}&quot;</strong> ({formatPaise(amountPaise)})? It will stop
+            counting towards everyone&apos;s balances and stay in History marked as deleted.
           </>
         )
       }
@@ -53,8 +53,8 @@ export function DeleteExpenseDialog({
           <HugeiconsIcon icon={Alert02Icon} className="text-warning" />
           <AlertTitle className="font-bold">Cannot Delete Expense</AlertTitle>
           <AlertDescription className="text-xs leading-relaxed">
-            One or more members have already had their payments confirmed for this expense. To preserve financial audit
-            integrity, expenses with confirmed payments cannot be deleted.
+            One or more members have paid (or reported paying) their share of this expense. To preserve financial audit
+            integrity, it can&apos;t be deleted. Confirm or dispute any reported payments first.
           </AlertDescription>
         </Alert>
       )}

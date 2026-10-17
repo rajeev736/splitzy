@@ -11,6 +11,7 @@ import {
   SentIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
+import Link from "next/link"
 
 import { ExpenseListItem } from "../_components/expense-list-item"
 import { FilterPills } from "../_components/filter-pills"
@@ -20,7 +21,7 @@ import { useSession } from "@/components/providers/session-provider"
 import { Amount } from "@/components/shared/amount"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
-import { StatusBadge } from "@/components/shared/status-badge"
+import { StatusBadge, type BadgeStatus } from "@/components/shared/status-badge"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Item,
@@ -33,20 +34,28 @@ import {
   ItemTitle,
 } from "@/components/ui/item"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useExpenses } from "@/hooks/queries"
+import { useExpenseHistory } from "@/hooks/queries"
 import { formatPaise } from "@/lib/money"
 import type { Expense, UserProfile } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 type MainView = "expenses" | "payments"
-type ExpenseFilter = "all" | "pending" | "payment_reported" | "paid" | "failed"
+type ExpenseFilter =
+  | "all"
+  | "pending"
+  | "payment_reported"
+  | "paid"
+  | "disputed"
+  | "deleted"
 type PaymentFilter = "all" | "sent" | "received"
 
 const EXPENSE_FILTERS = [
   { value: "all", label: "All" },
   { value: "pending", label: "Pending" },
   { value: "payment_reported", label: "Payment Reported" },
-  { value: "paid", label: "Paid" },
+  { value: "paid", label: "Settled" },
+  { value: "disputed", label: "Disputed" },
+  { value: "deleted", label: "Deleted" },
 ] as const
 
 const PAYMENT_FILTERS = [
@@ -55,73 +64,121 @@ const PAYMENT_FILTERS = [
   { value: "received", label: "received" },
 ] as const
 
+const isPersonal = (exp: Expense) =>
+  exp.isPersonal || exp.expenseType === "personal"
+
+/** One status per expense, used by both the filter pills and the badge. */
+function expenseStatus(exp: Expense): {
+  key: Exclude<ExpenseFilter, "all">
+  badge: BadgeStatus
+  label?: string
+} {
+  if (exp.deletedAt) return { key: "deleted", badge: "failed", label: "Deleted" }
+  if (isPersonal(exp)) return { key: "paid", badge: "settled", label: "Personal" }
+  if (exp.shares.some((s) => s.status === "DISPUTED"))
+    return { key: "disputed", badge: "failed", label: "Disputed" }
+  if (exp.shares.some((s) => s.status === "PAYMENT_REPORTED"))
+    return { key: "payment_reported", badge: "payment_reported" }
+  if (exp.shares.every((s) => s.status === "PAID"))
+    return { key: "paid", badge: "paid", label: "Settled" }
+  return { key: "pending", badge: "pending" }
+}
+
+/** Formats an ISO timestamp or a YYYY-MM-DD date for display. */
+function formatWhen(value: string) {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  const hasTime = value.includes("T")
+  return d.toLocaleString([], {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    ...(hasTime ? { hour: "2-digit", minute: "2-digit" } : {}),
+  })
+}
+
+type PaymentState = "confirmed" | "awaiting" | "disputed"
+
 interface PaymentRecord {
   id: string
+  expenseId: string
   type: "sent" | "received"
   counterpart: string
   photo?: string
   note: string
   amountPaise: number
   time: string
-  status: string
+  state: PaymentState
 }
 
-/** Derive genuine payment records from authentic expenses. */
+const PAYMENT_STATE: Record<PaymentState, { label: string; className: string }> = {
+  confirmed: { label: "confirmed", className: "text-success" },
+  awaiting: { label: "awaiting confirmation", className: "text-info" },
+  disputed: { label: "disputed", className: "text-destructive" },
+}
+
+/**
+ * Payments are the shares someone has reported or confirmed paying. Each one
+ * goes to the expense's creditor (recipient, else payer) — the same rule the
+ * balance engine uses — so history always matches the dashboard.
+ * Totals count confirmed payments only.
+ */
 function derivePayments(user: UserProfile | null, expenses: Expense[]) {
   const records: PaymentRecord[] = []
   let totalSentPaise = 0
   let totalReceivedPaise = 0
+  if (!user) return { records, totalSentPaise, totalReceivedPaise }
 
-  if (user) {
-    expenses.forEach((exp) => {
-      if (exp.payerId === user.uid) {
-        // As payer, look for shares marked PAID or PAYMENT_REPORTED
-        exp.shares.forEach((share) => {
-          if (
-            share.userId !== user.uid &&
-            (share.status === "PAID" || share.status === "PAYMENT_REPORTED")
-          ) {
-            totalReceivedPaise += share.amountPaise
-            records.push({
-              id: `${exp.id}_${share.userId}`,
-              type: "received",
-              counterpart: share.userName,
-              photo: share.userPhoto,
-              note: exp.title,
-              amountPaise: share.amountPaise,
-              time: share.confirmedAt || share.reportedAt || exp.date,
-              status: share.status === "PAID" ? "received" : "reported",
-            })
-          }
-        })
-      } else {
-        // As participant, check own share
-        const myShare = exp.shares.find((s) => s.userId === user.uid)
-        if (
-          myShare &&
-          (myShare.status === "PAID" || myShare.status === "PAYMENT_REPORTED")
-        ) {
-          totalSentPaise += myShare.amountPaise
-          records.push({
-            id: `${exp.id}_${user.uid}`,
-            type: "sent",
-            counterpart: exp.payerName,
-            note: exp.title,
-            amountPaise: myShare.amountPaise,
-            time: myShare.confirmedAt || myShare.reportedAt || exp.date,
-            status: myShare.status === "PAID" ? "completed" : "reported",
-          })
-        }
+  for (const exp of expenses) {
+    if (exp.deletedAt || isPersonal(exp)) continue
+    const creditor = exp.recipientId || exp.payerId
+
+    for (const share of exp.shares) {
+      if (share.status === "PENDING" || share.amountPaise <= 0) continue
+      if (share.userId === exp.payerId) continue // the payer's own share isn't a payment
+      const toUserId = share.userId === creditor ? exp.payerId : creditor
+      if (toUserId === share.userId) continue
+
+      const isSent = share.userId === user.uid
+      if (!isSent && toUserId !== user.uid) continue
+
+      const state: PaymentState =
+        share.status === "PAID"
+          ? "confirmed"
+          : share.status === "DISPUTED"
+            ? "disputed"
+            : "awaiting"
+      if (state === "confirmed") {
+        if (isSent) totalSentPaise += share.amountPaise
+        else totalReceivedPaise += share.amountPaise
       }
-    })
+
+      records.push({
+        id: `${exp.id}_${share.userId}`,
+        expenseId: exp.id,
+        type: isSent ? "sent" : "received",
+        counterpart: isSent
+          ? toUserId === exp.payerId
+            ? exp.payerName
+            : exp.recipientName
+          : share.userName,
+        photo: isSent ? undefined : share.userPhoto,
+        note: exp.groupName ? `${exp.title} · ${exp.groupName}` : exp.title,
+        amountPaise: share.amountPaise,
+        time: share.confirmedAt || share.reportedAt || exp.createdAt || exp.date,
+        state,
+      })
+    }
   }
 
+  records.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
   return { records, totalSentPaise, totalReceivedPaise }
 }
 
 export default function HistoryPage() {
   const { user } = useSession()
-  const { data: expenses, isPending, isError, error, refetch } = useExpenses()
+  const { data: expenses, isPending, isError, error, refetch } =
+    useExpenseHistory()
 
   const [mainView, setMainView] = React.useState<MainView>("expenses")
   const [expenseFilter, setExpenseFilter] = React.useState<ExpenseFilter>("all")
@@ -132,21 +189,15 @@ export default function HistoryPage() {
     [user, expenses]
   )
 
-  const filteredPayments = records.filter((p) => {
-    if (paymentFilter === "sent") return p.type === "sent"
-    if (paymentFilter === "received") return p.type === "received"
-    return true
-  })
+  const filteredPayments = records.filter(
+    (p) => paymentFilter === "all" || p.type === paymentFilter
+  )
 
   const filteredExpenses = expenses.filter((exp) => {
-    if (expenseFilter === "all") return true
-    if (expenseFilter === "paid")
-      return exp.shares.every((s) => s.status === "PAID")
-    if (expenseFilter === "pending")
-      return exp.shares.some((s) => s.status === "PENDING")
-    if (expenseFilter === "payment_reported")
-      return exp.shares.some((s) => s.status === "PAYMENT_REPORTED")
-    return true
+    const status = expenseStatus(exp).key
+    // "All" is the live history; deleted records live under their own filter
+    if (expenseFilter === "all") return status !== "deleted"
+    return status === expenseFilter
   })
 
   const queryState = isPending ? (
@@ -197,34 +248,53 @@ export default function HistoryPage() {
             {queryState ??
               (filteredExpenses.length > 0 ? (
                 <ItemGroup className="gap-3">
-                  {filteredExpenses.map((exp) => (
-                    <ExpenseListItem
-                      key={exp.id}
-                      expense={exp}
-                      className="rounded-3xl p-4"
-                      description={`${exp.groupName || "Direct Split"} • ${exp.date}`}
-                      action={
-                        <div className="flex flex-col items-end gap-1.5">
-                          <StatusBadge
-                            status={
-                              exp.shares.every((s) => s.status === "PAID")
-                                ? "paid"
-                                : "pending"
-                            }
+                  {filteredExpenses.map((exp) => {
+                    const status = expenseStatus(exp)
+                    const myShare = exp.shares.find(
+                      (s) => s.userId === user?.uid
+                    )
+                    return (
+                      <ExpenseListItem
+                        key={exp.id}
+                        expense={exp}
+                        className={cn(
+                          "rounded-3xl p-4",
+                          exp.deletedAt && "opacity-70"
+                        )}
+                        description={`${
+                          isPersonal(exp)
+                            ? "Personal"
+                            : exp.groupName || "Direct Split"
+                        } • ${formatWhen(exp.date)} • Paid by ${exp.payerName}`}
+                        action={
+                          <div className="flex flex-col items-end gap-1.5">
+                            <StatusBadge status={status.badge}>
+                              {status.label}
+                            </StatusBadge>
+                            <HugeiconsIcon
+                              icon={ArrowRight01Icon}
+                              className="size-4 text-muted-foreground"
+                            />
+                          </div>
+                        }
+                      >
+                        <div className="mt-1 flex flex-wrap items-baseline gap-x-2 text-xs">
+                          <Amount
+                            paise={exp.amountPaise}
+                            className={cn(
+                              "font-bold",
+                              exp.deletedAt && "line-through"
+                            )}
                           />
-                          <HugeiconsIcon
-                            icon={ArrowRight01Icon}
-                            className="size-4 text-muted-foreground"
-                          />
+                          {myShare && !isPersonal(exp) && (
+                            <span className="text-muted-foreground">
+                              your share {formatPaise(myShare.amountPaise)}
+                            </span>
+                          )}
                         </div>
-                      }
-                    >
-                      <Amount
-                        paise={exp.amountPaise}
-                        className="mt-1 text-xs font-bold"
-                      />
-                    </ExpenseListItem>
-                  ))}
+                      </ExpenseListItem>
+                    )
+                  })}
                 </ItemGroup>
               ) : (
                 <Card className="rounded-3xl">
@@ -254,6 +324,9 @@ export default function HistoryPage() {
                 positive
               />
             </div>
+            <p className="-mt-2 text-[11px] text-muted-foreground">
+              Totals include confirmed payments only.
+            </p>
 
             <FilterPills
               aria-label="Filter payments"
@@ -328,8 +401,12 @@ function TotalCard({
 
 function PaymentRow({ payment: p }: { payment: PaymentRecord }) {
   const isSent = p.type === "sent"
+  const state = PAYMENT_STATE[p.state]
   return (
-    <Item className="flex-nowrap rounded-none p-4 hover:bg-muted/50">
+    <Item
+      className="flex-nowrap rounded-none p-4 hover:bg-muted/50"
+      render={<Link href={`/expenses/${p.expenseId}`} />}
+    >
       <ItemMedia>
         <div
           className={cn(
@@ -350,21 +427,29 @@ function PaymentRow({ payment: p }: { payment: PaymentRecord }) {
             : `Received from ${p.counterpart}`}
         </ItemTitle>
         <ItemDescription className="truncate text-xs">{p.note}</ItemDescription>
-        <span className="text-[10px] text-muted-foreground">{p.time}</span>
+        <span className="text-[10px] text-muted-foreground">
+          {formatWhen(p.time)}
+        </span>
       </ItemContent>
       <ItemActions className="flex-col items-end gap-0">
         <div
           className={cn(
             "text-sm font-extrabold tabular-nums sm:text-base",
-            !isSent && "text-success"
+            !isSent && "text-success",
+            p.state !== "confirmed" && "opacity-70"
           )}
         >
           {isSent
             ? `- ${formatPaise(p.amountPaise)}`
             : `+ ${formatPaise(p.amountPaise)}`}
         </div>
-        <span className="text-[10px] font-bold tracking-wider text-success uppercase">
-          {p.status}
+        <span
+          className={cn(
+            "text-[10px] font-bold tracking-wider uppercase",
+            state.className
+          )}
+        >
+          {state.label}
         </span>
       </ItemActions>
     </Item>

@@ -22,6 +22,9 @@ export interface FriendRequest {
   receiverName: string;
   receiverSplitzyId: string;
   status: FriendRequestStatus;
+  /** Set when the request was sent together with a group invitation. */
+  groupId?: string;
+  groupName?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -51,6 +54,17 @@ export interface GroupMemberInfo {
   role: "admin" | "member";
 }
 
+/** A pending group invitation for one user. */
+export interface GroupInviteInfo {
+  uid: string;
+  name: string;
+  splitzyId: string;
+  photoURL?: string;
+  invitedBy: string;
+  invitedByName: string;
+  invitedAt: string;
+}
+
 export interface Group {
   id: string;
   name: string;
@@ -61,6 +75,7 @@ export interface Group {
   members: string[]; // active member UIDs
   formerMembers?: string[]; // departed former member UIDs (preserved for history)
   invitedMembers?: string[]; // pending invited member UIDs
+  invitedMemberDetails?: Record<string, GroupInviteInfo>; // who was invited, by whom
   memberDetails: Record<string, GroupMemberInfo>;
   formerMemberDetails?: Record<string, GroupMemberInfo>;
   status?: "ACTIVE" | "ARCHIVED" | "DELETED";
@@ -107,6 +122,9 @@ export interface Expense {
   createdBy: string;
   createdAt: string;
   updatedAt?: string;
+  /** Soft delete: the record stays in history but no longer affects balances. */
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface Settlement {
@@ -136,6 +154,7 @@ export type NotificationType =
   | "GROUP_ACCEPTED"
   | "GROUP_MEMBER_LEFT"
   | "NEW_EXPENSE"
+  | "EXPENSE_DELETED"
   | "PAYMENT_REPORTED"
   | "PAYMENT_CONFIRMED"
   | "PAYMENT_DISPUTED"

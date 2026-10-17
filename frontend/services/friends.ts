@@ -61,7 +61,7 @@ export async function sendFriendRequest(
     throw new AppError(`No user found with JoySplit ID "${cleanId}". Make sure the ID is correct.`)
   }
 
-  const reqId = `freq_${Date.now()}`
+  const reqId = `freq_${Date.now()}_${target.uid}`
   const request: FriendRequest = {
     id: reqId,
     senderId: user.uid,
@@ -80,6 +80,7 @@ export async function sendFriendRequest(
     await setDoc(doc(firestore, "friendRequests", reqId), request)
     await sendNotification(
       {
+        id: `notif_${reqId}`,
         userId: target.uid,
         title: "New Friend Request",
         message: `${user.displayName} (${user.splitzyId}) sent you a friend request`,

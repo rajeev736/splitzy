@@ -57,7 +57,7 @@ import {
   useGroups,
 } from "@/hooks/queries"
 import { PayPersonButton } from "@/components/shared/pay-person-button"
-import { calculateDirectBalance, formatPaise } from "@/lib/money"
+import { calculatePersonBalances, formatPaise } from "@/lib/money"
 import type { UserProfile } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -67,7 +67,8 @@ export default function HomePage() {
   const friendsQuery = useFriends()
   const groupsQuery = useGroups()
   const expensesQuery = useExpenses()
-  const { netBalancePaise } = useBalances()
+  const { netBalancePaise, totalOwedToYouPaise, totalYouOwePaise } =
+    useBalances()
 
   const friends = friendsQuery.data
   const groups = groupsQuery.data
@@ -75,20 +76,28 @@ export default function HomePage() {
 
   const [showIdModal, setShowIdModal] = React.useState(false)
 
-  // Derive genuine friend balances dynamically
-  const friendBalances = React.useMemo(
+  // Everyone you share an unsettled expense with (friends and group members),
+  // from the same debt model as the net balance, so the rows add up to it.
+  const personBalances = React.useMemo<BalanceRow[]>(
     () =>
-      friends.map((f) => ({
-        friend: f,
-        netBalancePaise: user
-          ? calculateDirectBalance(user.uid, f.uid, expenses).netBalancePaise
-          : 0,
-      })),
+      user
+        ? calculatePersonBalances(user.uid, expenses).map((b) => {
+            const friend = friends.find((f) => f.uid === b.userId)
+            return {
+              userId: b.userId,
+              name: friend?.displayName || b.name,
+              photoURL: friend?.photoURL || b.photoURL,
+              subtitle: friend?.splitzyId || "Group member",
+              netBalancePaise: b.netBalancePaise,
+            }
+          })
+        : [],
     [friends, expenses, user]
   )
 
-  const whoOwesYou = friendBalances.filter((b) => b.netBalancePaise > 0)
-  const youOweTo = friendBalances.filter((b) => b.netBalancePaise < 0)
+  const whoOwesYou = personBalances.filter((b) => b.netBalancePaise > 0)
+  const youOweTo = personBalances.filter((b) => b.netBalancePaise < 0)
+  const recentExpenses = expenses.slice(0, 4)
 
   return (
     <>
@@ -127,6 +136,20 @@ export default function HomePage() {
                     : netBalancePaise < 0
                       ? "You need to pay overall"
                       : "All settled up!"}
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3 border-t border-primary-foreground/20 pt-3 text-xs">
+                  <div>
+                    <div className="opacity-80">You are owed</div>
+                    <div className="text-base font-bold tabular-nums text-emerald-300">
+                      {formatPaise(totalOwedToYouPaise)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="opacity-80">You owe</div>
+                    <div className="text-base font-bold tabular-nums text-red-300">
+                      {formatPaise(totalYouOwePaise)}
+                    </div>
+                  </div>
                 </div>
               </div>
             </Card>
@@ -241,14 +264,18 @@ export default function HomePage() {
                     error={expensesQuery.error}
                     onRetry={expensesQuery.refetch}
                   />
-                ) : expenses.length > 0 ? (
+                ) : recentExpenses.length > 0 ? (
                   <ItemGroup className="gap-1">
-                    {expenses.slice(0, 4).map((exp) => (
+                    {recentExpenses.map((exp) => (
                       <ExpenseListItem
                         key={exp.id}
                         expense={exp}
                         variant="default"
-                        description={`${exp.groupName ? `${exp.groupName} • ` : ""}Paid by ${exp.payerName}`}
+                        description={
+                          exp.isPersonal || exp.expenseType === "personal"
+                            ? `Personal • ${exp.category || "Expense"}`
+                            : `${exp.groupName ? `${exp.groupName} • ` : ""}Paid by ${exp.payerName}`
+                        }
                         action={
                           <div className="flex flex-col items-end">
                             <Amount
@@ -350,6 +377,14 @@ function QuickAction({
   )
 }
 
+interface BalanceRow {
+  userId: string
+  name: string
+  photoURL?: string
+  subtitle: string
+  netBalancePaise: number
+}
+
 function FriendBalanceSection({
   title,
   emptyText,
@@ -357,7 +392,7 @@ function FriendBalanceSection({
 }: {
   title: string
   emptyText: string
-  rows: { friend: UserProfile; netBalancePaise: number }[]
+  rows: BalanceRow[]
 }) {
   return (
     <div className="flex flex-col gap-2">
@@ -366,25 +401,19 @@ function FriendBalanceSection({
       </div>
       {rows.length > 0 ? (
         <ItemGroup className="gap-1">
-          {rows.map(({ friend, netBalancePaise }) => (
+          {rows.map(({ userId, name, photoURL, subtitle, netBalancePaise }) => (
             <Item
-              key={friend.uid}
+              key={userId}
               size="sm"
               className="flex-nowrap hover:bg-muted/50"
             >
               <ItemMedia>
-                <UserAvatar
-                  src={friend.photoURL}
-                  name={friend.displayName}
-                  size="sm"
-                />
+                <UserAvatar src={photoURL} name={name} size="sm" />
               </ItemMedia>
               <ItemContent className="min-w-0 gap-0">
-                <ItemTitle className="text-xs font-bold">
-                  {friend.displayName}
-                </ItemTitle>
+                <ItemTitle className="text-xs font-bold">{name}</ItemTitle>
                 <ItemDescription className="font-mono text-[11px]">
-                  {friend.splitzyId}
+                  {subtitle}
                 </ItemDescription>
               </ItemContent>
               <ItemActions className="gap-2">
@@ -402,7 +431,7 @@ function FriendBalanceSection({
                 </span>
                 {/* Where you owe someone, settle right here instead of hunting for the expense */}
                 {netBalancePaise < 0 && (
-                  <PayPersonButton personId={friend.uid} personName={friend.displayName} />
+                  <PayPersonButton personId={userId} personName={name} />
                 )}
               </ItemActions>
             </Item>

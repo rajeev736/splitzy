@@ -144,7 +144,7 @@ export function useUpdateProfile(options: MutationToastOptions = {}) {
 
 export const useCreateGroup = createUserMutation({
   run: ({ user, cache }, input: groupService.CreateGroupInput) =>
-    groupService.createGroup(user, cache.friends(), input),
+    groupService.createGroup(user, { friends: cache.friends(), friendRequests: cache.friendRequests() }, input),
   apply: ({ cache }, group) => cache.setGroups((list) => [group, ...list]),
 })
 
@@ -190,28 +190,46 @@ export const useInviteGroupMember = createUserMutation({
       v.option
     ),
   apply: ({ cache }, res, { groupId }) => {
-    if (res.invitedMembers) cache.setGroups(patchById<Group>(groupId, { invitedMembers: res.invitedMembers }))
+    if (res.invitedMembers) {
+      cache.setGroups(
+        patchById<Group>(groupId, {
+          invitedMembers: res.invitedMembers,
+          invitedMemberDetails: res.invitedMemberDetails,
+        })
+      )
+    }
     if (res.friendRequest) cache.setFriendRequests((list) => [res.friendRequest!, ...list])
   },
   defaults: { successMessage: withMessage },
 })
 
+/** Withdraw a pending group invitation. */
+export const useCancelGroupInvite = createUserMutation({
+  run: ({ user, cache }, v: { groupId: string; targetUid: string }) =>
+    groupService.cancelGroupInvite(user, cache.groups(), v.groupId, v.targetUid),
+  apply: ({ cache }, res, { groupId }) => cache.setGroups(patchById<Group>(groupId, res)),
+  defaults: { successMessage: "Invitation cancelled" },
+})
+
+/** Join a group you were invited to; pass `friendRequestId` to also accept the linked friend request. */
 export const useAcceptGroupInvite = createUserMutation({
-  run: (
-    { user, cache },
-    v: { groupId: string; acceptCombinedFriendship?: boolean; friendRequestId?: string }
-  ) =>
-    groupService.acceptGroupInvite(user, cache.groups(), v.groupId, {
-      acceptCombinedFriendship: v.acceptCombinedFriendship,
-      friendRequestId: v.friendRequestId,
-    }),
-  apply: ({ cache }, res, { groupId }) => cache.setGroups(patchById<Group>(groupId, res.patch)),
+  run: ({ user, cache }, v: { groupId: string; friendRequestId?: string }) =>
+    groupService.acceptGroupInvite(user, cache.groups(), v.groupId, { friendRequestId: v.friendRequestId }),
+  apply: ({ cache }, res, { groupId, friendRequestId }) => {
+    cache.setGroups(patchById<Group>(groupId, res.patch))
+    if (friendRequestId) cache.setFriendRequests(patchById<FriendRequest>(friendRequestId, { status: "ACCEPTED" }))
+  },
   defaults: { successMessage: withMessage },
 })
 
 export const useDeclineGroupInvite = createUserMutation({
-  run: ({ user, cache }, v: { groupId: string; friendRequestId?: string }) =>
-    groupService.declineGroupInvite(user, cache.groups(), v.groupId, v.friendRequestId),
+  run: ({ user, cache }, v: { groupId: string }) => groupService.declineGroupInvite(user, cache.groups(), v.groupId),
+  apply: ({ user, cache }, _data, { groupId }) =>
+    cache.setGroups((list) =>
+      list.map((g) =>
+        g.id === groupId ? { ...g, invitedMembers: (g.invitedMembers || []).filter((id) => id !== user.uid) } : g
+      )
+    ),
   defaults: { successMessage: withMessage },
 })
 
@@ -226,7 +244,9 @@ export const useCreateExpense = createUserMutation({
 
 export const useDeleteExpense = createUserMutation({
   run: ({ user, cache }, expenseId: string) => expenseService.deleteExpense(user, cache.expenses(), expenseId),
-  apply: ({ cache }, _data, expenseId) => cache.setExpenses((list) => list.filter((e) => e.id !== expenseId)),
+  // Soft delete: keep the record (for history), flagged as deleted
+  apply: ({ cache }, patch, expenseId) =>
+    cache.setExpenses(patchById<Expense>(expenseId, patch ?? { deletedAt: new Date().toISOString() })),
 })
 
 export const useReportPayment = createUserMutation({

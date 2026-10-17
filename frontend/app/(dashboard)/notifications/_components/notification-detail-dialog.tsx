@@ -14,7 +14,7 @@ import {
   useDeclineGroupInvite,
   useDisputePayment,
 } from "@/hooks/mutations"
-import { useGroups } from "@/hooks/queries"
+import { useFriendRequests, useGroupInvites, useGroups } from "@/hooks/queries"
 import type { AppNotification } from "@/lib/types"
 import { NotificationIcon } from "./notification-icon"
 
@@ -62,6 +62,8 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
   const router = useRouter()
   const { user } = useSession()
   const { data: groups } = useGroups()
+  const { data: invites } = useGroupInvites()
+  const { data: friendRequests } = useFriendRequests()
 
   const acceptInvite = useAcceptGroupInvite({
     successMessage: (data) => (data as { message?: string } | undefined)?.message || "You have joined the group!",
@@ -91,35 +93,62 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
       )
     }
 
-    const friendRequestId = data.friendRequestId
-    const isCombined = Boolean(friendRequestId)
+    if (!invites.some((g) => g.id === groupId)) {
+      return (
+        <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">
+          This invitation is no longer pending (it was declined, cancelled or the group was deleted).
+        </p>
+      )
+    }
+
+    // Linked friend request still pending? Then offer to accept both at once.
+    const linkedRequest = friendRequests.find(
+      (r) =>
+        r.status === "PENDING" &&
+        r.receiverId === user?.uid &&
+        (r.id === data.friendRequestId || r.groupId === groupId)
+    )
+    const friendRequestId = linkedRequest?.id
+    const linkedRequestPending = !!linkedRequest
     const isProcessing = acceptInvite.isPending || declineInvite.isPending
+    const accept = (withFriendRequest: boolean) =>
+      acceptInvite.mutate(
+        { groupId, friendRequestId: withFriendRequest ? friendRequestId : undefined },
+        { onSuccess: () => go(`/groups/${groupId}`) }
+      )
 
     return (
       <div className="flex flex-col gap-2">
+        {linkedRequestPending && (
+          <Button size="lg" className={CTA} disabled={isProcessing} onClick={() => accept(true)}>
+            {acceptInvite.isPending && acceptInvite.variables?.friendRequestId && <Spinner />}
+            Join Group &amp; Accept Friend Request
+          </Button>
+        )}
         <Button
           size="lg"
+          variant={linkedRequestPending ? "outline" : "default"}
           className={CTA}
           disabled={isProcessing}
-          onClick={() =>
-            acceptInvite.mutate(
-              { groupId, acceptCombinedFriendship: isCombined, friendRequestId },
-              { onSuccess: () => go(`/groups/${groupId}`) }
-            )
-          }
+          onClick={() => accept(false)}
         >
-          {acceptInvite.isPending && <Spinner />}
-          {isCombined ? "Accept Group & Friend Request" : "Accept Group Invitation"}
+          {acceptInvite.isPending && !acceptInvite.variables?.friendRequestId && <Spinner />}
+          {linkedRequestPending ? "Join Group Only" : "Accept Group Invitation"}
         </Button>
         <Button
           variant="secondary"
           className="w-full"
           disabled={isProcessing}
-          onClick={() => declineInvite.mutate({ groupId, friendRequestId }, { onSuccess: onClose })}
+          onClick={() => declineInvite.mutate({ groupId }, { onSuccess: onClose })}
         >
           {declineInvite.isPending && <Spinner />}
-          Decline
+          Decline Group Invitation
         </Button>
+        {linkedRequestPending && (
+          <p className="text-[11px] text-muted-foreground">
+            Declining the group keeps the friend request — you can answer it in Friend Requests.
+          </p>
+        )}
       </div>
     )
   }

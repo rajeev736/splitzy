@@ -19,7 +19,21 @@ import type { Group } from "@/lib/types"
 import type { InviteOption } from "@/services/groups"
 import { InviteFriendsList } from "./invite-friends-list"
 
-/** Invite by JoySplit ID (group invite / friend request / both) or from the friends list. */
+/** A done-already line in place of a checkbox. */
+function DoneLine({ children, tone = "text-primary" }: { children: React.ReactNode; tone?: string }) {
+  return (
+    <p className={`flex items-center gap-1.5 text-xs font-medium ${tone}`}>
+      <HugeiconsIcon icon={Tick02Icon} className="size-3.5" />
+      {children}
+    </p>
+  )
+}
+
+/**
+ * Invite by JoySplit ID (group invitation, friend request, or both) or from
+ * the friends list. Each option is offered only while it still applies, so a
+ * pending group invite never blocks sending just the friend request.
+ */
 export function InviteDialog({
   group,
   open,
@@ -34,8 +48,8 @@ export function InviteDialog({
 
   const [splitzyIdInput, setSplitzyIdInput] = React.useState("")
   const [submittedId, setSubmittedId] = React.useState("")
-  const [sendGroupInvite, setSendGroupInvite] = React.useState(true)
-  const [sendFriendRequest, setSendFriendRequest] = React.useState(false)
+  const [wantGroupInvite, setWantGroupInvite] = React.useState(true)
+  const [wantFriendRequest, setWantFriendRequest] = React.useState(false)
 
   const search = useUserSearch(submittedId)
   const searchedUser = submittedId ? search.data : undefined
@@ -53,20 +67,28 @@ export function InviteDialog({
   const handleSearch = () => {
     const clean = splitzyIdInput.trim().toUpperCase()
     if (!clean) return
-    setSendGroupInvite(true)
-    setSendFriendRequest(false)
+    setWantGroupInvite(true)
+    setWantFriendRequest(false)
     setSubmittedId(clean)
   }
 
-  const inviteWithOption = (target: string, option: InviteOption) =>
-    invite.mutate({ groupId: group.id, target, option }, { onSuccess: reset })
-
-  const option: InviteOption =
-    sendGroupInvite && sendFriendRequest ? "COMBINED" : sendGroupInvite ? "GROUP_ONLY" : "FRIEND_ONLY"
-
   const target = searchedUser?.found ? searchedUser.user : undefined
   const targetUid = target?.uid ?? ""
-  const isSearchingInvite = invite.isPending && invite.variables?.target === targetUid
+  const isSelf = searchedUser?.status === "SELF"
+
+  // What's still possible for this person
+  const isMember = group.members.includes(targetUid)
+  const isGroupInvited = !!group.invitedMembers?.includes(targetUid)
+  const canGroupInvite = !isSelf && !isMember && !isGroupInvited
+  const isFriend = searchedUser?.status === "FRIENDS" || friends.some((f) => f.uid === targetUid)
+  const canFriendRequest = !isSelf && !isFriend && searchedUser?.status === "CAN_ADD"
+
+  const sendGroup = canGroupInvite && wantGroupInvite
+  const sendFriend = canFriendRequest && wantFriendRequest
+  const option: InviteOption | null =
+    sendGroup && sendFriend ? "COMBINED" : sendGroup ? "GROUP_ONLY" : sendFriend ? "FRIEND_ONLY" : null
+
+  const isSending = invite.isPending && invite.variables?.target === targetUid
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -113,22 +135,21 @@ export function InviteDialog({
                     </div>
                   </div>
 
-                  {group.members.includes(targetUid) ? (
-                    <p className="text-xs font-medium text-warning">Already a member of this group.</p>
+                  {isSelf ? (
+                    <p className="text-xs font-medium text-muted-foreground">This is your own JoySplit ID.</p>
                   ) : (
                     <div className="flex flex-col gap-3 pt-1">
                       <FieldGroup className="gap-2 rounded-lg border bg-card p-3">
-                        {group.invitedMembers?.includes(targetUid) ? (
-                          <p className="flex items-center gap-1.5 text-xs font-medium text-primary">
-                            <HugeiconsIcon icon={Tick02Icon} className="size-3.5" />
-                            Group invitation already sent and pending
-                          </p>
+                        {isMember ? (
+                          <DoneLine>Already a member of this group</DoneLine>
+                        ) : isGroupInvited ? (
+                          <DoneLine>Group invitation already sent — waiting for them to accept</DoneLine>
                         ) : (
                           <Field orientation="horizontal" className="gap-2.5">
                             <Checkbox
                               id="invite-send-group"
-                              checked={sendGroupInvite}
-                              onCheckedChange={(checked) => setSendGroupInvite(checked)}
+                              checked={wantGroupInvite}
+                              onCheckedChange={(checked) => setWantGroupInvite(checked)}
                             />
                             <FieldLabel htmlFor="invite-send-group" className="text-xs font-semibold">
                               Send group invitation
@@ -136,17 +157,18 @@ export function InviteDialog({
                           </Field>
                         )}
 
-                        {friends.some((f) => f.uid === targetUid) ? (
-                          <p className="flex items-center gap-1.5 text-[11px] font-medium text-success">
-                            <HugeiconsIcon icon={Tick02Icon} className="size-3.5" />
-                            Already in your Friends list
-                          </p>
+                        {isFriend ? (
+                          <DoneLine tone="text-success">Already in your Friends list</DoneLine>
+                        ) : searchedUser.status === "REQUEST_SENT" ? (
+                          <DoneLine>Friend request already sent</DoneLine>
+                        ) : searchedUser.status === "REQUEST_RECEIVED" ? (
+                          <DoneLine>They sent you a friend request — accept it in Friend Requests</DoneLine>
                         ) : (
                           <Field orientation="horizontal" className="gap-2.5">
                             <Checkbox
                               id="invite-send-friend"
-                              checked={sendFriendRequest}
-                              onCheckedChange={(checked) => setSendFriendRequest(checked)}
+                              checked={wantFriendRequest}
+                              onCheckedChange={(checked) => setWantFriendRequest(checked)}
                             />
                             <FieldLabel htmlFor="invite-send-friend" className="text-xs font-semibold">
                               Send friend request
@@ -155,40 +177,48 @@ export function InviteDialog({
                         )}
                       </FieldGroup>
 
-                      <Alert className="border-primary/20 bg-primary/5">
-                        <AlertDescription className="text-[11px] leading-relaxed text-foreground">
-                          {sendGroupInvite && sendFriendRequest ? (
-                            <span>
-                              Will send a <strong>group invitation</strong> to &quot;{group.name}&quot; and a{" "}
-                              <strong>friend request</strong>. Each can be accepted independently.
-                            </span>
-                          ) : sendGroupInvite ? (
-                            <span>
-                              Will send a <strong>group invitation</strong> to &quot;{group.name}&quot; only. No friend
-                              request will be sent.
-                            </span>
-                          ) : sendFriendRequest ? (
-                            <span>
-                              Will send a <strong>friend request</strong> only. User will not be invited to &quot;
-                              {group.name}&quot;.
-                            </span>
-                          ) : (
-                            <span className="font-semibold text-warning">
-                              Please select at least one action above to continue.
-                            </span>
-                          )}
-                        </AlertDescription>
-                      </Alert>
+                      {canGroupInvite || canFriendRequest ? (
+                        <>
+                          <Alert className="border-primary/20 bg-primary/5">
+                            <AlertDescription className="text-[11px] leading-relaxed text-foreground">
+                              {option === "COMBINED" ? (
+                                <span>
+                                  Will send a <strong>group invitation</strong> to &quot;{group.name}&quot; and a{" "}
+                                  <strong>friend request</strong>. Each can be accepted separately.
+                                </span>
+                              ) : option === "GROUP_ONLY" ? (
+                                <span>
+                                  Will send a <strong>group invitation</strong> to &quot;{group.name}&quot; only. They
+                                  join once they accept it.
+                                </span>
+                              ) : option === "FRIEND_ONLY" ? (
+                                <span>
+                                  Will send a <strong>friend request</strong> only.
+                                </span>
+                              ) : (
+                                <span className="font-semibold text-warning">
+                                  Please select at least one action above to continue.
+                                </span>
+                              )}
+                            </AlertDescription>
+                          </Alert>
 
-                      <Button
-                        size="sm"
-                        className="w-full"
-                        disabled={(!sendGroupInvite && !sendFriendRequest) || isSearchingInvite}
-                        onClick={() => inviteWithOption(targetUid, option)}
-                      >
-                        {isSearchingInvite && <Spinner />}
-                        Send Request
-                      </Button>
+                          <Button
+                            size="sm"
+                            className="w-full"
+                            disabled={!option || isSending}
+                            onClick={() =>
+                              option &&
+                              invite.mutate({ groupId: group.id, target: targetUid, option }, { onSuccess: reset })
+                            }
+                          >
+                            {isSending && <Spinner />}
+                            Send
+                          </Button>
+                        </>
+                      ) : (
+                        <p className="text-[11px] text-muted-foreground">Nothing more to send to this person.</p>
+                      )}
                     </div>
                   )}
                 </>
@@ -206,7 +236,7 @@ export function InviteDialog({
               group={group}
               friends={friends}
               pendingUid={invite.isPending ? invite.variables?.target : undefined}
-              onInvite={(uid) => inviteWithOption(uid, "GROUP_ONLY")}
+              onInvite={(uid) => invite.mutate({ groupId: group.id, target: uid, option: "GROUP_ONLY" })}
             />
           </div>
 

@@ -21,6 +21,7 @@ import {
 import { useNotifications } from "@/hooks/queries"
 import type { AppNotification } from "@/lib/types"
 import { NotificationDetailDialog } from "./_components/notification-detail-dialog"
+import { notificationCategory } from "./_components/notification-icon"
 import { NotificationRow } from "./_components/notification-row"
 
 const FILTERS = [
@@ -42,12 +43,7 @@ export default function NotificationsPage() {
   const [filter, setFilter] = React.useState<Filter>("all")
   const [selectedNotif, setSelectedNotif] = React.useState<AppNotification | null>(null)
 
-  const filteredNotifs = notifications.filter((n) => {
-    if (filter === "payments") return n.type.includes("PAYMENT")
-    if (filter === "friends") return n.type.includes("FRIEND")
-    if (filter === "groups") return n.type.includes("GROUP")
-    return true
-  })
+  const filteredNotifs = notifications.filter((n) => filter === "all" || notificationCategory(n.type) === filter)
 
   const handleOpenNotif = (notif: AppNotification) => {
     markRead.mutate(notif.id)

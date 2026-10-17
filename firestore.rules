@@ -42,9 +42,9 @@ service cloud.firestore {
 
     // Canonical Friendships Collection
     match /friendships/{friendshipId} {
-      // Must be one of the two friends
-      allow read: if isAuthenticated() &&
-                  request.auth.uid in resource.data.users;
+      // Any signed-in user can read friendship links (uid pairs + status only):
+      // "People you may know" needs to read your friends' friendships.
+      allow read: if isAuthenticated();
       // Allow creation when accepting request or initializing relationship
       allow create: if isAuthenticated() &&
                     request.auth.uid in request.resource.data.users &&

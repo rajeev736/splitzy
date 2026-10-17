@@ -9,6 +9,7 @@ import {
   canRemoveFriend,
   canUserLeaveGroup,
   canDeleteGroup,
+  calculatePersonBalances,
 } from "../index";
 import { Expense, Group } from "../../types";
 
@@ -194,5 +195,43 @@ assert(abhiNet.netBalancePaise === -28000, "Net balance should be -₹280");
 assert(abhiDirect.netBalancePaise === abhiNet.netBalancePaise, "Direct and net balances must agree");
 assert(calculateNetBalances("usr_codium", crossedExpenses).netBalancePaise === 28000, "Payer is owed ₹280");
 console.log("✓ Net and direct balances agree when payer ≠ recipient.");
+
+// Soft-deleted expenses stay in history but never affect balances
+console.log("\nTesting deleted expenses and per-person balances:");
+const mkExpense = (id: string, extra: Partial<Expense> = {}): Expense => ({
+  id,
+  groupId: "grp_trip",
+  title: id,
+  amountPaise: 30000,
+  payerId: "usr_me",
+  payerName: "Me",
+  recipientId: "usr_me",
+  recipientName: "Me",
+  recipientUpiId: "me@upi",
+  date: "2026-10-17",
+  splitType: "EQUAL",
+  shares: [
+    { userId: "usr_me", userName: "Me", amountPaise: 10000, status: "PAID" },
+    { userId: "usr_friend", userName: "Friend", amountPaise: 10000, status: "PENDING" },
+    { userId: "usr_stranger", userName: "Group Member", amountPaise: 10000, status: "PENDING" },
+  ],
+  createdBy: "usr_me",
+  createdAt: "2026-10-17T00:00:00.000Z",
+  ...extra,
+});
+const mixed = [mkExpense("exp_live"), mkExpense("exp_deleted", { deletedAt: "2026-10-17T01:00:00.000Z" })];
+assert(calculateNetBalances("usr_me", mixed).netBalancePaise === 20000, "Deleted expense must not count");
+const people = calculatePersonBalances("usr_me", mixed);
+assert(people.length === 2, "Both the friend and the non-friend group member are listed");
+assert(
+  people.reduce((sum, p) => sum + p.netBalancePaise, 0) === calculateNetBalances("usr_me", mixed).netBalancePaise,
+  "Per-person balances add up to the net balance"
+);
+assert(people.find((p) => p.userId === "usr_stranger")?.name === "Group Member", "Names come from the shares");
+assert(
+  canDeleteGroup("usr_me", { ...mockGroup, id: "grp_trip", createdBy: "usr_me" }, [mkExpense("x", { deletedAt: "t" })]).allowed,
+  "Deleted expenses don't block group deletion"
+);
+console.log("✓ Deleted expenses ignored; per-person balances match the net balance.");
 
 console.log("\n🎉 ALL FINANCIAL & INVARIANT BUSINESS LOGIC TESTS PASSED!");
