@@ -18,7 +18,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { Spinner } from "@/components/ui/spinner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useAcceptFriendRequest, useRejectFriendRequest, useSendFriendRequest } from "@/hooks/mutations"
+import { useAcceptFriendRequest, useCancelFriendRequest, useRejectFriendRequest, useSendFriendRequest } from "@/hooks/mutations"
 import { useFriendRequests, useFriendSuggestions } from "@/hooks/queries"
 
 type Tab = "received" | "sent"
@@ -42,6 +42,7 @@ function FriendRequestsContent() {
   const suggestions = useFriendSuggestions()
   const acceptRequest = useAcceptFriendRequest()
   const rejectRequest = useRejectFriendRequest({ successMessage: "Friend request rejected" })
+  const cancelRequest = useCancelFriendRequest()
   const sendRequest = useSendFriendRequest()
 
   // Follow the ?tab= param whenever it changes (same as the original effect).
@@ -68,7 +69,8 @@ function FriendRequestsContent() {
 
   const isRowPending = (id: string) =>
     (acceptRequest.isPending && acceptRequest.variables === id) ||
-    (rejectRequest.isPending && rejectRequest.variables === id)
+    (rejectRequest.isPending && rejectRequest.variables === id) ||
+    (cancelRequest.isPending && cancelRequest.variables === id)
 
   const renderLists = () => {
     if (requestsQuery.isPending) return <ListSkeleton rows={2} />
@@ -134,7 +136,7 @@ function FriendRequestsContent() {
                       size="sm"
                       variant="outline"
                       disabled={isRowPending(req.id)}
-                      onClick={() => handleReject(req.id)}
+                      onClick={() => cancelRequest.mutate(req.id)}
                     >
                       Cancel
                     </Button>

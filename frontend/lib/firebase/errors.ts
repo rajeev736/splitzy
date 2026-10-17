@@ -42,7 +42,19 @@ export function getFriendlyAuthErrorMessage(error: unknown): string {
       return "Sign in was cancelled. Please try again.";
 
     case "auth/popup-blocked":
-      return "The sign-in popup was blocked by your browser. Please allow popups for JoySplit and try again.";
+      return "The sign-in popup was blocked by your browser. Please allow popups for localhost and try again.";
+
+    case "auth/operation-not-allowed":
+      return "Google Sign-In is not enabled in Firebase Console. Please go to Firebase Console > Authentication > Sign-in method and enable Google provider with a support email.";
+
+    case "auth/unauthorized-domain":
+      return "Current domain (e.g. localhost) is not authorized. Please add it to Firebase Console > Authentication > Settings > Authorized domains.";
+
+    case "auth/cancelled-popup-request":
+      return "A sign-in popup is already open. Please complete or close that popup first.";
+
+    case "auth/internal-error":
+      return "Firebase authentication error. Please verify your Firebase API keys and project settings.";
 
     case "auth/email-not-verified":
       return "Please verify your email address before signing in. Check your inbox for the verification link.";

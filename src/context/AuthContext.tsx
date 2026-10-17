@@ -105,6 +105,7 @@ interface AuthContextValue {
   sendFriendRequest: (splitzyId: string) => Promise<{ success: boolean; message: string }>;
   acceptFriendRequest: (requestId: string) => Promise<void>;
   rejectFriendRequest: (requestId: string) => Promise<void>;
+  cancelFriendRequest: (requestId: string) => Promise<void>;
   removeFriend: (friendUid: string) => Promise<{ success: boolean; message?: string }>;
   leaveGroup: (groupId: string) => Promise<{ success: boolean; message?: string }>;
   deleteGroup: (groupId: string) => Promise<{ success: boolean; message?: string }>;
@@ -251,8 +252,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               persistUser(autoUser);
             }
           } catch (err: any) {
-            console.error("Firestore user fetch error:", err);
-            setProfileLoadError(err?.message || "Failed to load profile");
+            console.warn("Firestore user fetch notice:", err);
+            const emailName = (currentFbUser.email || "user").split("@")[0];
+            const fallbackUser: UserProfile = {
+              uid: currentFbUser.uid,
+              email: currentFbUser.email || "",
+              displayName: currentFbUser.displayName || emailName || "JoySplit User",
+              splitzyId: generateRandomSplitzyId(),
+              upiId: `${emailName.toLowerCase().replace(/[^a-z0-9]/g, "")}@upi`,
+              photoURL: currentFbUser.photoURL || "/assets/avatar_boy.jpg",
+              onboardingCompleted: false,
+              createdAt: new Date().toISOString(),
+            };
+            persistUser(fallbackUser);
           }
         }
       } else {
@@ -501,6 +513,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         });
 
+        // Instantly purge removed friends from active state so both sides update without delay
+        if (removedFriendUids.length > 0) {
+          setFriends((prev) => {
+            const next = prev.filter((f) => !removedFriendUids.includes(f.uid));
+            persistFriends(next);
+            return next;
+          });
+        }
+
         if (activeFriendUids.length === 0) {
           setFriends([]);
           persistFriends([]);
@@ -662,39 +683,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const uid = cred.user.uid;
 
       if (db) {
-        const userDoc = await getDoc(doc(db, "users", uid));
-        if (userDoc.exists()) {
-          const uData = userDoc.data() as UserProfile;
-          persistUser(uData);
-          return {
-            isNewUser: false,
-            onboardingCompleted: !!uData.onboardingCompleted,
-          };
-        } else {
-          const generatedId = generateRandomSplitzyId();
+        try {
+          const userDoc = await getDoc(doc(db, "users", uid));
+          if (userDoc.exists()) {
+            const uData = userDoc.data() as UserProfile;
+            persistUser(uData);
+            return {
+              isNewUser: false,
+              onboardingCompleted: !!uData.onboardingCompleted,
+            };
+          } else {
+            const generatedId = generateRandomSplitzyId();
+            const emailName = (cred.user.email || "user").split("@")[0];
+            const newUser: UserProfile = {
+              uid,
+              email: cred.user.email || "",
+              displayName: cred.user.displayName || emailName || "Google User",
+              splitzyId: generatedId,
+              upiId: `${emailName.toLowerCase().replace(/[^a-z0-9]/g, "")}@upi`,
+              photoURL: cred.user.photoURL || "/assets/avatar_boy.jpg",
+              onboardingCompleted: false,
+              createdAt: new Date().toISOString(),
+            };
+            try {
+              await setDoc(doc(db, "splitzyIds", generatedId), {
+                uid,
+                createdAt: newUser.createdAt,
+                displayName: newUser.displayName,
+                email: newUser.email,
+              });
+              await setDoc(doc(db, "users", uid), newUser);
+            } catch (initErr) {
+              console.warn("Failed to provision new Google profile in Firestore:", initErr);
+            }
+            persistUser(newUser);
+            return {
+              isNewUser: true,
+              onboardingCompleted: false,
+            };
+          }
+        } catch (dbErr) {
+          console.warn("Firestore access error during Google login:", dbErr);
           const emailName = (cred.user.email || "user").split("@")[0];
-          const newUser: UserProfile = {
+          const fallbackUser: UserProfile = {
             uid,
             email: cred.user.email || "",
             displayName: cred.user.displayName || emailName || "Google User",
-            splitzyId: generatedId,
+            splitzyId: generateRandomSplitzyId(),
             upiId: `${emailName.toLowerCase().replace(/[^a-z0-9]/g, "")}@upi`,
             photoURL: cred.user.photoURL || "/assets/avatar_boy.jpg",
             onboardingCompleted: false,
             createdAt: new Date().toISOString(),
           };
-          try {
-            await setDoc(doc(db, "users", uid), newUser);
-            await setDoc(doc(db, "splitzyIds", generatedId), {
-              uid,
-              createdAt: newUser.createdAt,
-              displayName: newUser.displayName,
-              email: newUser.email,
-            });
-          } catch (initErr) {
-            console.warn("Failed to provision new Google profile in Firestore:", initErr);
-          }
-          persistUser(newUser);
+          persistUser(fallbackUser);
           return {
             isNewUser: true,
             onboardingCompleted: false,
@@ -1364,10 +1405,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Cancel outgoing friend request (by sender)
+  const cancelFriendRequest = async (requestId: string) => {
+    if (isFirebaseConfigured && db) {
+      try {
+        await updateDoc(doc(db, "friendRequests", requestId), {
+          status: "CANCELLED",
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.warn("updateDoc cancel failed, attempting deleteDoc:", err);
+        try {
+          await deleteDoc(doc(db, "friendRequests", requestId));
+        } catch (delErr) {
+          console.error("deleteDoc cancel fallback failed:", delErr);
+          throw delErr;
+        }
+      }
+    }
+    const updatedReqs = friendRequests.map((r) =>
+      r.id === requestId ? { ...r, status: "CANCELLED" as const } : r
+    );
+    persistFriendRequests(updatedReqs);
+  };
+
   // Reject friend request
   const rejectFriendRequest = async (requestId: string) => {
+    const req = friendRequests.find((r) => r.id === requestId);
+    // If current user is sender, route to cancelFriendRequest to obey Firestore rules
+    if (req && user && req.senderId === user.uid) {
+      return cancelFriendRequest(requestId);
+    }
+
     if (isFirebaseConfigured && db) {
-      await updateDoc(doc(db, "friendRequests", requestId), { status: "REJECTED" });
+      try {
+        await updateDoc(doc(db, "friendRequests", requestId), {
+          status: "REJECTED",
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.warn("updateDoc reject failed, attempting deleteDoc:", err);
+        try {
+          await deleteDoc(doc(db, "friendRequests", requestId));
+        } catch (delErr) {
+          console.error("deleteDoc reject fallback failed:", delErr);
+          throw delErr;
+        }
+      }
     }
     const updatedReqs = friendRequests.map((r) =>
       r.id === requestId ? { ...r, status: "REJECTED" as const } : r
@@ -1384,13 +1468,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const canonicalId = [user.uid, friendUid].sort().join("_");
+    const now = new Date().toISOString();
     if (isFirebaseConfigured && db) {
       await setDoc(doc(db, "friendships", canonicalId), {
         id: canonicalId,
         users: [user.uid, friendUid],
         status: "REMOVED",
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
       }, { merge: true });
+
+      // Clean up any old friendRequests between these two users
+      try {
+        const qReqsA = query(
+          collection(db, "friendRequests"),
+          where("senderId", "==", user.uid),
+          where("receiverId", "==", friendUid)
+        );
+        const qReqsB = query(
+          collection(db, "friendRequests"),
+          where("senderId", "==", friendUid),
+          where("receiverId", "==", user.uid)
+        );
+        const [snapA, snapB] = await Promise.all([getDocs(qReqsA), getDocs(qReqsB)]);
+        for (const d of [...snapA.docs, ...snapB.docs]) {
+          await deleteDoc(d.ref).catch(() => {});
+        }
+      } catch (cleanErr) {
+        console.warn("Notice: could not delete old friend requests on removal:", cleanErr);
+      }
     }
 
     const updatedFriends = friends.filter((f) => f.uid !== friendUid);
@@ -2093,6 +2198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         sendFriendRequest,
         acceptFriendRequest,
         rejectFriendRequest,
+        cancelFriendRequest,
         removeFriend,
         leaveGroup,
         deleteGroup,

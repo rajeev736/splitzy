@@ -170,15 +170,21 @@ export async function loginWithGoogle(): Promise<{
   const firestore = getDb()
   if (!firestore) return { profile: null, isNewUser: false, onboardingCompleted: false }
 
-  const snap = await getDoc(doc(firestore, "users", cred.user.uid))
-  if (snap.exists()) {
-    const profile = snap.data() as UserProfile
-    return { profile, isNewUser: false, onboardingCompleted: !!profile.onboardingCompleted }
-  }
+  try {
+    const snap = await getDoc(doc(firestore, "users", cred.user.uid))
+    if (snap.exists()) {
+      const profile = snap.data() as UserProfile
+      return { profile, isNewUser: false, onboardingCompleted: !!profile.onboardingCompleted }
+    }
 
-  const newUser = buildAutoProfile(cred.user, "Google User")
-  await provisionProfile(newUser, "userFirst")
-  return { profile: newUser, isNewUser: true, onboardingCompleted: false }
+    const newUser = buildAutoProfile(cred.user, "Google User")
+    await provisionProfile(newUser, "userFirst")
+    return { profile: newUser, isNewUser: true, onboardingCompleted: false }
+  } catch (err) {
+    console.warn("Firestore error during Google login:", err)
+    const fallbackUser = buildAutoProfile(cred.user, "Google User")
+    return { profile: fallbackUser, isNewUser: true, onboardingCompleted: false }
+  }
 }
 
 /**

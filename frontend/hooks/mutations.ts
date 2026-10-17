@@ -277,9 +277,16 @@ export const useAcceptFriendRequest = createUserMutation({
 })
 
 export const useRejectFriendRequest = createUserMutation({
-  run: async (_ctx, requestId: string) => friendService.rejectFriendRequest(requestId),
+  run: async (ctx, requestId: string) => friendService.rejectFriendRequest(requestId, ctx.user.uid),
   apply: ({ cache }, _data, requestId) =>
     cache.setFriendRequests(patchById<FriendRequest>(requestId, { status: "REJECTED" })),
+})
+
+export const useCancelFriendRequest = createUserMutation({
+  run: async (_ctx, requestId: string) => friendService.cancelFriendRequest(requestId),
+  apply: ({ cache }, _data, requestId) =>
+    cache.setFriendRequests(patchById<FriendRequest>(requestId, { status: "CANCELLED" })),
+  defaults: { successMessage: "Friend request cancelled" },
 })
 
 export const useRemoveFriend = createUserMutation({

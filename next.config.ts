@@ -20,6 +20,10 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
+        hostname: "*.firebasestorage.app",
+      },
+      {
+        protocol: "https",
         hostname: "api.dicebear.com",
       },
     ],

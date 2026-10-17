@@ -20,6 +20,7 @@ function FriendRequestsContent() {
     friendRequests,
     acceptFriendRequest,
     rejectFriendRequest,
+    cancelFriendRequest,
     sendFriendRequest,
     getMutualFriendSuggestions,
     user,
@@ -83,6 +84,15 @@ function FriendRequestsContent() {
       success("Friend request rejected");
     } catch {
       error("Failed to reject request");
+    }
+  };
+
+  const handleCancel = async (id: string) => {
+    try {
+      await cancelFriendRequest(id);
+      success("Friend request cancelled");
+    } catch {
+      error("Failed to cancel request");
     }
   };
 
@@ -213,8 +223,8 @@ function FriendRequestsContent() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => handleReject(req.id)}
-                  className="!text-slate-600 dark:!text-slate-300 !border-slate-200 dark:!border-slate-700"
+                  onClick={() => handleCancel(req.id)}
+                  className="!text-slate-600 dark:!text-slate-300 !border-slate-200 dark:!border-slate-700 hover:!bg-red-50 hover:!text-red-600 hover:!border-red-200 dark:hover:!bg-red-950/30 dark:hover:!text-red-400"
                 >
                   Cancel
                 </Button>

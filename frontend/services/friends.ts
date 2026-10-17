@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore"
+import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore"
 
 import { AppError } from "@/lib/errors"
 import { canRemoveFriend } from "@/lib/money"
@@ -128,10 +128,39 @@ export async function acceptFriendRequest(ctx: FriendsContext, requestId: string
   }
 }
 
-export async function rejectFriendRequest(requestId: string) {
+export async function cancelFriendRequest(requestId: string) {
   const firestore = getDb()
   if (firestore) {
-    await updateDoc(doc(firestore, "friendRequests", requestId), { status: "REJECTED" })
+    try {
+      await updateDoc(doc(firestore, "friendRequests", requestId), {
+        status: "CANCELLED",
+        updatedAt: nowIso(),
+      })
+    } catch {
+      await deleteDoc(doc(firestore, "friendRequests", requestId))
+    }
+  }
+}
+
+export async function rejectFriendRequest(requestId: string, currentUid?: string) {
+  const firestore = getDb()
+  if (firestore) {
+    if (currentUid) {
+      try {
+        const snap = await getDoc(doc(firestore, "friendRequests", requestId))
+        if (snap.exists() && snap.data()?.senderId === currentUid) {
+          return cancelFriendRequest(requestId)
+        }
+      } catch {}
+    }
+    try {
+      await updateDoc(doc(firestore, "friendRequests", requestId), {
+        status: "REJECTED",
+        updatedAt: nowIso(),
+      })
+    } catch {
+      await deleteDoc(doc(firestore, "friendRequests", requestId))
+    }
   }
 }
 
@@ -148,6 +177,26 @@ export async function removeFriend(user: UserProfile, friendUid: string, expense
       { id, users: [user.uid, friendUid], status: "REMOVED", updatedAt: nowIso() },
       { merge: true }
     )
+
+    // Clean up any old friendRequests between these two users
+    try {
+      const qReqsA = query(
+        collection(firestore, "friendRequests"),
+        where("senderId", "==", user.uid),
+        where("receiverId", "==", friendUid)
+      )
+      const qReqsB = query(
+        collection(firestore, "friendRequests"),
+        where("senderId", "==", friendUid),
+        where("receiverId", "==", user.uid)
+      )
+      const [snapA, snapB] = await Promise.all([getDocs(qReqsA), getDocs(qReqsB)])
+      for (const d of [...snapA.docs, ...snapB.docs]) {
+        await deleteDoc(d.ref).catch(() => {})
+      }
+    } catch (cleanErr) {
+      console.warn("Notice: could not delete old friend requests on removal:", cleanErr)
+    }
   }
 }
 

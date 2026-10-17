@@ -54,7 +54,7 @@ export default function FriendsPage() {
   }, []);
 
   const pendingReceivedCount = friendRequests.filter(
-    (r) => r.status === "PENDING"
+    (r) => r.status === "PENDING" && r.receiverId === user?.uid
   ).length;
 
   const filteredFriends = friends.filter(

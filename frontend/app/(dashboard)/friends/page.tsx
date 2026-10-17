@@ -60,7 +60,9 @@ export default function FriendsPage() {
   const [profileFriend, setProfileFriend] = React.useState<UserProfile | null>(null)
   const [removeTarget, setRemoveTarget] = React.useState<UserProfile | null>(null)
 
-  const pendingReceivedCount = friendRequests.filter((r) => r.status === "PENDING").length
+  const pendingReceivedCount = friendRequests.filter(
+    (r) => r.status === "PENDING" && r.receiverId === user?.uid
+  ).length
 
   const q = searchQuery.toLowerCase()
   const filteredFriends = friendsQuery.data.filter(
