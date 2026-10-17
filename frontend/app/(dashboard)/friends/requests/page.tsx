@@ -1,0 +1,257 @@
+"use client"
+
+import * as React from "react"
+import { useSearchParams } from "next/navigation"
+import { UserAdd01Icon, UserGroupIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { toast } from "sonner"
+
+import { AppHeader } from "@/components/layout/app-header"
+import { PageContainer } from "@/components/layout/app-shell"
+import { useSession } from "@/components/providers/session-provider"
+import { ButtonLink } from "@/components/shared/button-link"
+import { ListSkeleton, QueryError } from "@/components/shared/query-state"
+import { UserAvatar } from "@/components/shared/user-avatar"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item"
+import { Spinner } from "@/components/ui/spinner"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useAcceptFriendRequest, useRejectFriendRequest, useSendFriendRequest } from "@/hooks/mutations"
+import { useFriendRequests, useFriendSuggestions } from "@/hooks/queries"
+
+type Tab = "received" | "sent"
+
+const toTab = (param: string | null): Tab | null => (param === "sent" || param === "received" ? param : null)
+
+function EmptyListCard({ children }: { children: React.ReactNode }) {
+  return (
+    <Card>
+      <CardContent className="py-4 text-center text-xs text-muted-foreground">{children}</CardContent>
+    </Card>
+  )
+}
+
+function FriendRequestsContent() {
+  const searchParams = useSearchParams()
+  const tabParam = searchParams.get("tab")
+
+  const { user } = useSession()
+  const requestsQuery = useFriendRequests()
+  const suggestions = useFriendSuggestions()
+  const acceptRequest = useAcceptFriendRequest()
+  const rejectRequest = useRejectFriendRequest({ successMessage: "Friend request rejected" })
+  const sendRequest = useSendFriendRequest()
+
+  // Follow the ?tab= param whenever it changes (same as the original effect).
+  const [activeTab, setActiveTab] = React.useState<Tab>(toTab(tabParam) ?? "received")
+  const [prevTabParam, setPrevTabParam] = React.useState(tabParam)
+  if (tabParam !== prevTabParam) {
+    setPrevTabParam(tabParam)
+    const next = toTab(tabParam)
+    if (next) setActiveTab(next)
+  }
+
+  const myUid = user?.uid
+  const receivedRequests = requestsQuery.data.filter((r) => r.status === "PENDING" && r.receiverId === myUid)
+  const sentRequests = requestsQuery.data.filter((r) => r.status === "PENDING" && r.senderId === myUid)
+  const mutualSuggestions = suggestions.data ?? []
+
+  const handleAccept = (id: string, name: string) =>
+    acceptRequest.mutate(id, { onSuccess: () => toast.success(`You and ${name} are now friends!`) })
+
+  const handleReject = (id: string) => rejectRequest.mutate(id)
+
+  const handleSendRequest = (splitzyId: string) =>
+    sendRequest.mutate(splitzyId, { onSuccess: () => void suggestions.refetch() })
+
+  const isRowPending = (id: string) =>
+    (acceptRequest.isPending && acceptRequest.variables === id) ||
+    (rejectRequest.isPending && rejectRequest.variables === id)
+
+  const renderLists = () => {
+    if (requestsQuery.isPending) return <ListSkeleton rows={2} />
+    if (requestsQuery.isError) return <QueryError error={requestsQuery.error} onRetry={requestsQuery.refetch} />
+    return (
+      <>
+        <TabsContent value="received">
+          {receivedRequests.length > 0 ? (
+            <ItemGroup className="gap-3">
+              {receivedRequests.map((req) => (
+                <Item key={req.id} variant="outline" className="flex-col items-stretch bg-card p-4 sm:flex-row sm:items-center">
+                  <div className="flex flex-1 items-center gap-3">
+                    <ItemMedia>
+                      <UserAvatar src={req.senderPhoto} name={req.senderName} size="md" />
+                    </ItemMedia>
+                    <ItemContent>
+                      <ItemTitle className="font-bold">{req.senderName}</ItemTitle>
+                      <ItemDescription className="font-mono text-xs">{req.senderSplitzyId}</ItemDescription>
+                    </ItemContent>
+                  </div>
+                  <ItemActions className="pt-2 sm:pt-0">
+                    <Button
+                      size="sm"
+                      className="flex-1 sm:flex-none"
+                      disabled={isRowPending(req.id)}
+                      onClick={() => handleAccept(req.id, req.senderName)}
+                    >
+                      Accept
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="flex-1 sm:flex-none"
+                      disabled={isRowPending(req.id)}
+                      onClick={() => handleReject(req.id)}
+                    >
+                      Reject
+                    </Button>
+                  </ItemActions>
+                </Item>
+              ))}
+            </ItemGroup>
+          ) : (
+            <EmptyListCard>No pending received requests.</EmptyListCard>
+          )}
+        </TabsContent>
+
+        <TabsContent value="sent">
+          {sentRequests.length > 0 ? (
+            <ItemGroup className="gap-3">
+              {sentRequests.map((req) => (
+                <Item key={req.id} variant="outline" className="bg-card p-4">
+                  <ItemMedia>
+                    <UserAvatar name={req.receiverName} size="md" />
+                  </ItemMedia>
+                  <ItemContent className="gap-0.5">
+                    <ItemTitle className="font-bold">{req.receiverName}</ItemTitle>
+                    <ItemDescription className="font-mono text-xs">{req.receiverSplitzyId}</ItemDescription>
+                    <span className="text-[11px] font-semibold text-warning">Pending Response</span>
+                  </ItemContent>
+                  <ItemActions>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={isRowPending(req.id)}
+                      onClick={() => handleReject(req.id)}
+                    >
+                      Cancel
+                    </Button>
+                  </ItemActions>
+                </Item>
+              ))}
+            </ItemGroup>
+          ) : (
+            <EmptyListCard>No outgoing requests.</EmptyListCard>
+          )}
+        </TabsContent>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <AppHeader
+        title="Friend Requests"
+        showBack
+        rightAction={
+          <ButtonLink href="/friends/add" variant="secondary" size="icon" className="rounded-full" aria-label="Add Friend">
+            <HugeiconsIcon icon={UserAdd01Icon} className="size-5" strokeWidth={2.2} />
+          </ButtonLink>
+        }
+      />
+
+      <PageContainer className="max-w-xl">
+        {/* Received / Sent */}
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as Tab)} className="gap-4">
+          <TabsList className="h-10! w-full">
+            <TabsTrigger value="received" className="text-xs font-bold">
+              Received ({receivedRequests.length})
+            </TabsTrigger>
+            <TabsTrigger value="sent" className="text-xs font-bold">
+              Sent ({sentRequests.length})
+            </TabsTrigger>
+          </TabsList>
+          {renderLists()}
+        </Tabs>
+
+        {/* People you may know (mutual friends) */}
+        <section className="flex flex-col gap-3 pt-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold tracking-tight">People you may know</h2>
+            {mutualSuggestions.length > 0 && (
+              <span className="text-xs font-bold text-primary">{mutualSuggestions.length} suggested</span>
+            )}
+          </div>
+
+          {suggestions.isPending ? (
+            <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
+              <Spinner />
+              Finding mutual connections...
+            </div>
+          ) : mutualSuggestions.length === 0 ? (
+            <Empty className="border border-dashed bg-card p-6">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <HugeiconsIcon icon={UserGroupIcon} />
+                </EmptyMedia>
+                <EmptyTitle className="text-xs font-medium">No mutual friends to suggest yet.</EmptyTitle>
+                <EmptyDescription className="text-[11px]">
+                  When you and your friends share mutual connections, they will appear here.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <ItemGroup className="gap-2.5">
+              {mutualSuggestions.map(({ user: su, mutualCount, mutualFriendNames }) => {
+                const isAdding = sendRequest.isPending && sendRequest.variables === su.splitzyId
+                return (
+                  <Item key={su.uid} variant="outline" size="sm" className="bg-card">
+                    <ItemMedia>
+                      <UserAvatar src={su.photoURL} name={su.displayName} size="sm" />
+                    </ItemMedia>
+                    <ItemContent className="gap-0">
+                      <ItemTitle className="text-xs font-bold">{su.displayName}</ItemTitle>
+                      <span className="font-mono text-[11px] text-muted-foreground">{su.splitzyId}</span>
+                      <span className="text-[10px] font-medium text-primary">
+                        {mutualCount} mutual friend{mutualCount > 1 ? "s" : ""}
+                        {mutualFriendNames.length > 0 && ` (${mutualFriendNames.slice(0, 2).join(", ")})`}
+                      </span>
+                    </ItemContent>
+                    <ItemActions>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="px-4"
+                        disabled={isAdding}
+                        onClick={() => handleSendRequest(su.splitzyId)}
+                      >
+                        {isAdding && <Spinner />}
+                        Add
+                      </Button>
+                    </ItemActions>
+                  </Item>
+                )
+              })}
+            </ItemGroup>
+          )}
+        </section>
+      </PageContainer>
+    </>
+  )
+}
+
+export default function FriendRequestsPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="flex min-h-svh items-center justify-center">
+          <Spinner className="size-8 text-primary" />
+        </div>
+      }
+    >
+      <FriendRequestsContent />
+    </React.Suspense>
+  )
+}
