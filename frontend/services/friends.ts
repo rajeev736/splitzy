@@ -51,14 +51,47 @@ export async function sendFriendRequest(
   const pending = friendRequests.some(
     (r) =>
       r.status === "PENDING" &&
-      ((r.senderSplitzyId === user.splitzyId && r.receiverSplitzyId === cleanId) ||
-        (r.receiverSplitzyId === user.splitzyId && r.senderSplitzyId === cleanId))
+      ((r.senderSplitzyId?.toUpperCase() === user.splitzyId.toUpperCase() &&
+        r.receiverSplitzyId?.toUpperCase() === cleanId) ||
+        (r.receiverSplitzyId?.toUpperCase() === user.splitzyId.toUpperCase() &&
+          r.senderSplitzyId?.toUpperCase() === cleanId))
   )
   if (pending) throw new AppError("A friend request is already pending with this user")
 
   const target = await fetchUserBySplitzyId(cleanId)
   if (!target) {
     throw new AppError(`No user found with JoySplit ID "${cleanId}". Make sure the ID is correct.`)
+  }
+
+  if (friends.some((f) => f.uid === target.uid)) {
+    throw new AppError("This user is already in your friends list")
+  }
+  const pendingByUid = friendRequests.some(
+    (r) =>
+      r.status === "PENDING" &&
+      ((r.senderId === user.uid && r.receiverId === target.uid) ||
+        (r.senderId === target.uid && r.receiverId === user.uid))
+  )
+  if (pendingByUid) throw new AppError("A friend request is already pending with this user")
+
+  const firestore = getDb()
+  if (firestore) {
+    const qPending = query(
+      collection(firestore, "friendRequests"),
+      where("senderId", "==", user.uid),
+      where("receiverId", "==", target.uid),
+      where("status", "==", "PENDING")
+    )
+    const pendingSnap = await getDocs(qPending)
+    if (!pendingSnap.empty) {
+      const existingReq = pendingSnap.docs[0].data() as FriendRequest
+      if (pendingSnap.docs.length > 1) {
+        for (let i = 1; i < pendingSnap.docs.length; i++) {
+          await deleteDoc(pendingSnap.docs[i].ref).catch(() => {})
+        }
+      }
+      return { request: existingReq, message: `Friend request sent to ${target.displayName}!` }
+    }
   }
 
   const reqId = `freq_${Date.now()}_${target.uid}`
@@ -75,7 +108,6 @@ export async function sendFriendRequest(
     createdAt: nowIso(),
   }
 
-  const firestore = getDb()
   if (firestore) {
     await setDoc(doc(firestore, "friendRequests", reqId), request)
     await sendNotification(
@@ -133,12 +165,30 @@ export async function cancelFriendRequest(requestId: string) {
   const firestore = getDb()
   if (firestore) {
     try {
+      const snap = await getDoc(doc(firestore, "friendRequests", requestId))
+      const data = snap.exists() ? (snap.data() as FriendRequest) : null
       await updateDoc(doc(firestore, "friendRequests", requestId), {
         status: "CANCELLED",
         updatedAt: nowIso(),
       })
+      if (data?.senderId && data?.receiverId) {
+        const qDups = query(
+          collection(firestore, "friendRequests"),
+          where("senderId", "==", data.senderId),
+          where("receiverId", "==", data.receiverId),
+          where("status", "==", "PENDING")
+        )
+        const dupSnap = await getDocs(qDups)
+        for (const d of dupSnap.docs) {
+          if (d.id !== requestId) {
+            await updateDoc(d.ref, { status: "CANCELLED", updatedAt: nowIso() }).catch(() =>
+              deleteDoc(d.ref).catch(() => {})
+            )
+          }
+        }
+      }
     } catch {
-      await deleteDoc(doc(firestore, "friendRequests", requestId))
+      await deleteDoc(doc(firestore, "friendRequests", requestId)).catch(() => {})
     }
   }
 }

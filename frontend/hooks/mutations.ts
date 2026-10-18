@@ -198,7 +198,16 @@ export const useInviteGroupMember = createUserMutation({
         })
       )
     }
-    if (res.friendRequest) cache.setFriendRequests((list) => [res.friendRequest!, ...list])
+    if (res.friendRequest) {
+      cache.setFriendRequests((list) => [
+        res.friendRequest!,
+        ...list.filter(
+          (r) =>
+            r.id !== res.friendRequest!.id &&
+            (r.status !== "PENDING" || r.receiverId !== res.friendRequest!.receiverId)
+        ),
+      ])
+    }
   },
   defaults: { successMessage: withMessage },
 })
@@ -284,7 +293,15 @@ const friendsCtx = ({ user, cache }: Ctx) => ({
 
 export const useSendFriendRequest = createUserMutation({
   run: (ctx, splitzyId: string) => friendService.sendFriendRequest(friendsCtx(ctx), splitzyId),
-  apply: ({ cache }, res) => cache.setFriendRequests((list) => [res.request, ...list]),
+  apply: ({ cache }, res) =>
+    cache.setFriendRequests((list) => [
+      res.request,
+      ...list.filter(
+        (r) =>
+          r.id !== res.request.id &&
+          (r.status !== "PENDING" || r.receiverId !== res.request.receiverId)
+      ),
+    ]),
   defaults: { successMessage: withMessage },
 })
 
@@ -304,8 +321,16 @@ export const useRejectFriendRequest = createUserMutation({
 
 export const useCancelFriendRequest = createUserMutation({
   run: async (_ctx, requestId: string) => friendService.cancelFriendRequest(requestId),
-  apply: ({ cache }, _data, requestId) =>
-    cache.setFriendRequests(patchById<FriendRequest>(requestId, { status: "CANCELLED" })),
+  apply: ({ cache }, _data, requestId) => {
+    const targetReq = cache.friendRequests().find((r) => r.id === requestId)
+    cache.setFriendRequests((list) =>
+      list.map((r) =>
+        r.id === requestId || (targetReq && r.status === "PENDING" && r.receiverId === targetReq.receiverId)
+          ? { ...r, status: "CANCELLED" as const }
+          : r
+      )
+    )
+  },
   defaults: { successMessage: "Friend request cancelled" },
 })
 

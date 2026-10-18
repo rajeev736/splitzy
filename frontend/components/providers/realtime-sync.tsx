@@ -42,7 +42,27 @@ export function RealtimeSync() {
     const publishRequests = () => {
       const map = new Map<string, FriendRequest>()
       ;[...incoming, ...outgoing].forEach((r) => map.set(r.id, r))
-      publish(queryClient, requestsKey, Array.from(map.values()))
+      const seenSent = new Set<string>()
+      const seenReceived = new Set<string>()
+      const list = Array.from(map.values())
+        .sort(byNewest)
+        .filter((r) => {
+          if (r.status !== "PENDING") return true
+          if (r.senderId === uid) {
+            const key = r.receiverId || r.receiverSplitzyId || r.id
+            if (seenSent.has(key)) return false
+            seenSent.add(key)
+            return true
+          }
+          if (r.receiverId === uid) {
+            const key = r.senderId || r.senderSplitzyId || r.id
+            if (seenReceived.has(key)) return false
+            seenReceived.add(key)
+            return true
+          }
+          return true
+        })
+      publish(queryClient, requestsKey, list)
     }
 
     // ── Groups (member OR invited) ──

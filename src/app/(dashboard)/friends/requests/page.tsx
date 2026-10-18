@@ -42,12 +42,12 @@ function FriendRequestsContent() {
   const [addingId, setAddingId] = useState<string | null>(null);
 
   const myUid = user?.uid;
-  const receivedRequests = friendRequests.filter(
-    (r) => r.status === "PENDING" && r.receiverId === myUid
-  );
-  const sentRequests = friendRequests.filter(
-    (r) => r.status === "PENDING" && r.senderId === myUid
-  );
+  const receivedRequests = friendRequests
+    .filter((r) => r.status === "PENDING" && r.receiverId === myUid)
+    .filter((r, i, arr) => arr.findIndex((x) => (x.senderId || x.senderSplitzyId || x.id) === (r.senderId || r.senderSplitzyId || r.id)) === i);
+  const sentRequests = friendRequests
+    .filter((r) => r.status === "PENDING" && r.senderId === myUid)
+    .filter((r, i, arr) => arr.findIndex((x) => (x.receiverId || x.receiverSplitzyId || x.id) === (r.receiverId || r.receiverSplitzyId || r.id)) === i);
 
   useEffect(() => {
     let isMounted = true;

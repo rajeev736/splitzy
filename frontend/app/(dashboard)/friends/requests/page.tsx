@@ -57,8 +57,32 @@ function FriendRequestsContent() {
   }
 
   const myUid = user?.uid
-  const receivedRequests = requestsQuery.data.filter((r) => r.status === "PENDING" && r.receiverId === myUid)
-  const sentRequests = requestsQuery.data.filter((r) => r.status === "PENDING" && r.senderId === myUid)
+  const receivedRequests = React.useMemo(() => {
+    if (!myUid) return []
+    const seen = new Set<string>()
+    return requestsQuery.data
+      .filter((r) => r.status === "PENDING" && r.receiverId === myUid)
+      .filter((r) => {
+        const key = r.senderId || r.senderSplitzyId?.toUpperCase() || r.id
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+  }, [requestsQuery.data, myUid])
+
+  const sentRequests = React.useMemo(() => {
+    if (!myUid) return []
+    const seen = new Set<string>()
+    return requestsQuery.data
+      .filter((r) => r.status === "PENDING" && r.senderId === myUid)
+      .filter((r) => {
+        const key = r.receiverId || r.receiverSplitzyId?.toUpperCase() || r.id
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+  }, [requestsQuery.data, myUid])
+
   const mutualSuggestions = suggestions.data ?? []
 
   const handleAccept = (id: string, name: string) =>

@@ -62,9 +62,18 @@ export default function FriendsPage() {
   const [profileFriend, setProfileFriend] = React.useState<UserProfile | null>(null)
   const [removeTarget, setRemoveTarget] = React.useState<UserProfile | null>(null)
 
-  const pendingReceivedCount = friendRequests.filter(
-    (r) => r.status === "PENDING" && r.receiverId === user?.uid
-  ).length
+  const pendingReceivedCount = React.useMemo(() => {
+    if (!user?.uid) return 0
+    const seen = new Set<string>()
+    return friendRequests
+      .filter((r) => r.status === "PENDING" && r.receiverId === user.uid)
+      .filter((r) => {
+        const key = r.senderId || r.senderSplitzyId?.toUpperCase() || r.id
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      }).length
+  }, [friendRequests, user?.uid])
 
   // Full JoySplit IDs are looked up as you type; anything else on Enter
   const [submittedId, setSubmittedId] = React.useState("")

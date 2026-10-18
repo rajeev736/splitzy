@@ -1345,7 +1345,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
     }
 
-    persistFriendRequests([newReq, ...friendRequests]);
+    persistFriendRequests([
+      newReq,
+      ...friendRequests.filter(
+        (r) =>
+          r.id !== newReq.id &&
+          (r.status !== "PENDING" || r.receiverId !== newReq.receiverId)
+      ),
+    ]);
     return { success: true, message: `Friend request sent to ${target.displayName}!` };
   };
 
