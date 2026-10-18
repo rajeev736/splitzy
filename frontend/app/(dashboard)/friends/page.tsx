@@ -46,7 +46,9 @@ import { useExpenses, useFriendRequests, useFriends } from "@/hooks/queries"
 import { canRemoveFriend } from "@/lib/money"
 import type { UserProfile } from "@/lib/types"
 
-const splitHref = (uid: string) => `/expenses/new?friend=${uid}`
+import { IdLookupResult, JOYSPLIT_ID_PATTERN } from "./_components/id-lookup-result"
+
+const splitHref =(uid: string) => `/expenses/new?friend=${uid}`
 
 export default function FriendsPage() {
   const router = useRouter()
@@ -63,6 +65,11 @@ export default function FriendsPage() {
   const pendingReceivedCount = friendRequests.filter(
     (r) => r.status === "PENDING" && r.receiverId === user?.uid
   ).length
+
+  // Full JoySplit IDs are looked up as you type; anything else on Enter
+  const [submittedId, setSubmittedId] = React.useState("")
+  const typedId = searchQuery.trim().toUpperCase()
+  const lookupId = JOYSPLIT_ID_PATTERN.test(typedId) ? typedId : submittedId
 
   const q = searchQuery.toLowerCase()
   const filteredFriends = friendsQuery.data.filter(
@@ -119,10 +126,21 @@ export default function FriendsPage() {
           </InputGroupAddon>
           <InputGroupInput
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search friends by name or JoySplit ID..."
+            onChange={(e) => {
+              setSearchQuery(e.target.value)
+              setSubmittedId("")
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && searchQuery.trim()) setSubmittedId(searchQuery.trim().toUpperCase())
+            }}
+            placeholder="Search friends, or enter a JoySplit ID to find someone new..."
           />
         </InputGroup>
+
+        {/* A JoySplit ID that isn't one of your friends: show the person with Add Friend */}
+        {lookupId && !friendsQuery.data.some((f) => f.splitzyId.toUpperCase() === lookupId) && (
+          <IdLookupResult splitzyId={lookupId} />
+        )}
 
         {friendsQuery.isPending ? (
           <ListSkeleton rows={4} />
@@ -140,6 +158,7 @@ export default function FriendsPage() {
               {filteredFriends.length === 0 ? (
                 <p className="p-8 text-center text-xs text-muted-foreground">
                   No friends found matching &quot;{searchQuery}&quot;.
+                  {!lookupId && " Press Enter to look it up as a JoySplit ID."}
                 </p>
               ) : (
                 <ItemGroup className="gap-0 px-1">

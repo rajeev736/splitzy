@@ -19,6 +19,7 @@ import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
 import { GroupError, GroupLoading, GroupNotFound } from "../_components/group-state"
 import { InviteFriendsList } from "../_components/invite-friends-list"
 import { MemberRow } from "../_components/member-row"
+import { PendingInvites } from "../_components/pending-invites"
 
 export default function GroupMembersPage() {
   const params = useParams<{ groupId: string }>()
@@ -26,7 +27,7 @@ export default function GroupMembersPage() {
   const { user } = useSession()
   const groupQuery = useGroup(groupId)
   const { data: friends } = useFriends()
-  const invite = useInviteGroupMember({ successMessage: "Invitation sent to friend!" })
+  const invite = useInviteGroupMember()
   const { copied, copy } = useCopyToClipboard()
   const [isInviteOpen, setIsInviteOpen] = React.useState(false)
 
@@ -96,6 +97,7 @@ export default function GroupMembersPage() {
                 )
               })}
             </ItemGroup>
+            <PendingInvites group={group} className="mt-4" />
           </CardContent>
         </Card>
 
@@ -143,7 +145,7 @@ export default function GroupMembersPage() {
             friends={friends}
             className="max-h-60"
             pendingUid={invite.isPending ? invite.variables?.target : undefined}
-            onInvite={(uid) => invite.mutate({ groupId: group.id, target: uid })}
+            onInvite={(uid) => invite.mutate({ groupId: group.id, target: uid, option: "GROUP_ONLY" })}
           />
 
           <Button variant="secondary" className="w-full" onClick={() => setIsInviteOpen(false)}>

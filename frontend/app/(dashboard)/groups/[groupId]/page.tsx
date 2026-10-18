@@ -26,6 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useDeleteGroup, useLeaveGroup } from "@/hooks/mutations"
 import { useExpenses, useGroup, useGroupExpenses } from "@/hooks/queries"
 import { canDeleteGroup, canUserLeaveGroup } from "@/lib/money"
+import { GroupInviteCard } from "../../_components/group-invite-card"
 import { EditGroupDialog } from "./_components/edit-group-dialog"
 import { GroupActionsMenu } from "./_components/group-actions-menu"
 import { GroupExpenseList } from "./_components/group-expense-list"
@@ -61,6 +62,18 @@ export default function GroupDashboardPage() {
   if (groupQuery.isPending) return <GroupLoading />
   if (groupQuery.isError && !group) return <GroupError error={groupQuery.error} onRetry={groupQuery.refetch} />
   if (!group) return <GroupNotFound />
+
+  // Invited but not joined yet: show the invitation instead of the group dashboard
+  if (user && !group.members.includes(user.uid) && group.invitedMembers?.includes(user.uid)) {
+    return (
+      <>
+        <AppHeader title={group.name} showBack />
+        <PageContainer className="max-w-xl">
+          <GroupInviteCard group={group} className="rounded-3xl p-4" />
+        </PageContainer>
+      </>
+    )
+  }
 
   const isCreator = user?.uid === group.createdBy
   const leaveCheck = user ? canUserLeaveGroup(user.uid, group, expenses) : { allowed: false, reason: "" }

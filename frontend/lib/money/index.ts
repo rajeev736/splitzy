@@ -164,6 +164,7 @@ export interface Debt {
  *   paid, it is owed to the payer instead (nobody owes themself).
  */
 export function getExpenseDebts(exp: Expense): Debt[] {
+  if (exp.deletedAt) return [];
   if (exp.isPersonal || exp.expenseType === "personal") return [];
 
   const creditor = exp.recipientId || exp.payerId;
@@ -208,6 +209,44 @@ export function calculateNetBalances(
     totalOwedToYouPaise,
     totalYouOwePaise,
   };
+}
+
+export interface PersonBalance {
+  userId: string;
+  name: string;
+  photoURL?: string;
+  /** positive: they owe you; negative: you owe them */
+  netBalancePaise: number;
+}
+
+/**
+ * Net balance with every person the user shares an expense with — friends or
+ * not (e.g. group members). Sums to `calculateNetBalances(...).netBalancePaise`.
+ */
+export function calculatePersonBalances(userId: string, expenses: Expense[]): PersonBalance[] {
+  const people = new Map<string, PersonBalance>();
+  const names = new Map<string, { name: string; photoURL?: string }>();
+
+  for (const exp of expenses) {
+    if (!names.has(exp.payerId)) names.set(exp.payerId, { name: exp.payerName });
+    if (exp.recipientId && !names.has(exp.recipientId)) names.set(exp.recipientId, { name: exp.recipientName });
+    for (const s of exp.shares || []) names.set(s.userId, { name: s.userName, photoURL: s.userPhoto });
+
+    for (const debt of getExpenseDebts(exp)) {
+      const other =
+        debt.toUserId === userId ? debt.fromUserId : debt.fromUserId === userId ? debt.toUserId : null;
+      if (!other) continue;
+      const signed = debt.toUserId === userId ? debt.amountPaise : -debt.amountPaise;
+      const row = people.get(other) ?? { userId: other, name: "", netBalancePaise: 0 };
+      row.netBalancePaise += signed;
+      people.set(other, row);
+    }
+  }
+
+  return Array.from(people.values())
+    .map((row) => ({ ...row, name: names.get(row.userId)?.name || "Member", photoURL: names.get(row.userId)?.photoURL }))
+    .filter((row) => row.netBalancePaise !== 0)
+    .sort((a, b) => Math.abs(b.netBalancePaise) - Math.abs(a.netBalancePaise));
 }
 
 /**
@@ -395,7 +434,7 @@ export function canDeleteGroup(
     };
   }
 
-  const groupExpenses = expenses.filter((e) => e.groupId === group.id);
+  const groupExpenses = expenses.filter((e) => e.groupId === group.id && !e.deletedAt);
   let unsettledExpensesCount = 0;
   let unsettledPaiseTotal = 0;
   let hasPendingDispute = false;

@@ -1,8 +1,9 @@
-import { doc, setDoc, updateDoc } from "firebase/firestore"
+import { deleteField, doc, getDoc, setDoc, updateDoc, type Firestore } from "firebase/firestore"
 
 import { AppError } from "@/lib/errors"
+import { sanitizeForFirestore } from "@/lib/expenses/builder"
 import { canDeleteGroup, canUserLeaveGroup } from "@/lib/money"
-import type { Expense, FriendRequest, Group, GroupMemberInfo, UserProfile } from "@/lib/types"
+import type { Expense, FriendRequest, Group, GroupInviteInfo, GroupMemberInfo, UserProfile } from "@/lib/types"
 import { sendFriendRequest } from "./friends"
 import {
   activateFriendship,
@@ -16,30 +17,114 @@ import {
 
 export type InviteOption = "GROUP_ONLY" | "FRIEND_ONLY" | "COMBINED"
 
+type PublicProfile = Pick<UserProfile, "uid" | "displayName" | "splitzyId" | "photoURL">
+
+/**
+ * Someone picked while creating a group. Everyone joins by invitation —
+ * friends and non-friends alike — and non-friends can also get a friend request.
+ */
+export interface PendingGroupInvite {
+  user: PublicProfile
+  /** Also send a friend request (accepted independently of the group invite). */
+  sendFriendRequest: boolean
+}
+
 export interface CreateGroupInput {
   name: string
   description: string
   icon: string
-  memberIds: string[]
-  pendingInviteUids?: string[]
+  invites: PendingGroupInvite[]
 }
 
-const toMemberInfo = (
-  p: Pick<UserProfile, "uid" | "displayName" | "splitzyId" | "photoURL">,
-  role: GroupMemberInfo["role"]
-): GroupMemberInfo => ({ uid: p.uid, name: p.displayName, splitzyId: p.splitzyId, photoURL: p.photoURL, role })
+const toMemberInfo = (p: PublicProfile, role: GroupMemberInfo["role"]): GroupMemberInfo => ({
+  uid: p.uid,
+  name: p.displayName,
+  splitzyId: p.splitzyId,
+  photoURL: p.photoURL,
+  role,
+})
 
-export async function createGroup(user: UserProfile, friends: UserProfile[], input: CreateGroupInput): Promise<Group> {
-  const { name, description, icon, memberIds, pendingInviteUids = [] } = input
-  const groupId = `grp_${Date.now()}`
-  const allMembers = Array.from(new Set([user.uid, ...memberIds]))
+const toInviteInfo = (target: PublicProfile, inviter: UserProfile): GroupInviteInfo => ({
+  uid: target.uid,
+  name: target.displayName,
+  splitzyId: target.splitzyId,
+  photoURL: target.photoURL,
+  invitedBy: inviter.uid,
+  invitedByName: inviter.displayName,
+  invitedAt: nowIso(),
+})
 
-  const memberDetails: Record<string, GroupMemberInfo> = { [user.uid]: toMemberInfo(user, "admin") }
-  allMembers.forEach((mId) => {
-    if (mId === user.uid) return
-    const f = friends.find((fr) => fr.uid === mId)
-    if (f) memberDetails[mId] = toMemberInfo(f, "member")
+/** A friend request that travels with a group invitation (shown linked on both sides). */
+async function writeGroupFriendRequest(
+  firestore: Firestore,
+  user: UserProfile,
+  target: PublicProfile,
+  group: Pick<Group, "id" | "name">
+): Promise<FriendRequest> {
+  const request: FriendRequest = {
+    id: `freq_grp_${Date.now()}_${target.uid}`,
+    senderId: user.uid,
+    senderName: user.displayName,
+    senderSplitzyId: user.splitzyId,
+    senderPhoto: user.photoURL,
+    receiverId: target.uid,
+    receiverName: target.displayName,
+    receiverSplitzyId: target.splitzyId,
+    status: "PENDING",
+    groupId: group.id,
+    groupName: group.name,
+    createdAt: nowIso(),
+  }
+  await setDoc(doc(firestore, "friendRequests", request.id), sanitizeForFirestore(request))
+  await sendNotification(
+    {
+      id: `notif_${request.id}`,
+      userId: target.uid,
+      title: "New Friend Request",
+      message: `${user.displayName} (${user.splitzyId}) sent you a friend request`,
+      type: "FRIEND_REQUEST",
+      data: { requestId: request.id, actorId: user.uid, actorName: user.displayName },
+    }
+  )
+  return request
+}
+
+async function sendGroupInviteNotification(user: UserProfile, targetUid: string, group: Pick<Group, "id" | "name">) {
+  await sendNotification({
+    id: `notif_grpinv_${group.id}_${targetUid}_${Date.now()}`,
+    userId: targetUid,
+    title: "Group Invitation",
+    message: `${user.displayName} invited you to join group "${group.name}"`,
+    type: "GROUP_INVITE",
+    data: {
+      groupId: group.id,
+      groupName: group.name,
+      actorId: user.uid,
+      actorName: user.displayName,
+      inviteType: "GROUP_ONLY",
+    },
   })
+}
+
+/** True when a friend request is already pending between the two users (either direction). */
+const hasPendingRequest = (requests: FriendRequest[], a: string, b: string) =>
+  requests.some(
+    (r) =>
+      r.status === "PENDING" &&
+      ((r.senderId === a && r.receiverId === b) || (r.senderId === b && r.receiverId === a))
+  )
+
+export async function createGroup(
+  user: UserProfile,
+  ctx: { friends: UserProfile[]; friendRequests: FriendRequest[] },
+  input: CreateGroupInput
+): Promise<Group> {
+  const { name, description, icon } = input
+  const { friends, friendRequests } = ctx
+  const groupId = `grp_${Date.now()}`
+
+  const seen = new Set([user.uid])
+  const invites = input.invites.filter((p) => !seen.has(p.user.uid) && seen.add(p.user.uid))
 
   const group: Group = {
     id: groupId,
@@ -47,51 +132,27 @@ export async function createGroup(user: UserProfile, friends: UserProfile[], inp
     description,
     icon,
     createdBy: user.uid,
-    members: allMembers,
-    invitedMembers: pendingInviteUids,
-    memberDetails,
+    creatorName: user.displayName,
+    members: [user.uid],
+    invitedMembers: invites.map((p) => p.user.uid),
+    invitedMemberDetails: Object.fromEntries(invites.map((p) => [p.user.uid, toInviteInfo(p.user, user)])),
+    memberDetails: { [user.uid]: toMemberInfo(user, "admin") },
+    status: "ACTIVE",
     createdAt: nowIso(),
   }
 
   const firestore = getDb()
   if (!firestore) return group
 
-  await setDoc(doc(firestore, "groups", groupId), group)
+  await setDoc(doc(firestore, "groups", groupId), sanitizeForFirestore(group))
 
-  // Notify directly added friends
-  for (const mId of memberIds) {
-    await sendNotification({
-      userId: mId,
-      title: "Group Invitation",
-      message: `${user.displayName} added you to group "${name}"`,
-      type: "GROUP_INVITE",
-      data: { groupId, actorId: user.uid, actorName: user.displayName },
-    })
-  }
-
-  // Combined friend request + group invitation for non-friend invitees
-  for (const pUid of pendingInviteUids) {
-    const reqId = `freq_grp_${Date.now()}_${pUid}`
-    const req: FriendRequest = {
-      id: reqId,
-      senderId: user.uid,
-      senderName: user.displayName,
-      senderSplitzyId: user.splitzyId,
-      senderPhoto: user.photoURL,
-      receiverId: pUid,
-      receiverName: "User",
-      receiverSplitzyId: "",
-      status: "PENDING",
-      createdAt: nowIso(),
-    }
-    await setDoc(doc(firestore, "friendRequests", reqId), req)
-    await sendNotification({
-      userId: pUid,
-      title: "Group Invitation & Friend Request",
-      message: `${user.displayName} invited you to join "${name}" and sent you a friend request. Accepting will connect you and add you to the group!`,
-      type: "GROUP_INVITE",
-      data: { groupId, actorId: user.uid, actorName: user.displayName, friendRequestId: reqId },
-    })
+  for (const invite of invites) {
+    await sendGroupInviteNotification(user, invite.user.uid, group)
+    const wantsFriendRequest =
+      invite.sendFriendRequest &&
+      !friends.some((f) => f.uid === invite.user.uid) &&
+      !hasPendingRequest(friendRequests, user.uid, invite.user.uid)
+    if (wantsFriendRequest) await writeGroupFriendRequest(firestore, user, invite.user, group)
   }
 
   return group
@@ -158,22 +219,33 @@ export async function deleteGroup(user: UserProfile, group: Group | undefined, e
     status: "ARCHIVED",
     archivedAt: nowIso(),
     members: [],
+    invitedMembers: [],
+    invitedMemberDetails: {},
     formerMembers: Array.from(new Set([...(group.formerMembers || []), ...(group.members || [])])),
   })
 }
 
+export interface InviteResult {
+  /** New pending-invite list, or null when no group invitation was sent. */
+  invitedMembers: string[] | null
+  invitedMemberDetails?: Record<string, GroupInviteInfo>
+  friendRequest?: FriendRequest
+  message: string
+}
+
 /**
- * Invite a member by uid or JoySplit ID.
- * GROUP_ONLY = group invite, FRIEND_ONLY = friend request, COMBINED = both.
- * Returns the new `invitedMembers` list (null for FRIEND_ONLY) and a message.
+ * Invite someone by uid or JoySplit ID.
+ * GROUP_ONLY = group invitation, FRIEND_ONLY = friend request, COMBINED = both.
+ * Each part is skipped (not an error) when it's already done — e.g. a pending
+ * group invite plus COMBINED just sends the friend request.
  */
 export async function inviteGroupMember(
   ctx: { user: UserProfile; groups: Group[]; friends: UserProfile[]; friendRequests: FriendRequest[] },
   groupId: string,
   targetUidOrSplitzyId: string,
   option: InviteOption = "GROUP_ONLY"
-): Promise<{ invitedMembers: string[] | null; friendRequest?: FriendRequest; message: string }> {
-  const { user, groups, friends } = ctx
+): Promise<InviteResult> {
+  const { user, groups, friends, friendRequests } = ctx
   const group = await resolveGroup(groupId, groups)
   if (!group) throw new AppError("Group not found")
 
@@ -186,125 +258,170 @@ export async function inviteGroupMember(
   if (!target) throw new AppError(`User "${cleanId}" not found`)
   if (target.uid === user.uid) throw new AppError("You cannot invite yourself")
 
-  if (option === "FRIEND_ONLY") {
-    const res = await sendFriendRequest(ctx, target.splitzyId)
-    return { invitedMembers: null, friendRequest: res.request, message: res.message }
+  const isMember = group.members.includes(target.uid)
+  const isInvited = !!group.invitedMembers?.includes(target.uid)
+  const isFriend = friends.some((f) => f.uid === target.uid)
+  const requestPending = hasPendingRequest(friendRequests, user.uid, target.uid)
+
+  const wantsGroup = option !== "FRIEND_ONLY"
+  const wantsFriend = option !== "GROUP_ONLY"
+  const sendGroup = wantsGroup && !isMember && !isInvited
+  const sendFriend = wantsFriend && !isFriend && !requestPending
+
+  if (!sendGroup && !sendFriend) {
+    if (wantsGroup && isMember) throw new AppError(`${target.displayName} is already a member of this group`)
+    if (wantsGroup && isInvited && !wantsFriend)
+      throw new AppError(`${target.displayName} has already been invited to this group`)
+    if (isFriend) throw new AppError(`${target.displayName} is already your friend`)
+    throw new AppError(`A friend request is already pending with ${target.displayName}`)
   }
 
-  if (group.members.includes(target.uid)) {
-    throw new AppError(`${target.displayName} is already a member of this group`)
-  }
-  if (group.invitedMembers?.includes(target.uid)) {
-    throw new AppError(`${target.displayName} has already been invited to this group`)
-  }
-
-  const invited = Array.from(new Set([...(group.invitedMembers || []), target.uid]))
   const firestore = getDb()
+  let invitedMembers: string[] | null = null
+  let invitedMemberDetails: Record<string, GroupInviteInfo> | undefined
   let friendRequest: FriendRequest | undefined
 
-  if (firestore) {
-    await updateDoc(doc(firestore, "groups", groupId), { invitedMembers: invited })
-
-    if (option === "COMBINED") {
-      friendRequest = {
-        id: `freq_grp_${Date.now()}_${target.uid}`,
-        senderId: user.uid,
-        senderName: user.displayName,
-        senderSplitzyId: user.splitzyId,
-        senderPhoto: user.photoURL,
-        receiverId: target.uid,
-        receiverName: target.displayName,
-        receiverSplitzyId: target.splitzyId,
-        status: "PENDING",
-        createdAt: nowIso(),
-      }
-      await setDoc(doc(firestore, "friendRequests", friendRequest.id), friendRequest)
+  if (sendGroup) {
+    invitedMembers = Array.from(new Set([...(group.invitedMembers || []), target.uid]))
+    const info = toInviteInfo(target, user)
+    invitedMemberDetails = { ...(group.invitedMemberDetails || {}), [target.uid]: info }
+    if (firestore) {
+      await updateDoc(doc(firestore, "groups", groupId), {
+        invitedMembers,
+        [`invitedMemberDetails.${target.uid}`]: sanitizeForFirestore(info),
+      })
+      await sendGroupInviteNotification(user, target.uid, group)
     }
+  }
 
-    await sendNotification({
-      userId: target.uid,
-      title: option === "COMBINED" ? "Group & Friend Invitation" : "Group Invitation",
-      message:
-        option === "COMBINED"
-          ? `${user.displayName} invited you to join "${group.name}" and sent you a friend request. Accepting will connect you and add you to the group!`
-          : `${user.displayName} invited you to join group "${group.name}"`,
-      type: "GROUP_INVITE",
-      data: {
-        groupId,
-        groupName: group.name,
-        actorId: user.uid,
-        actorName: user.displayName,
-        inviteType: option,
-        ...(friendRequest ? { friendRequestId: friendRequest.id } : {}),
-      },
+  if (sendFriend) {
+    if (sendGroup && firestore) {
+      friendRequest = await writeGroupFriendRequest(firestore, user, target, group)
+    } else {
+      friendRequest = (await sendFriendRequest(ctx, target.splitzyId)).request
+    }
+  }
+
+  const parts = [sendGroup && "Group invitation", sendFriend && "friend request"].filter(Boolean).join(" and ")
+  return {
+    invitedMembers,
+    invitedMemberDetails,
+    friendRequest,
+    message: `${parts.charAt(0).toUpperCase()}${parts.slice(1)} sent to ${target.displayName}!`,
+  }
+}
+
+/** Removes a pending invitation (any member can withdraw one). */
+export async function cancelGroupInvite(user: UserProfile, groups: Group[], groupId: string, targetUid: string) {
+  const group = await resolveGroup(groupId, groups)
+  if (!group) throw new AppError("Group not found")
+  if (!group.members.includes(user.uid)) throw new AppError("Only group members can cancel invitations")
+
+  const invitedMembers = (group.invitedMembers || []).filter((id) => id !== targetUid)
+  const invitedMemberDetails = { ...(group.invitedMemberDetails || {}) }
+  delete invitedMemberDetails[targetUid]
+
+  const firestore = getDb()
+  if (firestore) {
+    await updateDoc(doc(firestore, "groups", groupId), {
+      invitedMembers,
+      [`invitedMemberDetails.${targetUid}`]: deleteField(),
     })
   }
-
-  return {
-    invitedMembers: invited,
-    friendRequest,
-    message:
-      option === "COMBINED"
-        ? `Invitation and friend request sent to ${target.displayName}!`
-        : `Group invitation sent to ${target.displayName}!`,
-  }
+  return { invitedMembers, invitedMemberDetails }
 }
 
 export async function acceptGroupInvite(
   user: UserProfile,
   groups: Group[],
   groupId: string,
-  options?: { acceptCombinedFriendship?: boolean; friendRequestId?: string }
-): Promise<{ patch: Pick<Group, "members" | "invitedMembers" | "memberDetails">; message: string }> {
+  options?: { friendRequestId?: string }
+): Promise<{
+  patch: Pick<Group, "members" | "invitedMembers" | "memberDetails" | "invitedMemberDetails">
+  message: string
+}> {
   const group = await resolveGroup(groupId, groups)
   if (!group) throw new AppError("Group not found")
+  if (group.status === "ARCHIVED" || group.status === "DELETED") throw new AppError("This group has been deleted")
 
+  const alreadyMember = group.members.includes(user.uid)
+  if (!alreadyMember && !group.invitedMembers?.includes(user.uid)) {
+    throw new AppError("This invitation is no longer pending")
+  }
+
+  const invitedMemberDetails = { ...(group.invitedMemberDetails || {}) }
+  const invite = invitedMemberDetails[user.uid]
+  delete invitedMemberDetails[user.uid]
   const patch = {
     members: Array.from(new Set([...(group.members || []), user.uid])),
     invitedMembers: (group.invitedMembers || []).filter((id) => id !== user.uid),
     memberDetails: { ...group.memberDetails, [user.uid]: toMemberInfo(user, "member") },
+    invitedMemberDetails,
   }
 
   const firestore = getDb()
-  if (firestore) {
-    await updateDoc(doc(firestore, "groups", groupId), patch)
+  if (firestore && !alreadyMember) {
+    await updateDoc(doc(firestore, "groups", groupId), {
+      members: patch.members,
+      invitedMembers: patch.invitedMembers,
+      [`memberDetails.${user.uid}`]: sanitizeForFirestore(patch.memberDetails[user.uid]),
+      [`invitedMemberDetails.${user.uid}`]: deleteField(),
+    })
 
-    const creator = group.createdBy
-    // ONLY establish friendship if explicitly requested as part of a combined invite acceptance
-    if (options?.acceptCombinedFriendship && creator && creator !== user.uid) {
-      await activateFriendship(user.uid, creator, { merge: true })
-      if (options.friendRequestId) {
-        await updateDoc(doc(firestore, "friendRequests", options.friendRequestId), { status: "ACCEPTED" })
-      }
-    }
-
-    if (creator && creator !== user.uid) {
-      await sendNotification(
-        {
-          userId: creator,
-          title: "Group Invitation Accepted",
-          message: `${user.displayName} joined "${group.name}"!`,
-          type: "GROUP_ACCEPTED",
-          data: { groupId, actorId: user.uid, actorName: user.displayName },
-        },
-        { scoped: false }
-      )
+    // Tell whoever sent the invite (and the creator, if different)
+    const notify = new Set([invite?.invitedBy, group.createdBy].filter((id): id is string => !!id && id !== user.uid))
+    for (const uid of notify) {
+      await sendNotification({
+        userId: uid,
+        title: "Group Invitation Accepted",
+        message: `${user.displayName} joined "${group.name}"!`,
+        type: "GROUP_ACCEPTED",
+        data: { groupId, groupName: group.name, actorId: user.uid, actorName: user.displayName },
+      })
     }
   }
 
-  return { patch, message: `You have joined ${group.name}!` }
+  // Also accept the linked friend request when asked to
+  if (firestore && options?.friendRequestId) {
+    await acceptLinkedFriendRequest(user, options.friendRequestId)
+  }
+
+  return { patch, message: alreadyMember ? `You're already in ${group.name}` : `You have joined ${group.name}!` }
 }
 
-export async function declineGroupInvite(user: UserProfile, groups: Group[], groupId: string, friendRequestId?: string) {
+/** Accepts the friend request attached to a group invite, if it is still pending. */
+async function acceptLinkedFriendRequest(user: UserProfile, requestId: string) {
+  const firestore = getDb()
+  if (!firestore) return
+  const snap = await getDoc(doc(firestore, "friendRequests", requestId))
+  if (!snap.exists()) return
+  const req = snap.data() as FriendRequest
+  if (req.status !== "PENDING" || req.receiverId !== user.uid) return
+
+  await updateDoc(doc(firestore, "friendRequests", requestId), { status: "ACCEPTED", updatedAt: nowIso() })
+  await activateFriendship(user.uid, req.senderId, { merge: true })
+  await sendNotification(
+    {
+      userId: req.senderId,
+      title: "Friend Request Accepted",
+      message: `${user.displayName} accepted your friend request!`,
+      type: "FRIEND_ACCEPTED",
+      data: { actorId: user.uid, actorName: user.displayName },
+    },
+    { scoped: false }
+  )
+}
+
+/** Declines only the group invitation; a linked friend request stays pending on its own. */
+export async function declineGroupInvite(user: UserProfile, groups: Group[], groupId: string) {
   const group = await resolveGroup(groupId, groups)
   const firestore = getDb()
   if (firestore && group) {
+    if (!group.invitedMembers?.includes(user.uid)) throw new AppError("This invitation is no longer pending")
     await updateDoc(doc(firestore, "groups", groupId), {
       invitedMembers: (group.invitedMembers || []).filter((id) => id !== user.uid),
+      [`invitedMemberDetails.${user.uid}`]: deleteField(),
     })
-    if (friendRequestId) {
-      await updateDoc(doc(firestore, "friendRequests", friendRequestId), { status: "REJECTED" })
-    }
   }
   return { message: "Invitation declined" }
 }

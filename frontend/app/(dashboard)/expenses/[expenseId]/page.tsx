@@ -7,6 +7,7 @@ import { useRouter } from "nextjs-toploader/app"
 import {
   AtIcon,
   Calendar03Icon,
+  Delete02Icon,
   Copy01Icon,
   Invoice01Icon,
   Notification01Icon,
@@ -22,6 +23,7 @@ import { useSession } from "@/components/providers/session-provider"
 import { Amount } from "@/components/shared/amount"
 import { DEFAULT_GROUP_ICON } from "@/components/shared/group-icon"
 import { StatusBadge } from "@/components/shared/status-badge"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -110,10 +112,14 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
   const isRecipient = expense.recipientId === user?.uid
   const isPayer = expense.payerId === user?.uid
   const isCreator = expense.createdBy === user?.uid
-  const canDelete = isPayer || isCreator
+  const isDeleted = !!expense.deletedAt
+  const canDelete = (isPayer || isCreator) && !isDeleted
 
-  // Invariant check: cannot delete if confirmed payments exist
-  const hasPaidMembers = expense.shares?.some((s) => s.userId !== user?.uid && s.status === "PAID") || false
+  // Invariant check: cannot delete if member payments are confirmed or awaiting confirmation
+  const hasPaidMembers =
+    expense.shares?.some(
+      (s) => s.userId !== expense.payerId && (s.status === "PAID" || s.status === "PAYMENT_REPORTED")
+    ) || false
   const allPaid = expense.shares.every((s) => s.status === "PAID")
   const position = getMyPosition(expense, user?.uid)
 
@@ -159,16 +165,29 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
         title="Expense Details"
         showBack
         rightAction={
+          !isDeleted && (
           <ExpenseActionsMenu
             canDelete={canDelete}
             onPay={goToPay}
             onRemind={handleRemindAll}
             onDelete={() => setIsDeleteOpen(true)}
           />
+          )
         }
       />
 
       <PageContainer className="max-w-2xl">
+        {isDeleted && (
+          <Alert className="border-destructive/30 bg-destructive/5">
+            <HugeiconsIcon icon={Delete02Icon} className="text-destructive" />
+            <AlertTitle className="font-bold">This expense was deleted</AlertTitle>
+            <AlertDescription className="text-xs">
+              Deleted on {new Date(expense.deletedAt!).toLocaleString()}. It is kept for history only and no longer
+              counts towards any balance.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Hero banner */}
         <div className="relative h-44 overflow-hidden rounded-3xl border shadow-sm sm:h-52">
           <Image
@@ -222,9 +241,9 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
                   share={share}
                   isMe={share.userId === user?.uid}
                   isPayer={share.userId === expense.payerId}
-                  canConfirm={isRecipient && share.status === "PAYMENT_REPORTED"}
+                  canConfirm={!isDeleted && isRecipient && share.status === "PAYMENT_REPORTED"}
                   onVerify={() => setSelectedShare(share)}
-                  onPay={goToPay}
+                  onPay={isDeleted ? undefined : goToPay}
                 />
               </React.Fragment>
             ))}
@@ -272,7 +291,7 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
 
         {/* Action bar */}
         {/* Paying happens inline on your own share row; only reminders live here */}
-        <div className="flex gap-3 pt-2">
+        <div className={cn("flex gap-3 pt-2", isDeleted && "hidden")}>
           <Button
             variant="outline"
             size="lg"

@@ -17,6 +17,7 @@ import { useFriendRequests, useFriends } from "@/hooks/queries"
 import { calculateMemberGroupBalance } from "@/lib/money"
 import type { Expense, Group } from "@/lib/types"
 import { MemberRow } from "./member-row"
+import { PendingInvites } from "./pending-invites"
 
 export function MembersTab({
   group,
@@ -130,7 +131,9 @@ export function MembersTab({
           })}
         </ItemGroup>
 
-        {group.members.length === 1 && (
+        <PendingInvites group={group} />
+
+        {group.members.length === 1 && !group.invitedMembers?.length && (
           <EmptyState
             icon={UserGroupIcon}
             title="No other members yet"

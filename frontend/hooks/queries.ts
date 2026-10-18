@@ -9,7 +9,7 @@ import { db, isFirebaseConfigured } from "@/lib/firebase/config"
 import { calculateNetBalances } from "@/lib/money"
 import { queryKeys } from "@/lib/query/keys"
 import { awaitRealtime, publish, publishError } from "@/lib/query/realtime"
-import type { AppNotification, Expense, FriendRequest, Group, UserProfile } from "@/lib/types"
+import type { AppNotification, Expense, FriendRequest, Group, GroupInviteInfo, UserProfile } from "@/lib/types"
 import { fetchExpenseById } from "@/services/expenses"
 import { getMutualFriendSuggestions, searchUserBySplitzyId } from "@/services/friends"
 import { fetchGroupById } from "@/services/groups"
@@ -37,9 +37,72 @@ function useRealtimeList<T>(keyFor: (uid: string) => QueryKey) {
 
 export const useFriends = () => useRealtimeList<UserProfile>(queryKeys.friends)
 export const useFriendRequests = () => useRealtimeList<FriendRequest>(queryKeys.friendRequests)
-export const useGroups = () => useRealtimeList<Group>(queryKeys.groups)
-export const useExpenses = () => useRealtimeList<Expense>(queryKeys.expenses)
 export const useNotifications = () => useRealtimeList<AppNotification>(queryKeys.notifications)
+
+/** Every synced group, including ones you're only invited to. */
+const useAllGroups = () => useRealtimeList<Group>(queryKeys.groups)
+
+/** Groups you're a member of. */
+export function useGroups() {
+  const { user } = useSession()
+  const query = useAllGroups()
+  const data = React.useMemo(
+    () => (user ? query.data.filter((g) => g.members.includes(user.uid)) : EMPTY),
+    [query.data, user]
+  )
+  return { ...query, data }
+}
+
+/** Groups you've been invited to but haven't joined yet. */
+export function useGroupInvites() {
+  const { user } = useSession()
+  const query = useAllGroups()
+  const data = React.useMemo(
+    () =>
+      user
+        ? query.data.filter((g) => !g.members.includes(user.uid) && g.invitedMembers?.includes(user.uid))
+        : EMPTY,
+    [query.data, user]
+  )
+  return { ...query, data }
+}
+
+/**
+ * Pending invitations you sent, across your groups. Invites from before
+ * inviter tracking existed count as sent by the group creator.
+ */
+export function useSentGroupInvites() {
+  const { user } = useSession()
+  const query = useGroups()
+  const data = React.useMemo(() => {
+    if (!user) return [] as { group: Group; invite: GroupInviteInfo }[]
+    return query.data.flatMap((group) =>
+      (group.invitedMembers || [])
+        .map((uid) => ({ group, invite: group.invitedMemberDetails?.[uid] ?? legacyInvite(group, uid) }))
+        .filter(({ invite }) => invite.invitedBy === user.uid)
+    )
+  }, [query.data, user])
+  return { ...query, data }
+}
+
+const legacyInvite = (group: Group, uid: string): GroupInviteInfo => ({
+  uid,
+  name: "Invited user",
+  splitzyId: "",
+  invitedBy: group.createdBy,
+  invitedByName: group.creatorName || "",
+  invitedAt: group.createdAt,
+})
+
+/** Every expense that involves you, including deleted ones — for history. */
+export const useExpenseHistory = () => useRealtimeList<Expense>(queryKeys.expenses)
+
+/** Live (not deleted) expenses that involve you. */
+export function useExpenses() {
+  const query = useExpenseHistory()
+  const data = React.useMemo(() => query.data.filter((e) => !e.deletedAt), [query.data])
+  return { ...query, data }
+}
 
 export function useUnreadCount() {
   const { data } = useNotifications()
@@ -65,7 +128,7 @@ export function useBalances() {
  */
 export function useGroup(groupId: string | undefined) {
   const { user } = useSession()
-  const list = useGroups()
+  const list = useAllGroups()
   const cached = React.useMemo(() => list.data.find((g) => g.id === groupId), [list.data, groupId])
 
   const single = useQuery({
@@ -119,7 +182,9 @@ export function useGroupExpenses(groupId: string | undefined) {
     const map = new Map<string, Expense>()
     expenses.filter((e) => e.groupId === groupId).forEach((e) => map.set(e.id, e))
     direct.data?.forEach((e) => map.set(e.id, e))
-    return Array.from(map.values()).sort(
+    return Array.from(map.values())
+      .filter((e) => !e.deletedAt)
+      .sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     )
   }, [expenses, direct.data, groupId])
@@ -133,7 +198,7 @@ export function useGroupExpenses(groupId: string | undefined) {
  */
 export function useExpense(expenseId: string | undefined) {
   const { user } = useSession()
-  const list = useExpenses()
+  const list = useExpenseHistory()
   const cached = React.useMemo(() => list.data.find((e) => e.id === expenseId), [list.data, expenseId])
 
   const single = useQuery({

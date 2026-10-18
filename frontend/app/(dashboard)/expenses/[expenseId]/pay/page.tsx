@@ -10,6 +10,7 @@ import { AppHeader } from "@/components/layout/app-header"
 import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
 import { Amount } from "@/components/shared/amount"
+import { EmptyState } from "@/components/shared/empty-state"
 import { GroupIcon } from "@/components/shared/group-icon"
 import { StatusBadge } from "@/components/shared/status-badge"
 import { UserAvatar } from "@/components/shared/user-avatar"
@@ -32,7 +33,22 @@ export default function PayExpensePage() {
 
   return (
     <ExpenseGate expenseId={params.expenseId} loadingTitle="Pay Expense" notFoundIcon={AlertCircleIcon}>
-      {(expense) => <PayExpense expense={expense} />}
+      {(expense) =>
+        expense.deletedAt ? (
+          <>
+            <AppHeader title="Pay Expense" showBack />
+            <PageContainer className="max-w-md">
+              <EmptyState
+                icon={AlertCircleIcon}
+                title="This expense was deleted"
+                description="There is nothing to pay — it no longer counts towards your balance."
+              />
+            </PageContainer>
+          </>
+        ) : (
+          <PayExpense expense={expense} />
+        )
+      }
     </ExpenseGate>
   )
 }
