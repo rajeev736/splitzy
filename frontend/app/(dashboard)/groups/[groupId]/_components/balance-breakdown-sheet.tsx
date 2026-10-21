@@ -17,6 +17,8 @@ import type { Expense, Group } from "@/lib/types"
 interface CounterpartyLine {
   expense: Expense
   amountPaise: number
+  isOffset?: boolean
+  label?: string
 }
 
 interface Counterparty {
@@ -24,12 +26,16 @@ interface Counterparty {
   name: string
   photoURL?: string
   totalPaise: number
+  rawOwedToMePaise: number
+  rawIOwePaise: number
+  hasOffset: boolean
   lines: CounterpartyLine[]
 }
 
 /**
- * Groups this user's open debts in a group by the other person, using the same
- * debt model as every balance — so the totals here add up to "Your Balance".
+ * Groups this user's open debts in a group by the other person with PhonePe-style
+ * split-to-split cancel netting so reciprocal mutual debts cancel out and totals
+ * match "Your Balance".
  */
 function buildBreakdown(userId: string, group: Group, expenses: Expense[]) {
   const people = {
@@ -37,42 +43,107 @@ function buildBreakdown(userId: string, group: Group, expenses: Expense[]) {
     ...group.memberDetails,
   }
   const nameFromExpense = (exp: Expense, uid: string) =>
-    exp.shares.find((s) => s.userId === uid)?.userName ||
+    exp.shares?.find((s) => s.userId === uid)?.userName ||
     (exp.payerId === uid
       ? exp.payerName
       : exp.recipientId === uid
         ? exp.recipientName
         : "Member")
 
-  const iOwe = new Map<string, Counterparty>()
-  const owedToMe = new Map<string, Counterparty>()
+  const counterparties = new Map<
+    string,
+    {
+      uid: string
+      name: string
+      photoURL?: string
+      debtsToMe: { expense: Expense; amountPaise: number }[]
+      debtsFromMe: { expense: Expense; amountPaise: number }[]
+    }
+  >()
 
   for (const exp of expenses) {
+    if (exp.groupId && exp.groupId !== group.id) continue
     for (const debt of getExpenseDebts(exp)) {
-      const mine =
-        debt.fromUserId === userId
-          ? iOwe
-          : debt.toUserId === userId
-            ? owedToMe
-            : null
-      if (!mine) continue
+      if (debt.toUserId !== userId && debt.fromUserId !== userId) continue
       const other = debt.fromUserId === userId ? debt.toUserId : debt.fromUserId
-      const entry = mine.get(other) ?? {
+      if (!other || other === userId) continue
+
+      const entry = counterparties.get(other) ?? {
         uid: other,
         name: people[other]?.name || nameFromExpense(exp, other),
         photoURL: people[other]?.photoURL,
-        totalPaise: 0,
-        lines: [],
+        debtsToMe: [],
+        debtsFromMe: [],
       }
-      entry.totalPaise += debt.amountPaise
-      entry.lines.push({ expense: exp, amountPaise: debt.amountPaise })
-      mine.set(other, entry)
+
+      if (debt.toUserId === userId) {
+        entry.debtsToMe.push({ expense: exp, amountPaise: debt.amountPaise })
+      } else {
+        entry.debtsFromMe.push({ expense: exp, amountPaise: debt.amountPaise })
+      }
+      counterparties.set(other, entry)
     }
   }
 
-  const sorted = (m: Map<string, Counterparty>) =>
-    [...m.values()].sort((a, b) => b.totalPaise - a.totalPaise)
-  return { iOwe: sorted(iOwe), owedToMe: sorted(owedToMe) }
+  const iOwe: Counterparty[] = []
+  const owedToMe: Counterparty[] = []
+
+  counterparties.forEach((entry) => {
+    const totalToMe = entry.debtsToMe.reduce((s, d) => s + d.amountPaise, 0)
+    const totalFromMe = entry.debtsFromMe.reduce((s, d) => s + d.amountPaise, 0)
+    const net = totalToMe - totalFromMe
+    const hasOffset = totalToMe > 0 && totalFromMe > 0
+
+    if (net > 0) {
+      // Net: other owes me
+      const lines: CounterpartyLine[] = [
+        ...entry.debtsToMe.map((d) => ({ expense: d.expense, amountPaise: d.amountPaise })),
+        ...entry.debtsFromMe.map((d) => ({
+          expense: d.expense,
+          amountPaise: d.amountPaise,
+          isOffset: true,
+          label: `Split offset (${d.expense.title})`,
+        })),
+      ]
+      owedToMe.push({
+        uid: entry.uid,
+        name: entry.name,
+        photoURL: entry.photoURL,
+        totalPaise: net,
+        rawOwedToMePaise: totalToMe,
+        rawIOwePaise: totalFromMe,
+        hasOffset,
+        lines,
+      })
+    } else if (net < 0) {
+      // Net: I owe other
+      const lines: CounterpartyLine[] = [
+        ...entry.debtsFromMe.map((d) => ({ expense: d.expense, amountPaise: d.amountPaise })),
+        ...entry.debtsToMe.map((d) => ({
+          expense: d.expense,
+          amountPaise: d.amountPaise,
+          isOffset: true,
+          label: `Split offset (${d.expense.title})`,
+        })),
+      ]
+      iOwe.push({
+        uid: entry.uid,
+        name: entry.name,
+        photoURL: entry.photoURL,
+        totalPaise: Math.abs(net),
+        rawOwedToMePaise: totalToMe,
+        rawIOwePaise: totalFromMe,
+        hasOffset,
+        lines,
+      })
+    }
+    // If net === 0, mutual splits have completely cancelled each other out
+  })
+
+  return {
+    iOwe: iOwe.sort((a, b) => b.totalPaise - a.totalPaise),
+    owedToMe: owedToMe.sort((a, b) => b.totalPaise - a.totalPaise),
+  }
 }
 
 export function BalanceBreakdownSheet({
@@ -115,7 +186,7 @@ export function BalanceBreakdownSheet({
     >
       {iOwe.length === 0 && owedToMe.length === 0 && (
         <p className="py-6 text-center text-sm text-muted-foreground">
-          Nothing pending in this group. 🎉
+          Nothing pending in this group. All splits settled or mutually balanced! 🎉
         </p>
       )}
 
@@ -123,21 +194,26 @@ export function BalanceBreakdownSheet({
         <Section title="You need to pay">
           {iOwe.map((p) => (
             <PersonBlock key={p.uid} person={p} tone="owe">
-              {p.lines.map(({ expense, amountPaise }) => (
+              {p.lines.map(({ expense, amountPaise, isOffset, label }) => (
                 <LineRow
-                  key={expense.id}
-                  title={expense.title}
+                  key={`${expense.id}_${isOffset ? "offset" : "direct"}`}
+                  title={label || expense.title}
                   amountPaise={amountPaise}
+                  isOffset={isOffset}
                 >
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      onOpenChange(false)
-                      router.push(`/expenses/${expense.id}/pay`)
-                    }}
-                  >
-                    Pay
-                  </Button>
+                  {!isOffset ? (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        onOpenChange(false)
+                        router.push(`/expenses/${expense.id}/pay`)
+                      }}
+                    >
+                      Pay
+                    </Button>
+                  ) : (
+                    <span className="text-[11px] font-medium text-muted-foreground">Adjusted</span>
+                  )}
                 </LineRow>
               ))}
             </PersonBlock>
@@ -151,17 +227,22 @@ export function BalanceBreakdownSheet({
         <Section title="You get back">
           {owedToMe.map((p) => (
             <PersonBlock key={p.uid} person={p} tone="owed">
-              {p.lines.map(({ expense, amountPaise }) => (
+              {p.lines.map(({ expense, amountPaise, isOffset, label }) => (
                 <LineRow
-                  key={expense.id}
-                  title={expense.title}
+                  key={`${expense.id}_${isOffset ? "offset" : "direct"}`}
+                  title={label || expense.title}
                   amountPaise={amountPaise}
+                  isOffset={isOffset}
                 >
-                  <RemindButton
-                    expenseId={expense.id}
-                    targetUserId={p.uid}
-                    name={p.name}
-                  />
+                  {!isOffset ? (
+                    <RemindButton
+                      expenseId={expense.id}
+                      targetUserId={p.uid}
+                      name={p.name}
+                    />
+                  ) : (
+                    <span className="text-[11px] font-medium text-muted-foreground">Adjusted</span>
+                  )}
                 </LineRow>
               ))}
             </PersonBlock>
@@ -205,7 +286,7 @@ function PersonBlock({
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold">{person.name}</div>
           <div className="text-xs text-muted-foreground">
-            {person.lines.length} expense{person.lines.length === 1 ? "" : "s"}
+            {person.hasOffset ? "Split-to-split net balance" : `${person.lines.length} expense${person.lines.length === 1 ? "" : "s"}`}
           </div>
         </div>
         <Amount
@@ -222,16 +303,23 @@ function PersonBlock({
 function LineRow({
   title,
   amountPaise,
+  isOffset,
   children,
 }: {
   title: string
   amountPaise: number
+  isOffset?: boolean
   children: React.ReactNode
 }) {
   return (
     <div className="flex min-w-0 items-center gap-3 border-t py-2 first:border-t-0">
-      <span className="min-w-0 flex-1 truncate text-sm">{title}</span>
-      <Amount paise={amountPaise} className="shrink-0 text-sm font-semibold" />
+      <span className="min-w-0 flex-1 truncate text-sm">
+        {title}
+      </span>
+      <span className={isOffset ? "text-xs font-semibold text-muted-foreground" : ""}>
+        {isOffset ? "- " : ""}
+        <Amount paise={amountPaise} className="shrink-0 text-sm font-semibold" />
+      </span>
       <div className="shrink-0">{children}</div>
     </div>
   )
@@ -251,16 +339,16 @@ function RemindButton({
     <Button
       size="sm"
       variant="outline"
-      disabled={reminder.isPending || reminder.isSuccess}
+      disabled={reminder.isPending}
       onClick={() =>
         reminder.mutate(
           { expenseId, targetUserId },
-          { onSuccess: () => toast.success(`Reminder sent to ${name}`) }
+          { onSuccess: () => toast.success(`Payment reminder sent to ${name}`) }
         )
       }
     >
       {reminder.isPending && <Spinner />}
-      {reminder.isSuccess ? "Sent" : "Remind"}
+      Remind
     </Button>
   )
 }

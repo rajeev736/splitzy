@@ -190,18 +190,18 @@ export function calculateNetBalances(
   totalOwedToYouPaise: number;
   totalYouOwePaise: number;
 } {
-  let totalOwedToYouPaise = 0;
-  let totalYouOwePaise = 0;
-
   if (!userId || !expenses) {
     return { netBalancePaise: 0, totalOwedToYouPaise: 0, totalYouOwePaise: 0 };
   }
 
-  for (const exp of expenses) {
-    for (const debt of getExpenseDebts(exp)) {
-      if (debt.toUserId === userId) totalOwedToYouPaise += debt.amountPaise;
-      if (debt.fromUserId === userId) totalYouOwePaise += debt.amountPaise;
-    }
+  // Member-by-member net balances so mutual reciprocal debts cancel out (split-to-split cancel)
+  const personBalances = calculatePersonBalances(userId, expenses);
+  let totalOwedToYouPaise = 0;
+  let totalYouOwePaise = 0;
+
+  for (const pb of personBalances) {
+    if (pb.netBalancePaise > 0) totalOwedToYouPaise += pb.netBalancePaise;
+    else if (pb.netBalancePaise < 0) totalYouOwePaise += Math.abs(pb.netBalancePaise);
   }
 
   return {
@@ -296,23 +296,24 @@ export function canRemoveFriend(
 } {
   const direct = calculateDirectBalance(userA, userB, expenses);
 
-  // If current user owes the friend money -> Strictly block removal!
-  if (direct.userAOwesUserBPaise > 0) {
+  // If current user owes the friend net money -> Strictly block removal!
+  if (direct.netBalancePaise < 0) {
+    const amount = Math.abs(direct.netBalancePaise);
     return {
       allowed: false,
       canRemove: false,
-      reason: `You owe ${formatPaise(direct.userAOwesUserBPaise)} to this friend. You must settle this debt before removing them.`,
-      unsettledPaise: direct.userAOwesUserBPaise,
+      reason: `You owe ${formatPaise(amount)} to this friend. You must settle this debt before removing them.`,
+      unsettledPaise: amount,
     };
   }
 
-  // If friend owes current user money -> Allow removal but clearly warn that the receivable remains outstanding!
-  if (direct.userBOwesUserAPaise > 0) {
+  // If friend owes current user net money -> Allow removal but clearly warn that the receivable remains outstanding!
+  if (direct.netBalancePaise > 0) {
     return {
       allowed: true,
       canRemove: true,
-      warning: `This friend still owes you ${formatPaise(direct.userBOwesUserAPaise)}. Historical records will be preserved and you can still track or settle this balance later.`,
-      unsettledPaise: direct.userBOwesUserAPaise,
+      warning: `This friend still owes you ${formatPaise(direct.netBalancePaise)}. Historical records will be preserved and you can still track or settle this balance later.`,
+      unsettledPaise: direct.netBalancePaise,
     };
   }
 

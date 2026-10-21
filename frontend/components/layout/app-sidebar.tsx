@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useBalances, useUnreadCount } from "@/hooks/queries"
+import { useUnreadTracking } from "@/hooks/use-unread-tracking"
 import { cn } from "@/lib/utils"
 import { LogoutDialog } from "./logout-dialog"
 import { isNavActive, NAV_ITEMS } from "./nav-items"
@@ -24,6 +25,7 @@ export function AppSidebar() {
   const { user } = useSession()
   const { netBalancePaise } = useBalances()
   const unread = useUnreadCount()
+  const { hasPendingFriendRequests, hasGroupsBadge } = useUnreadTracking()
   const [logoutOpen, setLogoutOpen] = React.useState(false)
 
   return (
@@ -42,6 +44,10 @@ export function AppSidebar() {
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-4 py-2">
         {NAV_ITEMS.map((item) => {
           const active = isNavActive(pathname, item.href)
+          const showDot =
+            (item.href === "/friends" && hasPendingFriendRequests) ||
+            (item.href === "/groups" && hasGroupsBadge)
+
           return (
             <Link
               key={item.href}
@@ -58,7 +64,15 @@ export function AppSidebar() {
                 <HugeiconsIcon icon={item.icon} className="size-5" strokeWidth={active ? 2.2 : 1.8} />
                 {item.label}
               </span>
-              {item.showUnread && unread > 0 && <Badge variant="destructive">{unread}</Badge>}
+              <div className="flex items-center gap-2">
+                {item.showUnread && unread > 0 && <Badge variant="destructive">{unread}</Badge>}
+                {showDot && (
+                  <span
+                    aria-label="New updates"
+                    className="size-2 rounded-full bg-destructive shadow-sm animate-pulse"
+                  />
+                )}
+              </div>
             </Link>
           )
         })}

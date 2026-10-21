@@ -22,11 +22,13 @@ export function GroupListItem({
   action,
   children,
   className,
+  hasUnread,
 }: {
   group: Group
   action?: React.ReactNode
   children?: React.ReactNode
   className?: string
+  hasUnread?: boolean
 }) {
   return (
     <Item
@@ -38,8 +40,14 @@ export function GroupListItem({
         <GroupIcon src={group.icon} alt={group.name} size="md" />
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0.5">
-        <ItemTitle className="block w-full truncate font-bold">
-          {group.name}
+        <ItemTitle className="flex items-center gap-2 font-bold">
+          <span className="truncate">{group.name}</span>
+          {hasUnread && (
+            <span
+              aria-label="New expenses in group"
+              className="size-2 shrink-0 rounded-full bg-destructive shadow-sm animate-pulse"
+            />
+          )}
         </ItemTitle>
         <ItemDescription className="text-xs">
           {group.members.length} members

@@ -232,6 +232,83 @@ assert(
   canDeleteGroup("usr_me", { ...mockGroup, id: "grp_trip", createdBy: "usr_me" }, [mkExpense("x", { deletedAt: "t" })]).allowed,
   "Deleted expenses don't block group deletion"
 );
-console.log("✓ Deleted expenses ignored; per-person balances match the net balance.");
+console.log("\nTesting PhonePe-style split-to-split cancel mutual netting:");
+// Scenario 1: Rajeev pays ₹100 for lassi (Mohit owes ₹50), Mohit pays ₹100 for paratha (Rajeev owes ₹50)
+const lassi100: Expense = {
+  id: "exp_lassi",
+  title: "Lassi",
+  amountPaise: 10000,
+  payerId: "usr_rajeev",
+  payerName: "Rajeev",
+  recipientId: "usr_rajeev",
+  recipientName: "Rajeev",
+  recipientUpiId: "rajeev@upi",
+  date: "2026-10-21",
+  splitType: "EQUAL",
+  shares: [
+    { userId: "usr_rajeev", userName: "Rajeev", amountPaise: 5000, status: "PAID" },
+    { userId: "usr_mohit", userName: "Mohit", amountPaise: 5000, status: "PENDING" },
+  ],
+  createdBy: "usr_rajeev",
+  createdAt: "2026-10-21T10:00:00.000Z",
+};
+
+const paratha100: Expense = {
+  id: "exp_paratha100",
+  title: "Paratha",
+  amountPaise: 10000,
+  payerId: "usr_mohit",
+  payerName: "Mohit",
+  recipientId: "usr_mohit",
+  recipientName: "Mohit",
+  recipientUpiId: "mohit@upi",
+  date: "2026-10-21",
+  splitType: "EQUAL",
+  shares: [
+    { userId: "usr_mohit", userName: "Mohit", amountPaise: 5000, status: "PAID" },
+    { userId: "usr_rajeev", userName: "Rajeev", amountPaise: 5000, status: "PENDING" },
+  ],
+  createdBy: "usr_mohit",
+  createdAt: "2026-10-21T11:00:00.000Z",
+};
+
+const equalMutual = [lassi100, paratha100];
+const rajeevEqualNet = calculateNetBalances("usr_rajeev", equalMutual);
+assert(rajeevEqualNet.netBalancePaise === 0, "Equal mutual splits cancel out to ₹0");
+assert(rajeevEqualNet.totalOwedToYouPaise === 0, "Nothing owed after split cancel");
+assert(rajeevEqualNet.totalYouOwePaise === 0, "Nothing to pay after split cancel");
+
+// Scenario 2: Mohit pays ₹200 for paratha (Rajeev owes ₹100), Rajeev paid ₹100 for lassi (Mohit owes ₹50)
+const paratha200: Expense = {
+  id: "exp_paratha200",
+  title: "Paratha 200",
+  amountPaise: 20000,
+  payerId: "usr_mohit",
+  payerName: "Mohit",
+  recipientId: "usr_mohit",
+  recipientName: "Mohit",
+  recipientUpiId: "mohit@upi",
+  date: "2026-10-21",
+  splitType: "EQUAL",
+  shares: [
+    { userId: "usr_mohit", userName: "Mohit", amountPaise: 10000, status: "PAID" },
+    { userId: "usr_rajeev", userName: "Rajeev", amountPaise: 10000, status: "PENDING" },
+  ],
+  createdBy: "usr_mohit",
+  createdAt: "2026-10-21T11:00:00.000Z",
+};
+
+const unequalMutual = [lassi100, paratha200];
+const rajeevUnequalNet = calculateNetBalances("usr_rajeev", unequalMutual);
+assert(rajeevUnequalNet.netBalancePaise === -5000, "Rajeev net owes ₹50 after adjusting ₹50 lassi against ₹100 paratha");
+assert(rajeevUnequalNet.totalYouOwePaise === 5000, "Rajeev owes net ₹50");
+assert(rajeevUnequalNet.totalOwedToYouPaise === 0, "Rajeev is owed ₹0 net");
+
+const mohitUnequalNet = calculateNetBalances("usr_mohit", unequalMutual);
+assert(mohitUnequalNet.netBalancePaise === 5000, "Mohit is owed net ₹50 after split cancel");
+assert(mohitUnequalNet.totalOwedToYouPaise === 5000, "Mohit is owed ₹50 net");
+assert(mohitUnequalNet.totalYouOwePaise === 0, "Mohit owes ₹0 net");
+
+console.log("✓ Split-to-split cancel tests passed.");
 
 console.log("\n🎉 ALL FINANCIAL & INVARIANT BUSINESS LOGIC TESTS PASSED!");

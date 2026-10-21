@@ -36,12 +36,14 @@ import {
 } from "@/hooks/mutations"
 import { getExpenseDebts } from "@/lib/money"
 import type { Expense, ExpenseShare } from "@/lib/types"
-import { cn } from "@/lib/utils"
+import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { ConfirmShareDialog } from "./_components/confirm-share-dialog"
 import { DeleteExpenseDialog } from "./_components/delete-expense-dialog"
 import { ExpenseActionsMenu } from "./_components/expense-actions-menu"
 import { ExpenseGate } from "./_components/expense-gate"
 import { ShareRow } from "./_components/share-row"
+import { useUnreadTracking } from "@/hooks/use-unread-tracking"
+import { cn } from "@/lib/utils"
 
 export default function ExpenseDetailsPage() {
   const params = useParams<{ expenseId: string }>()
@@ -102,7 +104,14 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
   const { copied, copy } = useCopyToClipboard()
 
   const [selectedShare, setSelectedShare] = React.useState<ExpenseShare | null>(null)
+  const [disputeShareTarget, setDisputeShareTarget] = React.useState<ExpenseShare | null>(null)
   const [isDeleteOpen, setIsDeleteOpen] = React.useState(false)
+
+  const { markSeen } = useUnreadTracking()
+
+  React.useEffect(() => {
+    markSeen(expense.id)
+  }, [expense.id, markSeen])
 
   const reminder = useSendPaymentReminder()
   const confirmPayment = useConfirmPayment({ successMessage: "Payment confirmed and marked as Paid!" })
@@ -115,18 +124,23 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
   const isDeleted = !!expense.deletedAt
   const canDelete = (isPayer || isCreator) && !isDeleted
 
+  const myShare = expense.shares.find((s) => s.userId === user?.uid)
+  const position = getMyPosition(expense, user?.uid)
+  const canPay = !isPayer && !isDeleted && !!myShare && myShare.status !== "PAID" && position.paise > 0
+  const unpaids = expense.shares.filter((s) => s.status !== "PAID" && s.userId !== user?.uid)
+  const canRemind = !isDeleted && unpaids.length > 0 && (isPayer || isRecipient)
+
   // Invariant check: cannot delete if member payments are confirmed or awaiting confirmation
   const hasPaidMembers =
     expense.shares?.some(
       (s) => s.userId !== expense.payerId && (s.status === "PAID" || s.status === "PAYMENT_REPORTED")
     ) || false
   const allPaid = expense.shares.every((s) => s.status === "PAID")
-  const position = getMyPosition(expense, user?.uid)
 
   const goToPay = () => router.push(`/expenses/${expense.id}/pay`)
 
   const handleRemindAll = async () => {
-    const unpaids = expense.shares.filter((s) => s.status !== "PAID" && s.userId !== user?.uid)
+    if (unpaids.length === 0) return
     try {
       for (const u of unpaids) {
         await reminder.mutateAsync({ expenseId: expense.id, targetUserId: u.userId })
@@ -167,6 +181,8 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
         rightAction={
           !isDeleted && (
           <ExpenseActionsMenu
+            canPay={canPay}
+            canRemind={canRemind}
             canDelete={canDelete}
             onPay={goToPay}
             onRemind={handleRemindAll}
@@ -241,9 +257,11 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
                   share={share}
                   isMe={share.userId === user?.uid}
                   isPayer={share.userId === expense.payerId}
-                  canConfirm={!isDeleted && isRecipient && share.status === "PAYMENT_REPORTED"}
+                  canConfirm={!isDeleted && (isRecipient || isPayer) && share.status === "PAYMENT_REPORTED"}
+                  canDispute={!isDeleted && (isRecipient || isPayer) && share.userId !== user?.uid && share.status === "PAID"}
                   onVerify={() => setSelectedShare(share)}
-                  onPay={isDeleted ? undefined : goToPay}
+                  onDispute={() => setDisputeShareTarget(share)}
+                  onPay={!isDeleted && share.userId === user?.uid && !isPayer && share.status !== "PAID" ? goToPay : undefined}
                 />
               </React.Fragment>
             ))}
@@ -291,18 +309,20 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
 
         {/* Action bar */}
         {/* Paying happens inline on your own share row; only reminders live here */}
-        <div className={cn("flex gap-3 pt-2", isDeleted && "hidden")}>
-          <Button
-            variant="outline"
-            size="lg"
-            className="w-full"
-            disabled={reminder.isPending}
-            onClick={handleRemindAll}
-          >
-            <HugeiconsIcon icon={Notification01Icon} data-icon="inline-start" />
-            Remind Unpaid
-          </Button>
-        </div>
+        {canRemind && (
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="outline"
+              size="lg"
+              className="w-full"
+              disabled={reminder.isPending}
+              onClick={handleRemindAll}
+            >
+              <HugeiconsIcon icon={Notification01Icon} data-icon="inline-start" />
+              Remind Unpaid
+            </Button>
+          </div>
+        )}
       </PageContainer>
 
       <ConfirmShareDialog
@@ -323,6 +343,22 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
         hasPaidMembers={hasPaidMembers}
         isPending={deleteExpense.isPending}
         onConfirm={handleConfirmDelete}
+      />
+
+      <ConfirmDialog
+        open={!!disputeShareTarget}
+        onOpenChange={(open) => !open && setDisputeShareTarget(null)}
+        title="Mark Payment as Not Received?"
+        description={`Are you sure you want to mark ${disputeShareTarget?.userName}'s payment of ₹${((disputeShareTarget?.amountPaise || 0) / 100).toFixed(0)} as not received? This will revert their share to Disputed.`}
+        confirmLabel="Dispute Payment"
+        destructive
+        isPending={disputePayment.isPending}
+        onConfirm={() => {
+          if (disputeShareTarget) {
+            handleDisputeReceipt(disputeShareTarget.userId)
+            setDisputeShareTarget(null)
+          }
+        }}
       />
     </>
   )

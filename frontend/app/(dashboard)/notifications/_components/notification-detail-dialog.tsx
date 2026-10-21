@@ -5,6 +5,7 @@ import { toast } from "sonner"
 
 import { useSession } from "@/components/providers/session-provider"
 import { Amount } from "@/components/shared/amount"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
@@ -173,46 +174,58 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
     const expenseId = data?.expenseId
     const actorId = data?.actorId
     const busy = confirmPayment.isPending || disputePayment.isPending
+    const isConfirmed = notif.actionTaken === "CONFIRMED"
+    const isDisputed = notif.actionTaken === "DISPUTED"
 
     return (
       <div className="flex flex-col gap-3">
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            size="lg"
-            className={CTA}
-            disabled={busy}
-            onClick={() => {
-              if (expenseId && actorId) {
-                confirmPayment.mutate({ expenseId, memberUserId: actorId }, { onSuccess: onClose })
-              }
-            }}
-          >
-            {confirmPayment.isPending && <Spinner />}
-            Yes, Received
-          </Button>
-          <Button
-            size="lg"
-            variant="destructive"
-            className={CTA}
-            disabled={busy}
-            onClick={() => {
-              if (expenseId && actorId) {
-                disputePayment.mutate(
-                  { expenseId, memberUserId: actorId },
-                  {
-                    onSuccess: () => {
-                      toast.error("Payment marked as not received (disputed)")
-                      onClose()
-                    },
-                  }
-                )
-              }
-            }}
-          >
-            {disputePayment.isPending && <Spinner />}
-            No, Not Received
-          </Button>
-        </div>
+        {isConfirmed ? (
+          <Badge className="bg-success/15 font-bold text-success border border-success/30 text-xs py-2 justify-center">
+            ✓ Payment Confirmed as Received
+          </Badge>
+        ) : isDisputed ? (
+          <Badge variant="destructive" className="font-bold text-xs py-2 justify-center">
+            Payment Marked as Not Received (Disputed)
+          </Badge>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              size="lg"
+              className={CTA}
+              disabled={busy}
+              onClick={() => {
+                if (expenseId && actorId) {
+                  confirmPayment.mutate({ expenseId, memberUserId: actorId, notifId: notif.id }, { onSuccess: onClose })
+                }
+              }}
+            >
+              {confirmPayment.isPending && <Spinner />}
+              Yes, Received
+            </Button>
+            <Button
+              size="lg"
+              variant="destructive"
+              className={CTA}
+              disabled={busy}
+              onClick={() => {
+                if (expenseId && actorId) {
+                  disputePayment.mutate(
+                    { expenseId, memberUserId: actorId, notifId: notif.id },
+                    {
+                      onSuccess: () => {
+                        toast.error("Payment marked as not received (disputed)")
+                        onClose()
+                      },
+                    }
+                  )
+                }
+              }}
+            >
+              {disputePayment.isPending && <Spinner />}
+              No, Not Received
+            </Button>
+          </div>
+        )}
         <Button variant="link" size="sm" className="w-full font-bold" onClick={goToExpenseOrHistory}>
           View Full Expense Details
         </Button>

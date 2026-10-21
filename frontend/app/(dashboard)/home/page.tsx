@@ -56,6 +56,7 @@ import {
   useFriends,
   useGroups,
 } from "@/hooks/queries"
+import { useUnreadTracking } from "@/hooks/use-unread-tracking"
 import { PayPersonButton } from "@/components/shared/pay-person-button"
 import { calculatePersonBalances, formatPaise } from "@/lib/money"
 import type { UserProfile } from "@/lib/types"
@@ -67,6 +68,7 @@ export default function HomePage() {
   const friendsQuery = useFriends()
   const groupsQuery = useGroups()
   const expensesQuery = useExpenses()
+  const { isExpenseUnread, hasGroupUnreadExpenses, markSeen } = useUnreadTracking()
   const { netBalancePaise, totalOwedToYouPaise, totalYouOwePaise } =
     useBalances()
 
@@ -231,6 +233,7 @@ export default function HomePage() {
                       <GroupListItem
                         key={group.id}
                         group={group}
+                        hasUnread={hasGroupUnreadExpenses(group.id)}
                         action={
                           <span className="text-xs font-bold text-primary">
                             View
@@ -271,6 +274,8 @@ export default function HomePage() {
                         key={exp.id}
                         expense={exp}
                         variant="default"
+                        hasUnread={isExpenseUnread(exp.id)}
+                        onClick={() => markSeen(exp.id)}
                         description={
                           exp.isPersonal || exp.expenseType === "personal"
                             ? `Personal • ${exp.category || "Expense"}`

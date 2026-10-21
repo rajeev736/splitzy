@@ -177,5 +177,6 @@ export interface AppNotification {
     amountPaise?: number;
   };
   read: boolean;
+  actionTaken?: "CONFIRMED" | "DISPUTED";
   createdAt: string;
 }

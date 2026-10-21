@@ -10,7 +10,7 @@ import { Amount } from "@/components/shared/amount"
 import { BottomSheet } from "@/components/shared/bottom-sheet"
 import { Button } from "@/components/ui/button"
 import { useExpenses } from "@/hooks/queries"
-import { getExpenseDebts } from "@/lib/money"
+import { calculateDirectBalance, getExpenseDebts } from "@/lib/money"
 import type { Expense } from "@/lib/types"
 
 /** Unpaid expenses where the signed-in user owes `personId`. */
@@ -18,7 +18,13 @@ function useDebtsTo(personId: string) {
   const { user } = useSession()
   const { data: expenses } = useExpenses()
   return React.useMemo(() => {
-    if (!user) return []
+    if (!user) return { lines: [], netPaise: 0, hasOffset: false, offsetPaise: 0 }
+    const direct = calculateDirectBalance(user.uid, personId, expenses)
+    if (direct.netBalancePaise >= 0) {
+      // All settled or they owe us
+      return { lines: [], netPaise: 0, hasOffset: false, offsetPaise: 0 }
+    }
+
     const lines: { expense: Expense; amountPaise: number }[] = []
     for (const expense of expenses) {
       const amountPaise = getExpenseDebts(expense)
@@ -26,14 +32,19 @@ function useDebtsTo(personId: string) {
         .reduce((sum, d) => sum + d.amountPaise, 0)
       if (amountPaise > 0) lines.push({ expense, amountPaise })
     }
-    return lines
+    return {
+      lines,
+      netPaise: Math.abs(direct.netBalancePaise),
+      hasOffset: direct.userBOwesUserAPaise > 0,
+      offsetPaise: direct.userBOwesUserAPaise,
+    }
   }, [expenses, personId, user])
 }
 
 /**
  * "Pay" for everything you owe one person. A single expense goes straight to
  * its UPI pay screen; several open a drawer to pay them one by one.
- * Renders nothing when you don't owe this person anything.
+ * Renders nothing when you don't owe this person anything (or if splits cancelled out).
  */
 export function PayPersonButton({
   personId,
@@ -47,16 +58,15 @@ export function PayPersonButton({
   className?: string
 }) {
   const router = useRouter()
-  const lines = useDebtsTo(personId)
+  const { lines, netPaise, hasOffset, offsetPaise } = useDebtsTo(personId)
   const [open, setOpen] = React.useState(false)
 
-  if (lines.length === 0) return null
+  if (lines.length === 0 || netPaise === 0) return null
 
   const pay = (expenseId: string) => {
     setOpen(false)
     router.push(`/expenses/${expenseId}/pay`)
   }
-  const totalPaise = lines.reduce((sum, l) => sum + l.amountPaise, 0)
 
   return (
     <>
@@ -80,8 +90,12 @@ export function PayPersonButton({
           title={`Pay ${personName}`}
           description={
             <>
-              You owe <Amount paise={totalPaise} className="font-bold text-destructive" /> across {lines.length}{" "}
-              expenses
+              Net payable <Amount paise={netPaise} className="font-bold text-destructive" />
+              {hasOffset && (
+                <span className="block text-[11px] text-muted-foreground">
+                  (Split-to-split adjusted: ₹{(offsetPaise / 100).toFixed(0)} offset applied)
+                </span>
+              )}
             </>
           }
           bodyClassName="pb-6"

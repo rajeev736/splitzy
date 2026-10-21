@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import {
   ArrowRight01Icon,
   PlusSignIcon,
@@ -11,7 +12,6 @@ import { HugeiconsIcon } from "@hugeicons/react"
 
 import { FilterPills } from "../_components/filter-pills"
 import { GroupListItem } from "../_components/group-list-item"
-import { GroupInvitations } from "./_components/group-invitations"
 import { AppHeader } from "@/components/layout/app-header"
 import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
@@ -19,13 +19,23 @@ import { ButtonLink } from "@/components/shared/button-link"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
 import { StatusBadge } from "@/components/shared/status-badge"
+import { Badge } from "@/components/ui/badge"
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group"
-import { ItemGroup } from "@/components/ui/item"
-import { useExpenses, useGroups } from "@/hooks/queries"
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemTitle,
+} from "@/components/ui/item"
+import { useExpenses, useGroupInvites, useGroups } from "@/hooks/queries"
+import { useUnreadTracking } from "@/hooks/use-unread-tracking"
 import { calculateMemberGroupBalance, formatPaise } from "@/lib/money"
 
 type GroupFilter = "all" | "active" | "settled"
@@ -47,8 +57,12 @@ export default function GroupsPage() {
   const { user } = useSession()
   const groupsQuery = useGroups()
   const expensesQuery = useExpenses()
+  const { data: groupInvites } = useGroupInvites()
+  const { hasGroupUnreadExpenses } = useUnreadTracking()
   const groups = groupsQuery.data
   const expenses = expensesQuery.data
+
+  const pendingReceivedCount = groupInvites.length
 
   const [search, setSearch] = React.useState("")
   const [filter, setFilter] = React.useState<GroupFilter>("all")
@@ -107,14 +121,40 @@ export default function GroupsPage() {
           />
         </InputGroup>
 
+        {/* Group Invitations Banner (Clean layout matching Friends section) */}
+        <Item
+          variant="outline"
+          className="cursor-pointer bg-secondary/60 p-4 transition-colors hover:bg-secondary/80"
+          render={<Link href="/groups/invitations" />}
+        >
+          <ItemMedia className="size-10 rounded-xl bg-primary text-primary-foreground">
+            <HugeiconsIcon icon={UserGroupIcon} className="size-5" />
+          </ItemMedia>
+          <ItemContent className="min-w-0">
+            <ItemTitle className="font-bold">Group Invitations</ItemTitle>
+            <ItemDescription className="text-xs">
+              {pendingReceivedCount > 0
+                ? `${pendingReceivedCount} pending invitation${pendingReceivedCount > 1 ? "s" : ""}`
+                : "View and manage incoming & outgoing group invitations"}
+            </ItemDescription>
+          </ItemContent>
+          <ItemActions>
+            {pendingReceivedCount > 0 && (
+              <Badge variant="default">{pendingReceivedCount}</Badge>
+            )}
+            <HugeiconsIcon
+              icon={ArrowRight01Icon}
+              className="size-4 text-muted-foreground"
+            />
+          </ItemActions>
+        </Item>
+
         <FilterPills
           aria-label="Filter groups"
           options={FILTERS}
           value={filter}
           onValueChange={setFilter}
         />
-
-        <GroupInvitations />
 
         {isPending ? (
           <ListSkeleton />
@@ -132,6 +172,7 @@ export default function GroupsPage() {
               <GroupListItem
                 key={group.id}
                 group={group}
+                hasUnread={hasGroupUnreadExpenses(group.id)}
                 className="rounded-3xl p-4"
                 action={
                   <HugeiconsIcon
@@ -143,17 +184,15 @@ export default function GroupsPage() {
                 {balance.allSettled ? (
                   <StatusBadge status="all_settled" className="mt-1" />
                 ) : balance.netPaise === 0 ? (
-                  <div className="mt-1 text-xs font-bold text-muted-foreground">
-                    Net ₹0 · payments still pending
-                  </div>
+                  <StatusBadge status="settled" className="mt-1" />
                 ) : balance.netPaise > 0 ? (
-                  <div className="mt-1 text-xs font-bold text-success">
-                    +{formatPaise(balance.netPaise)} to receive
-                  </div>
+                  <span className="mt-1 inline-flex items-center text-xs font-bold text-success">
+                    +{formatPaise(balance.netPaise)}
+                  </span>
                 ) : (
-                  <div className="mt-1 text-xs font-bold text-destructive">
-                    {formatPaise(Math.abs(balance.netPaise))} you owe
-                  </div>
+                  <span className="mt-1 inline-flex items-center text-xs font-bold text-destructive">
+                    -{formatPaise(Math.abs(balance.netPaise))}
+                  </span>
                 )}
               </GroupListItem>
             ))}
@@ -161,8 +200,20 @@ export default function GroupsPage() {
         ) : (
           <EmptyState
             icon={UserGroupIcon}
-            title="No groups found"
-            description="Try a different search query or create a new group."
+            title={search ? "No groups found" : "No groups yet"}
+            description={
+              search
+                ? "Try searching for a different name."
+                : "Create a group to start splitting bills with friends!"
+            }
+            action={
+              search
+                ? undefined
+                : {
+                    label: "Create Group",
+                    onClick: () => (window.location.href = "/groups/new"),
+                  }
+            }
           />
         )}
       </PageContainer>

@@ -352,9 +352,11 @@ export async function acceptGroupInvite(
   const invitedMemberDetails = { ...(group.invitedMemberDetails || {}) }
   const invite = invitedMemberDetails[user.uid]
   delete invitedMemberDetails[user.uid]
+  const formerMembers = (group.formerMembers || []).filter((id) => id !== user.uid)
   const patch = {
     members: Array.from(new Set([...(group.members || []), user.uid])),
     invitedMembers: (group.invitedMembers || []).filter((id) => id !== user.uid),
+    formerMembers,
     memberDetails: { ...group.memberDetails, [user.uid]: toMemberInfo(user, "member") },
     invitedMemberDetails,
   }
@@ -364,8 +366,10 @@ export async function acceptGroupInvite(
     await updateDoc(doc(firestore, "groups", groupId), {
       members: patch.members,
       invitedMembers: patch.invitedMembers,
+      formerMembers: patch.formerMembers,
       [`memberDetails.${user.uid}`]: sanitizeForFirestore(patch.memberDetails[user.uid]),
       [`invitedMemberDetails.${user.uid}`]: deleteField(),
+      [`formerMemberDetails.${user.uid}`]: deleteField(),
     })
 
     // Tell whoever sent the invite (and the creator, if different)

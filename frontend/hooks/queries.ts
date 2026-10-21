@@ -40,7 +40,14 @@ export const useFriendRequests = () => useRealtimeList<FriendRequest>(queryKeys.
 export const useNotifications = () => useRealtimeList<AppNotification>(queryKeys.notifications)
 
 /** Every synced group, including ones you're only invited to. */
-const useAllGroups = () => useRealtimeList<Group>(queryKeys.groups)
+const useAllGroups = () => {
+  const query = useRealtimeList<Group>(queryKeys.groups)
+  const data = React.useMemo(() => {
+    const seen = new Set<string>()
+    return query.data.filter((g) => !seen.has(g.id) && seen.add(g.id))
+  }, [query.data])
+  return { ...query, data }
+}
 
 /** Groups you're a member of. */
 export function useGroups() {
@@ -95,7 +102,14 @@ const legacyInvite = (group: Group, uid: string): GroupInviteInfo => ({
 })
 
 /** Every expense that involves you, including deleted ones — for history. */
-export const useExpenseHistory = () => useRealtimeList<Expense>(queryKeys.expenses)
+export function useExpenseHistory() {
+  const query = useRealtimeList<Expense>(queryKeys.expenses)
+  const data = React.useMemo(() => {
+    const seen = new Set<string>()
+    return query.data.filter((e) => !seen.has(e.id) && seen.add(e.id))
+  }, [query.data])
+  return { ...query, data }
+}
 
 /** Live (not deleted) expenses that involve you. */
 export function useExpenses() {

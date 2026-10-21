@@ -17,7 +17,9 @@ export function ShareRow({
   isMe,
   isPayer,
   canConfirm,
+  canDispute,
   onVerify,
+  onDispute,
   onPay,
 }: {
   share: ExpenseShare
@@ -25,7 +27,10 @@ export function ShareRow({
   isPayer: boolean
   /** Recipient can verify a reported payment. */
   canConfirm: boolean
+  /** Recipient can dispute a previously confirmed payment if clicked by mistake. */
+  canDispute?: boolean
   onVerify: () => void
+  onDispute?: () => void
   /** Shown on the viewer's own unpaid share instead of the "Pending" badge. */
   onPay?: () => void
 }) {
@@ -67,17 +72,30 @@ export function ShareRow({
             Verify Payment
           </Button>
         ) : (
-          <StatusBadge status={SHARE_STATUS_BADGE[share.status]}>
-            {share.status === "PAID" && <HugeiconsIcon icon={CheckmarkCircle02Icon} data-icon="inline-start" />}
-            {share.status === "PAYMENT_REPORTED" && <HugeiconsIcon icon={Clock01Icon} data-icon="inline-start" />}
-            {share.status === "PAID"
-              ? "Paid"
-              : share.status === "PAYMENT_REPORTED"
-                ? "Payment Reported"
-                : share.status === "DISPUTED"
-                  ? "Disputed"
-                  : "Pending"}
-          </StatusBadge>
+          <div className="flex items-center gap-1.5">
+            <StatusBadge status={SHARE_STATUS_BADGE[share.status]}>
+              {share.status === "PAID" && <HugeiconsIcon icon={CheckmarkCircle02Icon} data-icon="inline-start" />}
+              {share.status === "PAYMENT_REPORTED" && <HugeiconsIcon icon={Clock01Icon} data-icon="inline-start" />}
+              {share.status === "PAID"
+                ? "Paid"
+                : share.status === "PAYMENT_REPORTED"
+                  ? "Payment Reported"
+                  : share.status === "DISPUTED"
+                    ? "Disputed"
+                    : "Pending"}
+            </StatusBadge>
+            {share.status === "PAID" && canDispute && onDispute && (
+              <Button
+                size="xs"
+                variant="ghost"
+                className="h-6 px-1.5 text-[10px] font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive"
+                title="Mark as not received if clicked by mistake"
+                onClick={onDispute}
+              >
+                Dispute
+              </Button>
+            )}
+          </div>
         )}
       </ItemActions>
     </Item>

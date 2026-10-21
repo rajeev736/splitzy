@@ -145,7 +145,7 @@ export function useUpdateProfile(options: MutationToastOptions = {}) {
 export const useCreateGroup = createUserMutation({
   run: ({ user, cache }, input: groupService.CreateGroupInput) =>
     groupService.createGroup(user, { friends: cache.friends(), friendRequests: cache.friendRequests() }, input),
-  apply: ({ cache }, group) => cache.setGroups((list) => [group, ...list]),
+  apply: ({ cache }, group) => cache.setGroups((list) => [group, ...list.filter((g) => g.id !== group.id)]),
 })
 
 export const useUpdateGroup = createUserMutation({
@@ -248,7 +248,7 @@ export const useDeclineGroupInvite = createUserMutation({
 
 export const useCreateExpense = createUserMutation({
   run: ({ user }, input: expenseService.CreateExpenseInput) => expenseService.createExpense(user, input),
-  apply: ({ cache }, expense) => cache.setExpenses((list) => [expense, ...list]),
+  apply: ({ cache }, expense) => cache.setExpenses((list) => [expense, ...list.filter((e) => e.id !== expense.id)]),
 })
 
 export const useDeleteExpense = createUserMutation({
@@ -265,15 +265,25 @@ export const useReportPayment = createUserMutation({
 })
 
 export const useConfirmPayment = createUserMutation({
-  run: ({ user, cache }, v: { expenseId: string; memberUserId: string }) =>
-    expenseService.confirmPaymentReceipt(user, cache.expenses(), v.expenseId, v.memberUserId),
-  apply: ({ cache }, shares, { expenseId }) => cache.setExpenses(patchById<Expense>(expenseId, { shares })),
+  run: ({ user, cache }, v: { expenseId: string; memberUserId: string; notifId?: string }) =>
+    expenseService.confirmPaymentReceipt(user, cache.expenses(), v.expenseId, v.memberUserId, v.notifId),
+  apply: ({ cache }, shares, { expenseId, notifId }) => {
+    cache.setExpenses(patchById<Expense>(expenseId, { shares }))
+    if (notifId) {
+      cache.setNotifications(patchById<AppNotification>(notifId, { read: true, actionTaken: "CONFIRMED" }))
+    }
+  },
 })
 
 export const useDisputePayment = createUserMutation({
-  run: ({ user, cache }, v: { expenseId: string; memberUserId: string }) =>
-    expenseService.disputePaymentReceipt(user, cache.expenses(), v.expenseId, v.memberUserId),
-  apply: ({ cache }, shares, { expenseId }) => cache.setExpenses(patchById<Expense>(expenseId, { shares })),
+  run: ({ user, cache }, v: { expenseId: string; memberUserId: string; notifId?: string }) =>
+    expenseService.disputePaymentReceipt(user, cache.expenses(), v.expenseId, v.memberUserId, v.notifId),
+  apply: ({ cache }, shares, { expenseId, notifId }) => {
+    cache.setExpenses(patchById<Expense>(expenseId, { shares }))
+    if (notifId) {
+      cache.setNotifications(patchById<AppNotification>(notifId, { read: true, actionTaken: "DISPUTED" }))
+    }
+  },
 })
 
 export const useSendPaymentReminder = createUserMutation({
@@ -339,6 +349,12 @@ export const useRemoveFriend = createUserMutation({
   apply: ({ cache }, _data, friendUid) => cache.setFriends((list) => list.filter((f) => f.uid !== friendUid)),
 })
 
+export const useSendFriendBalanceReminder = createUserMutation({
+  run: ({ user }, v: { targetUserId: string; amountPaise: number }) =>
+    friendService.sendFriendBalanceReminder(user, v.targetUserId, v.amountPaise),
+  defaults: { successMessage: "Payment reminder sent" },
+})
+
 /* ────────────────────────────────────────────────────────────────────────────
  * Notifications (optimistic, failures are silent — matches original UX)
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -369,5 +385,21 @@ export function useMarkAllNotificationsRead() {
     },
     onError: (e) => console.warn("Failed to mark all notifications read:", e),
     meta: { errorMessage: false },
+  })
+}
+
+export function useClearAllNotifications() {
+  const qc = useQueryClient()
+  const { user } = useSession()
+  return useMutation({
+    mutationFn: async () => {
+      if (!user) return
+      const cache = cacheFor(qc, user.uid)
+      const snapshot = cache.notifications()
+      cache.setNotifications(() => [])
+      await notificationService.clearAllNotifications(user.uid, snapshot)
+    },
+    onError: (e) => console.warn("Failed to clear notifications:", e),
+    meta: { successMessage: "All notifications cleared", errorMessage: "Failed to clear notifications" },
   })
 }

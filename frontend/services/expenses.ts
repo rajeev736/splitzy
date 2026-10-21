@@ -3,6 +3,7 @@ import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore"
 import { AppError } from "@/lib/errors"
 import { buildFirestoreExpense } from "@/lib/expenses/builder"
 import type { Expense, ExpenseShare, SharePaymentStatus, SplitType, UserProfile } from "@/lib/types"
+import { updateNotificationAction } from "./notifications"
 import { getDb, nowIso, resolveExpense, rupees, sendNotification } from "./shared"
 
 export interface CreateExpenseInput {
@@ -149,15 +150,26 @@ export function reportPayment(user: UserProfile, expenses: Expense[], expenseId:
 }
 
 /** Recipient confirms they received a member's payment. */
-export function confirmPaymentReceipt(user: UserProfile, expenses: Expense[], expenseId: string, memberUserId: string) {
+export async function confirmPaymentReceipt(
+  user: UserProfile,
+  expenses: Expense[],
+  expenseId: string,
+  memberUserId: string,
+  notifId?: string
+) {
+  const expense = await resolveExpense(expenseId, expenses)
+  const existingShare = expense?.shares.find((s) => s.userId === memberUserId)
+  const alreadyPaid = existingShare?.status === "PAID"
+
   const now = nowIso()
-  return updateShareStatus(
+  const shares = await updateShareStatus(
     expenses,
     expenseId,
     memberUserId,
-    (s) => ({ ...s, status: "PAID" as SharePaymentStatus, confirmedAt: now }),
-    (expense, share) =>
-      sendNotification({
+    (s) => ({ ...s, status: "PAID" as SharePaymentStatus, confirmedAt: s.confirmedAt || now }),
+    async (expense, share) => {
+      if (alreadyPaid) return
+      await sendNotification({
         userId: memberUserId,
         title: "Payment Confirmed! 🎉",
         message: `${user.displayName} confirmed receiving ₹${rupees(share?.amountPaise)} for "${expense.title}".`,
@@ -165,19 +177,37 @@ export function confirmPaymentReceipt(user: UserProfile, expenses: Expense[], ex
         data: { expenseId, actorId: user.uid, actorName: user.displayName, amountPaise: share?.amountPaise || 0 },
         createdAt: now,
       })
+    }
   )
+
+  if (notifId) {
+    await updateNotificationAction(notifId, "CONFIRMED").catch(console.warn)
+  }
+
+  return shares
 }
 
 /** Recipient disputes a reported payment. */
-export function disputePaymentReceipt(user: UserProfile, expenses: Expense[], expenseId: string, memberUserId: string) {
+export async function disputePaymentReceipt(
+  user: UserProfile,
+  expenses: Expense[],
+  expenseId: string,
+  memberUserId: string,
+  notifId?: string
+) {
+  const expense = await resolveExpense(expenseId, expenses)
+  const existingShare = expense?.shares.find((s) => s.userId === memberUserId)
+  const alreadyDisputed = existingShare?.status === "DISPUTED"
+
   const now = nowIso()
-  return updateShareStatus(
+  const shares = await updateShareStatus(
     expenses,
     expenseId,
     memberUserId,
     (s) => ({ ...s, status: "DISPUTED" as SharePaymentStatus }),
-    (expense, share) =>
-      sendNotification({
+    async (expense, share) => {
+      if (alreadyDisputed) return
+      await sendNotification({
         userId: memberUserId,
         title: "Payment Not Received ⚠️",
         message: `${user.displayName} reported that they did NOT receive your payment of ₹${rupees(share?.amountPaise)} for "${expense.title}". Please verify.`,
@@ -185,7 +215,14 @@ export function disputePaymentReceipt(user: UserProfile, expenses: Expense[], ex
         data: { expenseId, actorId: user.uid, actorName: user.displayName, amountPaise: share?.amountPaise || 0 },
         createdAt: now,
       })
+    }
   )
+
+  if (notifId) {
+    await updateNotificationAction(notifId, "DISPUTED").catch(console.warn)
+  }
+
+  return shares
 }
 
 /**

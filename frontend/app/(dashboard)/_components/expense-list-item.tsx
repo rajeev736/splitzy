@@ -26,6 +26,8 @@ export function ExpenseListItem({
   children,
   variant = "outline",
   className,
+  hasUnread,
+  onClick,
 }: {
   expense: Expense
   description?: React.ReactNode
@@ -33,6 +35,8 @@ export function ExpenseListItem({
   children?: React.ReactNode
   variant?: "outline" | "default"
   className?: string
+  hasUnread?: boolean
+  onClick?: () => void
 }) {
   return (
     <Item
@@ -42,7 +46,7 @@ export function ExpenseListItem({
         variant === "outline" && "bg-card hover:border-primary/40",
         className
       )}
-      render={<Link href={`/expenses/${expense.id}`} />}
+      render={<Link href={`/expenses/${expense.id}`} onClick={onClick} />}
     >
       <ItemMedia>
         {expense.groupIcon ? (
@@ -54,8 +58,14 @@ export function ExpenseListItem({
         )}
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0.5">
-        <ItemTitle className="block w-full truncate font-bold">
-          {expense.title}
+        <ItemTitle className="flex items-center gap-1.5 font-bold">
+          <span className="truncate">{expense.title}</span>
+          {hasUnread && (
+            <span
+              aria-label="New expense"
+              className="size-2 shrink-0 rounded-full bg-destructive shadow-sm animate-pulse"
+            />
+          )}
         </ItemTitle>
         {description && (
           <ItemDescription className="truncate text-xs">

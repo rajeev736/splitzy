@@ -1,7 +1,7 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore"
 
 import { AppError } from "@/lib/errors"
-import { canRemoveFriend } from "@/lib/money"
+import { canRemoveFriend, formatPaise } from "@/lib/money"
 import type { Expense, FriendRequest, UserProfile } from "@/lib/types"
 import {
   activateFriendship,
@@ -409,4 +409,21 @@ export async function getMutualFriendSuggestions(ctx: FriendsContext): Promise<F
   }
 
   return suggestions.sort((a, b) => b.mutualCount - a.mutualCount)
+}
+
+export async function sendFriendBalanceReminder(
+  user: UserProfile,
+  targetUserId: string,
+  amountPaise: number
+) {
+  await sendNotification(
+    {
+      userId: targetUserId,
+      title: "Payment Reminder",
+      message: `${user.displayName} sent a reminder to settle your balance of ${formatPaise(amountPaise)}`,
+      type: "PAYMENT_REMINDER",
+      data: { actorId: user.uid, actorName: user.displayName, amountPaise },
+    },
+    { scoped: false }
+  )
 }

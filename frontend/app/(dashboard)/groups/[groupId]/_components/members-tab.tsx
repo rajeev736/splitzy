@@ -34,7 +34,8 @@ export function MembersTab({
   const sendFriendRequest = useSendFriendRequest()
   const acceptFriendRequest = useAcceptFriendRequest({ successMessage: "Friend request accepted!" })
 
-  const formerMembers = group.formerMembers ?? []
+  // Only show users in formerMembers who are NOT currently active members
+  const formerMembers = (group.formerMembers ?? []).filter((id) => !group.members.includes(id))
 
   return (
     <Card>
