@@ -10,8 +10,9 @@ import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
+import { PayPersonButton } from "@/components/shared/pay-person-button"
 import { useSendPaymentReminder } from "@/hooks/mutations"
-import { getExpenseDebts } from "@/lib/money"
+import { calculatePersonNetBreakdown, getExpenseDebts } from "@/lib/money"
 import type { Expense, Group } from "@/lib/types"
 
 interface CounterpartyLine {
@@ -25,6 +26,7 @@ interface Counterparty {
   uid: string
   name: string
   photoURL?: string
+  upiId?: string
   totalPaise: number
   rawOwedToMePaise: number
   rawIOwePaise: number
@@ -33,112 +35,95 @@ interface Counterparty {
 }
 
 /**
- * Groups this user's open debts in a group by the other person with PhonePe-style
- * split-to-split cancel netting so reciprocal mutual debts cancel out and totals
- * match "Your Balance".
+ * Groups this user's open debts with members in a group.
+ * Scoped strictly to this group's expenses — no cross-group or personal netting.
  */
 function buildBreakdown(userId: string, group: Group, expenses: Expense[]) {
   const people = {
     ...(group.formerMemberDetails || {}),
     ...group.memberDetails,
   }
-  const nameFromExpense = (exp: Expense, uid: string) =>
-    exp.shares?.find((s) => s.userId === uid)?.userName ||
-    (exp.payerId === uid
-      ? exp.payerName
-      : exp.recipientId === uid
-        ? exp.recipientName
-        : "Member")
 
-  const counterparties = new Map<
-    string,
-    {
-      uid: string
-      name: string
-      photoURL?: string
-      debtsToMe: { expense: Expense; amountPaise: number }[]
-      debtsFromMe: { expense: Expense; amountPaise: number }[]
-    }
-  >()
+  // Only use expenses belonging to this group
+  const groupExpenses = expenses.filter((e) => !e.deletedAt && e.groupId === group.id)
 
-  for (const exp of expenses) {
-    if (exp.groupId && exp.groupId !== group.id) continue
+  // Find all counterparties who have open debts with userId in this group
+  const counterparties = new Set<string>()
+  for (const exp of groupExpenses) {
     for (const debt of getExpenseDebts(exp)) {
-      if (debt.toUserId !== userId && debt.fromUserId !== userId) continue
-      const other = debt.fromUserId === userId ? debt.toUserId : debt.fromUserId
-      if (!other || other === userId) continue
-
-      const entry = counterparties.get(other) ?? {
-        uid: other,
-        name: people[other]?.name || nameFromExpense(exp, other),
-        photoURL: people[other]?.photoURL,
-        debtsToMe: [],
-        debtsFromMe: [],
-      }
-
-      if (debt.toUserId === userId) {
-        entry.debtsToMe.push({ expense: exp, amountPaise: debt.amountPaise })
-      } else {
-        entry.debtsFromMe.push({ expense: exp, amountPaise: debt.amountPaise })
-      }
-      counterparties.set(other, entry)
+      if (debt.toUserId === userId && debt.fromUserId !== userId) counterparties.add(debt.fromUserId)
+      if (debt.fromUserId === userId && debt.toUserId !== userId) counterparties.add(debt.toUserId)
     }
   }
 
   const iOwe: Counterparty[] = []
   const owedToMe: Counterparty[] = []
 
-  counterparties.forEach((entry) => {
-    const totalToMe = entry.debtsToMe.reduce((s, d) => s + d.amountPaise, 0)
-    const totalFromMe = entry.debtsFromMe.reduce((s, d) => s + d.amountPaise, 0)
-    const net = totalToMe - totalFromMe
-    const hasOffset = totalToMe > 0 && totalFromMe > 0
+  for (const other of counterparties) {
+    // calculatePersonNetBreakdown scoped to this group only
+    const breakdown = calculatePersonNetBreakdown(userId, other, groupExpenses)
+    const personInfo = people[other]
+    const name = personInfo?.name || breakdown.userBName || "Member"
+    const photoURL = personInfo?.photoURL || breakdown.userBPhoto
+    const upiId = breakdown.userBUpiId
 
-    if (net > 0) {
-      // Net: other owes me
+    if (breakdown.netBalancePaise < 0) {
+      // Current user owes this person
       const lines: CounterpartyLine[] = [
-        ...entry.debtsToMe.map((d) => ({ expense: d.expense, amountPaise: d.amountPaise })),
-        ...entry.debtsFromMe.map((d) => ({
+        ...breakdown.aOwesBLines.map((d) => ({
+          expense: d.expense,
+          amountPaise: d.amountPaise,
+          label: d.expense.title,
+        })),
+        ...breakdown.bOwesALines.map((d) => ({
           expense: d.expense,
           amountPaise: d.amountPaise,
           isOffset: true,
-          label: `Split offset (${d.expense.title})`,
+          label: `Offset (${d.expense.title})`,
         })),
       ]
-      owedToMe.push({
-        uid: entry.uid,
-        name: entry.name,
-        photoURL: entry.photoURL,
-        totalPaise: net,
-        rawOwedToMePaise: totalToMe,
-        rawIOwePaise: totalFromMe,
-        hasOffset,
+
+      iOwe.push({
+        uid: other,
+        name,
+        photoURL,
+        upiId,
+        totalPaise: breakdown.netPayablePaise,
+        rawOwedToMePaise: breakdown.bOwesATotalPaise,
+        rawIOwePaise: breakdown.aOwesBTotalPaise,
+        hasOffset: breakdown.offsetPaise > 0,
         lines,
       })
-    } else if (net < 0) {
-      // Net: I owe other
+    } else if (breakdown.netBalancePaise > 0) {
+      // Other owes current user
       const lines: CounterpartyLine[] = [
-        ...entry.debtsFromMe.map((d) => ({ expense: d.expense, amountPaise: d.amountPaise })),
-        ...entry.debtsToMe.map((d) => ({
+        ...breakdown.bOwesALines.map((d) => ({
+          expense: d.expense,
+          amountPaise: d.amountPaise,
+          label: d.expense.title,
+        })),
+        ...breakdown.aOwesBLines.map((d) => ({
           expense: d.expense,
           amountPaise: d.amountPaise,
           isOffset: true,
-          label: `Split offset (${d.expense.title})`,
+          label: `Offset (${d.expense.title})`,
         })),
       ]
-      iOwe.push({
-        uid: entry.uid,
-        name: entry.name,
-        photoURL: entry.photoURL,
-        totalPaise: Math.abs(net),
-        rawOwedToMePaise: totalToMe,
-        rawIOwePaise: totalFromMe,
-        hasOffset,
+
+      owedToMe.push({
+        uid: other,
+        name,
+        photoURL,
+        upiId,
+        totalPaise: breakdown.netReceivablePaise,
+        rawOwedToMePaise: breakdown.bOwesATotalPaise,
+        rawIOwePaise: breakdown.aOwesBTotalPaise,
+        hasOffset: breakdown.offsetPaise > 0,
         lines,
       })
     }
-    // If net === 0, mutual splits have completely cancelled each other out
-  })
+    // If net === 0, reciprocal splits have completely cancelled each other out
+  }
 
   return {
     iOwe: iOwe.sort((a, b) => b.totalPaise - a.totalPaise),
@@ -193,7 +178,19 @@ export function BalanceBreakdownSheet({
       {iOwe.length > 0 && (
         <Section title="You need to pay">
           {iOwe.map((p) => (
-            <PersonBlock key={p.uid} person={p} tone="owe">
+            <PersonBlock
+              key={p.uid}
+              person={p}
+              tone="owe"
+              action={
+                <PayPersonButton
+                  personId={p.uid}
+                  personName={p.name}
+                  personPhoto={p.photoURL}
+                  personUpiId={p.upiId}
+                />
+              }
+            >
               {p.lines.map(({ expense, amountPaise, isOffset, label }) => (
                 <LineRow
                   key={`${expense.id}_${isOffset ? "offset" : "direct"}`}
@@ -201,19 +198,9 @@ export function BalanceBreakdownSheet({
                   amountPaise={amountPaise}
                   isOffset={isOffset}
                 >
-                  {!isOffset ? (
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        onOpenChange(false)
-                        router.push(`/expenses/${expense.id}/pay`)
-                      }}
-                    >
-                      Pay
-                    </Button>
-                  ) : (
-                    <span className="text-[11px] font-medium text-muted-foreground">Adjusted</span>
-                  )}
+                  <span className="text-[11px] font-medium text-muted-foreground">
+                    {isOffset ? "Mutual offset" : "Share"}
+                  </span>
                 </LineRow>
               ))}
             </PersonBlock>
@@ -273,10 +260,12 @@ function Section({
 function PersonBlock({
   person,
   tone,
+  action,
   children,
 }: {
   person: Counterparty
   tone: "owe" | "owed"
+  action?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
@@ -289,11 +278,14 @@ function PersonBlock({
             {person.hasOffset ? "Split-to-split net balance" : `${person.lines.length} expense${person.lines.length === 1 ? "" : "s"}`}
           </div>
         </div>
-        <Amount
-          paise={tone === "owe" ? -person.totalPaise : person.totalPaise}
-          signed
-          className="shrink-0 text-base font-extrabold"
-        />
+        <div className="flex shrink-0 items-center gap-2">
+          <Amount
+            paise={tone === "owe" ? -person.totalPaise : person.totalPaise}
+            signed
+            className="text-base font-extrabold"
+          />
+          {action}
+        </div>
       </div>
       <div className="mt-1 flex flex-col">{children}</div>
     </div>

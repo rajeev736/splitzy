@@ -175,6 +175,8 @@ export interface AppNotification {
     actorId?: string;
     actorName?: string;
     amountPaise?: number;
+    debtorId?: string;
+    creditorId?: string;
   };
   read: boolean;
   actionTaken?: "CONFIRMED" | "DISPUTED";

@@ -75,7 +75,7 @@ export function ExpenseGate({
             icon={notFoundIcon}
             title="Expense Not Found"
             description="This expense may have been deleted, or you may not have permission to view it."
-            action={{ label: "Back to Activity", onClick: () => router.push("/activity") }}
+            action={{ label: "Back to History", onClick: () => router.push("/history") }}
           />
         </PageContainer>
       </>

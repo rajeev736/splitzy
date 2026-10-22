@@ -11,6 +11,7 @@ import * as expenseService from "@/services/expenses"
 import * as friendService from "@/services/friends"
 import * as groupService from "@/services/groups"
 import * as notificationService from "@/services/notifications"
+import * as settlementService from "@/services/settlement"
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Plumbing
@@ -280,6 +281,39 @@ export const useDisputePayment = createUserMutation({
     expenseService.disputePaymentReceipt(user, cache.expenses(), v.expenseId, v.memberUserId, v.notifId),
   apply: ({ cache }, shares, { expenseId, notifId }) => {
     cache.setExpenses(patchById<Expense>(expenseId, { shares }))
+    if (notifId) {
+      cache.setNotifications(patchById<AppNotification>(notifId, { read: true, actionTaken: "DISPUTED" }))
+    }
+  },
+})
+
+export const useReportPersonSettlement = createUserMutation({
+  run: ({ user, cache }, input: settlementService.ReportSettlementInput) =>
+    settlementService.reportPersonSettlement(user, cache.expenses(), input),
+  apply: ({ cache }, result) => {
+    const updatedMap = new Map(result.updatedExpenses.map((e) => [e.id, e]))
+    cache.setExpenses((list) => list.map((e) => updatedMap.get(e.id) || e))
+  },
+})
+
+export const useConfirmPersonSettlement = createUserMutation({
+  run: ({ user, cache }, input: settlementService.ConfirmSettlementInput) =>
+    settlementService.confirmPersonSettlement(user, cache.expenses(), input),
+  apply: ({ cache }, result, { notifId }) => {
+    const updatedMap = new Map(result.updatedExpenses.map((e) => [e.id, e]))
+    cache.setExpenses((list) => list.map((e) => updatedMap.get(e.id) || e))
+    if (notifId) {
+      cache.setNotifications(patchById<AppNotification>(notifId, { read: true, actionTaken: "CONFIRMED" }))
+    }
+  },
+})
+
+export const useDisputePersonSettlement = createUserMutation({
+  run: ({ user, cache }, input: settlementService.DisputeSettlementInput) =>
+    settlementService.disputePersonSettlement(user, cache.expenses(), input),
+  apply: ({ cache }, result, { notifId }) => {
+    const updatedMap = new Map(result.updatedExpenses.map((e) => [e.id, e]))
+    cache.setExpenses((list) => list.map((e) => updatedMap.get(e.id) || e))
     if (notifId) {
       cache.setNotifications(patchById<AppNotification>(notifId, { read: true, actionTaken: "DISPUTED" }))
     }

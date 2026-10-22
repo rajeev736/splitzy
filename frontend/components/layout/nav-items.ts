@@ -1,7 +1,8 @@
 import {
-  Clock01Icon,
   Home01Icon,
+  Invoice01Icon,
   Notification01Icon,
+  ReceiptIndianRupeeIcon,
   Settings01Icon,
   UserCheck01Icon,
   UserGroupIcon,
@@ -24,8 +25,9 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { label: "Home", href: "/home", icon: Home01Icon, mobile: true },
   { label: "Groups", href: "/groups", icon: UserGroupIcon, mobile: true },
+  { label: "Direct Splits", href: "/direct-splits", icon: Invoice01Icon },
+  { label: "Split Summary", href: "/split-summary", icon: ReceiptIndianRupeeIcon, mobile: true },
   { label: "Friends", href: "/friends", icon: UserCheck01Icon },
-  { label: "Activity", href: "/activity", icon: Clock01Icon, mobile: true },
   { label: "History", href: "/history", icon: WorkHistoryIcon },
   { label: "Notifications", href: "/notifications", icon: Notification01Icon, showUnread: true },
   { label: "Profile", href: "/profile", icon: UserIcon, mobile: true },

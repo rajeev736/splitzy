@@ -21,7 +21,7 @@ import { useSession } from "@/components/providers/session-provider"
 import { Amount } from "@/components/shared/amount"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
-import { StatusBadge, type BadgeStatus } from "@/components/shared/status-badge"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Item,
@@ -40,22 +40,13 @@ import type { Expense, UserProfile } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 type MainView = "expenses" | "payments"
-type ExpenseFilter =
-  | "all"
-  | "pending"
-  | "payment_reported"
-  | "paid"
-  | "disputed"
-  | "deleted"
+type ExpenseFilter = "all" | "group" | "personal"
 type PaymentFilter = "all" | "sent" | "received"
 
 const EXPENSE_FILTERS = [
-  { value: "all", label: "All" },
-  { value: "pending", label: "Pending" },
-  { value: "payment_reported", label: "Payment Reported" },
-  { value: "paid", label: "Settled" },
-  { value: "disputed", label: "Disputed" },
-  { value: "deleted", label: "Deleted" },
+  { value: "all", label: "All Expenses" },
+  { value: "group", label: "Group" },
+  { value: "personal", label: "Personal" },
 ] as const
 
 const PAYMENT_FILTERS = [
@@ -66,23 +57,6 @@ const PAYMENT_FILTERS = [
 
 const isPersonal = (exp: Expense) =>
   exp.isPersonal || exp.expenseType === "personal"
-
-/** One status per expense, used by both the filter pills and the badge. */
-function expenseStatus(exp: Expense): {
-  key: Exclude<ExpenseFilter, "all">
-  badge: BadgeStatus
-  label?: string
-} {
-  if (exp.deletedAt) return { key: "deleted", badge: "failed", label: "Deleted" }
-  if (isPersonal(exp)) return { key: "paid", badge: "settled", label: "Personal" }
-  if (exp.shares.some((s) => s.status === "DISPUTED"))
-    return { key: "disputed", badge: "failed", label: "Disputed" }
-  if (exp.shares.some((s) => s.status === "PAYMENT_REPORTED"))
-    return { key: "payment_reported", badge: "payment_reported" }
-  if (exp.shares.every((s) => s.status === "PAID"))
-    return { key: "paid", badge: "paid", label: "Settled" }
-  return { key: "pending", badge: "pending" }
-}
 
 /** Formats an ISO timestamp or a YYYY-MM-DD date for display. */
 function formatWhen(value: string) {
@@ -194,10 +168,10 @@ export default function HistoryPage() {
   )
 
   const filteredExpenses = expenses.filter((exp) => {
-    const status = expenseStatus(exp).key
-    // "All" is the live history; deleted records live under their own filter
-    if (expenseFilter === "all") return status !== "deleted"
-    return status === expenseFilter
+    if (exp.deletedAt) return false
+    if (expenseFilter === "group") return !isPersonal(exp)
+    if (expenseFilter === "personal") return isPersonal(exp)
+    return true
   })
 
   const queryState = isPending ? (
@@ -249,10 +223,11 @@ export default function HistoryPage() {
               (filteredExpenses.length > 0 ? (
                 <ItemGroup className="gap-3">
                   {filteredExpenses.map((exp) => {
-                    const status = expenseStatus(exp)
                     const myShare = exp.shares.find(
                       (s) => s.userId === user?.uid
                     )
+                    const personal = isPersonal(exp)
+
                     return (
                       <ExpenseListItem
                         key={exp.id}
@@ -262,18 +237,30 @@ export default function HistoryPage() {
                           exp.deletedAt && "opacity-70"
                         )}
                         description={`${
-                          isPersonal(exp)
-                            ? "Personal"
+                          personal
+                            ? "Personal Expense"
                             : exp.groupName || "Direct Split"
                         } • ${formatWhen(exp.date)} • Paid by ${exp.payerName}`}
                         action={
-                          <div className="flex flex-col items-end gap-1.5">
-                            <StatusBadge status={status.badge}>
-                              {status.label}
-                            </StatusBadge>
+                          <div className="flex items-center gap-2">
+                            {personal ? (
+                              <Badge
+                                variant="outline"
+                                className="border-primary/30 bg-primary/5 text-primary text-[10px] font-bold"
+                              >
+                                Personal
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="secondary"
+                                className="max-w-[120px] truncate text-[10px] font-bold"
+                              >
+                                {exp.groupName || "Group"}
+                              </Badge>
+                            )}
                             <HugeiconsIcon
                               icon={ArrowRight01Icon}
-                              className="size-4 text-muted-foreground"
+                              className="size-4 shrink-0 text-muted-foreground"
                             />
                           </div>
                         }
@@ -286,7 +273,7 @@ export default function HistoryPage() {
                               exp.deletedAt && "line-through"
                             )}
                           />
-                          {myShare && !isPersonal(exp) && (
+                          {myShare && !personal && (
                             <span className="text-muted-foreground">
                               your share {formatPaise(myShare.amountPaise)}
                             </span>

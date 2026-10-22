@@ -10,6 +10,9 @@ import {
   canUserLeaveGroup,
   canDeleteGroup,
   calculatePersonBalances,
+  calculatePersonNetBreakdown,
+  getExpenseShareSettlementStatus,
+  filterExpensesByScope,
 } from "../index";
 import { Expense, Group } from "../../types";
 
@@ -310,5 +313,191 @@ assert(mohitUnequalNet.totalOwedToYouPaise === 5000, "Mohit is owed ₹50 net");
 assert(mohitUnequalNet.totalYouOwePaise === 0, "Mohit owes ₹0 net");
 
 console.log("✓ Split-to-split cancel tests passed.");
+
+// 10. PhonePe-style Person-to-Person Net Settlement Tests
+console.log("\n10. Testing PhonePe-Style Person-to-Person Net Settlement:");
+
+// Prompt Scenario 1:
+// - Rajeev creates an expense of ₹100 for Paratha, split equally between Rajeev and Abhijeet (Abhijeet owes ₹50).
+// - Abhijeet creates another ₹100 expense, also split equally between Rajeev and Abhijeet (Rajeev owes ₹50).
+// Expected result: Both obligations cancel each other. Their final net balance is ₹0.
+// Neither user should be asked to pay the other, and neither expense should create a remaining payment obligation.
+const paratha100_rajeev: Expense = {
+  id: "exp_paratha_100",
+  groupId: "grp_roommates",
+  groupName: "Roommates",
+  title: "Paratha",
+  amountPaise: 10000, // ₹100
+  payerId: "usr_rajeev",
+  payerName: "Rajeev",
+  recipientId: "usr_rajeev",
+  recipientName: "Rajeev",
+  recipientUpiId: "rajeev@upi",
+  date: "2026-10-22",
+  splitType: "EQUAL",
+  shares: [
+    { userId: "usr_rajeev", userName: "Rajeev", amountPaise: 5000, status: "PAID" },
+    { userId: "usr_abhijeet", userName: "Abhijeet", amountPaise: 5000, status: "PENDING" },
+  ],
+  createdBy: "usr_rajeev",
+  createdAt: "2026-10-22T10:00:00.000Z",
+};
+
+const grocery100_abhijeet: Expense = {
+  id: "exp_grocery_100",
+  groupId: "grp_roommates",
+  groupName: "Roommates",
+  title: "Groceries",
+  amountPaise: 10000, // ₹100
+  payerId: "usr_abhijeet",
+  payerName: "Abhijeet",
+  recipientId: "usr_abhijeet",
+  recipientName: "Abhijeet",
+  recipientUpiId: "abhijeet@upi",
+  date: "2026-10-22",
+  splitType: "EQUAL",
+  shares: [
+    { userId: "usr_abhijeet", userName: "Abhijeet", amountPaise: 5000, status: "PAID" },
+    { userId: "usr_rajeev", userName: "Rajeev", amountPaise: 5000, status: "PENDING" },
+  ],
+  createdBy: "usr_abhijeet",
+  createdAt: "2026-10-22T11:00:00.000Z",
+};
+
+const promptScenario1Expenses = [paratha100_rajeev, grocery100_abhijeet];
+
+// Test from Rajeev's perspective
+const rajeevVsAbhijeet = calculatePersonNetBreakdown("usr_rajeev", "usr_abhijeet", promptScenario1Expenses);
+assert(rajeevVsAbhijeet.netBalancePaise === 0, "Rajeev and Abhijeet net balance must be ₹0");
+assert(rajeevVsAbhijeet.netPayablePaise === 0, "Rajeev net payable to Abhijeet must be 0");
+assert(rajeevVsAbhijeet.netReceivablePaise === 0, "Rajeev net receivable from Abhijeet must be 0");
+assert(rajeevVsAbhijeet.offsetPaise === 5000, "Mutual offset must be exactly ₹50 (5000 paise)");
+assert(rajeevVsAbhijeet.aOwesBTotalPaise === 5000, "Gross Rajeev owes Abhijeet = ₹50");
+assert(rajeevVsAbhijeet.bOwesATotalPaise === 5000, "Gross Abhijeet owes Rajeev = ₹50");
+
+// Check status of individual expense shares
+const abhiStatusInParatha = getExpenseShareSettlementStatus(paratha100_rajeev, "usr_abhijeet", promptScenario1Expenses);
+assert(abhiStatusInParatha.isOffsetSettled === true, "Abhijeet's share in Paratha must be marked isOffsetSettled");
+assert(abhiStatusInParatha.canPayNet === false, "Abhijeet cannot be prompted to pay Paratha (net is 0)");
+
+const rajeevStatusInGrocery = getExpenseShareSettlementStatus(grocery100_abhijeet, "usr_rajeev", promptScenario1Expenses);
+assert(rajeevStatusInGrocery.isOffsetSettled === true, "Rajeev's share in Groceries must be marked isOffsetSettled");
+assert(rajeevStatusInGrocery.canPayNet === false, "Rajeev cannot be prompted to pay Groceries (net is 0)");
+
+console.log("✓ Prompt Scenario 1 (Mutual ₹50 obligations cancel to ₹0) passed.");
+
+// Prompt Scenario 2:
+// - Rajeev owes Abhijeet ₹150.
+// - Abhijeet owes Rajeev ₹100.
+// System should calculate net result as:
+// - Rajeev needs to pay Abhijeet ₹50.
+// - Abhijeet does not need to pay Rajeev anything.
+const exp_abhijeet_paid_300: Expense = {
+  id: "exp_abhi_300",
+  groupId: "grp_roommates",
+  groupName: "Roommates",
+  title: "Dinner 300",
+  amountPaise: 30000, // ₹300, split equally between Rajeev and Abhijeet -> Rajeev owes ₹150
+  payerId: "usr_abhijeet",
+  payerName: "Abhijeet",
+  recipientId: "usr_abhijeet",
+  recipientName: "Abhijeet",
+  recipientUpiId: "abhijeet@upi",
+  date: "2026-10-22",
+  splitType: "EQUAL",
+  shares: [
+    { userId: "usr_abhijeet", userName: "Abhijeet", amountPaise: 15000, status: "PAID" },
+    { userId: "usr_rajeev", userName: "Rajeev", amountPaise: 15000, status: "PENDING" },
+  ],
+  createdBy: "usr_abhijeet",
+  createdAt: "2026-10-22T10:00:00.000Z",
+};
+
+const exp_rajeev_paid_200: Expense = {
+  id: "exp_rajeev_200",
+  groupId: "grp_roommates",
+  groupName: "Roommates",
+  title: "Cab 200",
+  amountPaise: 20000, // ₹200, split equally between Rajeev and Abhijeet -> Abhijeet owes ₹100
+  payerId: "usr_rajeev",
+  payerName: "Rajeev",
+  recipientId: "usr_rajeev",
+  recipientName: "Rajeev",
+  recipientUpiId: "rajeev@upi",
+  date: "2026-10-22",
+  splitType: "EQUAL",
+  shares: [
+    { userId: "usr_rajeev", userName: "Rajeev", amountPaise: 10000, status: "PAID" },
+    { userId: "usr_abhijeet", userName: "Abhijeet", amountPaise: 10000, status: "PENDING" },
+  ],
+  createdBy: "usr_rajeev",
+  createdAt: "2026-10-22T11:00:00.000Z",
+};
+
+const promptScenario2Expenses = [exp_abhijeet_paid_300, exp_rajeev_paid_200];
+
+// From Rajeev's perspective:
+const scenario2Rajeev = calculatePersonNetBreakdown("usr_rajeev", "usr_abhijeet", promptScenario2Expenses);
+assert(scenario2Rajeev.netBalancePaise === -5000, "Rajeev net balance should be -₹50 (-5000 paise)");
+assert(scenario2Rajeev.netPayablePaise === 5000, "Rajeev needs to pay Abhijeet ₹50 (5000 paise)");
+assert(scenario2Rajeev.netReceivablePaise === 0, "Rajeev does not receive anything from Abhijeet");
+assert(scenario2Rajeev.offsetPaise === 10000, "Mutual offset is ₹100 (10000 paise)");
+
+// From Abhijeet's perspective:
+const scenario2Abhijeet = calculatePersonNetBreakdown("usr_abhijeet", "usr_rajeev", promptScenario2Expenses);
+assert(scenario2Abhijeet.netBalancePaise === 5000, "Abhijeet net balance should be +₹50 (+5000 paise)");
+assert(scenario2Abhijeet.netPayablePaise === 0, "Abhijeet does not need to pay Rajeev anything");
+assert(scenario2Abhijeet.netReceivablePaise === 5000, "Abhijeet needs to receive ₹50 from Rajeev");
+
+// Rajeev checking his share on the ₹300 expense:
+const rajeevShareStatus = getExpenseShareSettlementStatus(exp_abhijeet_paid_300, "usr_rajeev", promptScenario2Expenses);
+assert(rajeevShareStatus.canPayNet === true, "Rajeev can pay net");
+assert(rajeevShareStatus.netPayablePaise === 5000, "Payable amount is the net ₹50, not gross ₹150");
+assert(rajeevShareStatus.isOffsetSettled === false, "Rajeev still has a remaining net obligation of ₹50");
+
+// Abhijeet checking his share on the ₹200 expense:
+const abhijeetShareStatus = getExpenseShareSettlementStatus(exp_rajeev_paid_200, "usr_abhijeet", promptScenario2Expenses);
+assert(abhijeetShareStatus.canPayNet === false, "Abhijeet does not owe any net amount");
+assert(abhijeetShareStatus.isOffsetSettled === true, "Abhijeet's ₹100 share was fully offset by Rajeev's ₹150 debt");
+
+console.log("✓ Prompt Scenario 2 (₹150 vs ₹100 netting to final ₹50 obligation) passed.");
+
+// Test Scope Isolation (Group vs Direct):
+const directExpense: Expense = {
+  id: "exp_direct_50",
+  title: "Direct Lunch",
+  amountPaise: 10000,
+  payerId: "usr_rajeev",
+  payerName: "Rajeev",
+  recipientId: "usr_rajeev",
+  recipientName: "Rajeev",
+  recipientUpiId: "rajeev@upi",
+  date: "2026-10-22",
+  splitType: "EQUAL",
+  shares: [
+    { userId: "usr_rajeev", userName: "Rajeev", amountPaise: 5000, status: "PAID" },
+    { userId: "usr_abhijeet", userName: "Abhijeet", amountPaise: 5000, status: "PENDING" },
+  ],
+  createdBy: "usr_rajeev",
+  createdAt: "2026-10-22T12:00:00.000Z",
+};
+
+const mixedExpenses = [...promptScenario2Expenses, directExpense];
+
+// Scoped to group "grp_roommates": direct expense must NOT be included
+const groupOnlyBreakdown = calculatePersonNetBreakdown("usr_rajeev", "usr_abhijeet", mixedExpenses, {
+  type: "group",
+  groupId: "grp_roommates",
+});
+assert(groupOnlyBreakdown.netPayablePaise === 5000, "Group scope should ignore direct expense: net payable is still ₹50");
+
+// Scoped to "direct": only direct expense should be included
+const directOnlyBreakdown = calculatePersonNetBreakdown("usr_rajeev", "usr_abhijeet", mixedExpenses, {
+  type: "direct",
+});
+assert(directOnlyBreakdown.netPayablePaise === 0, "Direct scope: Rajeev is owed ₹50, owes 0");
+assert(directOnlyBreakdown.netReceivablePaise === 5000, "Direct scope: Abhijeet owes Rajeev ₹50");
+
+console.log("✓ Settlement Scope Isolation passed.");
 
 console.log("\n🎉 ALL FINANCIAL & INVARIANT BUSINESS LOGIC TESTS PASSED!");

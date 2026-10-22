@@ -1,6 +1,6 @@
 "use client"
 
-import { Delete02Icon, MoreVerticalIcon, Notification01Icon, TradeUpIcon } from "@hugeicons/core-free-icons"
+import { Delete02Icon, MoreVerticalIcon, Notification01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { Button } from "@/components/ui/button"
@@ -14,18 +14,14 @@ import {
 
 /** 3-dot menu in the expense detail header. */
 export function ExpenseActionsMenu({
-  canPay = false,
   canRemind = false,
   canDelete,
-  onPay,
   onRemind,
   onDelete,
 }: {
-  canPay?: boolean
   canRemind?: boolean
   canDelete: boolean
-  onPay: () => void
-  onRemind: () => void
+  onRemind?: () => void
   onDelete: () => void
 }) {
   return (
@@ -34,12 +30,6 @@ export function ExpenseActionsMenu({
         <HugeiconsIcon icon={MoreVerticalIcon} className="size-5" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        {canPay && (
-          <DropdownMenuItem onClick={onPay}>
-            <HugeiconsIcon icon={TradeUpIcon} />
-            Settle Up / Pay
-          </DropdownMenuItem>
-        )}
         {canRemind && (
           <DropdownMenuItem onClick={onRemind}>
             <HugeiconsIcon icon={Notification01Icon} />
@@ -48,7 +38,7 @@ export function ExpenseActionsMenu({
         )}
         {canDelete && (
           <>
-            {(canPay || canRemind) && <DropdownMenuSeparator />}
+            {canRemind && <DropdownMenuSeparator />}
             <DropdownMenuItem variant="destructive" onClick={onDelete}>
               <HugeiconsIcon icon={Delete02Icon} />
               Delete Expense

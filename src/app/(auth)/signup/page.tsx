@@ -66,6 +66,16 @@ function SignupForm() {
   const [selectedAvatar, setSelectedAvatar] = useState("/assets/avatar_boy.jpg");
   const [copiedId, setCopiedId] = useState(false);
 
+  const seededForUserRef = React.useRef<{
+    uid: string | null;
+    nameSeeded: boolean;
+    upiSeeded: boolean;
+  }>({
+    uid: null,
+    nameSeeded: false,
+    upiSeeded: false,
+  });
+
   // Read URL query params
   useEffect(() => {
     const emailParam = searchParams.get("email");
@@ -96,21 +106,31 @@ function SignupForm() {
           setStep("profile");
         }
 
-        if (user.displayName && !fullName) {
-          setFullName(user.displayName);
+        if (seededForUserRef.current.uid !== user.uid) {
+          seededForUserRef.current = {
+            uid: user.uid,
+            nameSeeded: false,
+            upiSeeded: false,
+          };
+        }
+
+        if (user.displayName && !seededForUserRef.current.nameSeeded) {
+          seededForUserRef.current.nameSeeded = true;
+          setFullName((prev) => prev || user.displayName);
         }
         if (user.splitzyId) {
           setSplitzyId(user.splitzyId);
         }
-        if (user.upiId && !upiId) {
-          setUpiId(user.upiId);
+        if (user.upiId && !seededForUserRef.current.upiSeeded) {
+          seededForUserRef.current.upiSeeded = true;
+          setUpiId((prev) => prev || user.upiId);
         }
         if (user.photoURL) {
           setSelectedAvatar(user.photoURL);
         }
       }
     }
-  }, [user, fbUser, isEmailVerified, step, fullName, upiId]);
+  }, [user, fbUser, isEmailVerified, step]);
 
   // Resend cooldown timer
   useEffect(() => {
@@ -171,6 +191,8 @@ function SignupForm() {
       setSplitzyId(generatedId);
       await signup(fullName.trim(), email.trim(), password, generatedId);
       setUpiId(`${fullName.toLowerCase().replace(/[^a-z0-9]/g, "")}@upi`);
+      seededForUserRef.current.nameSeeded = true;
+      seededForUserRef.current.upiSeeded = true;
       setStep("verify");
       setResendCooldown(60);
       toastSuccess("Account created! A verification link was sent to your email.");
@@ -589,7 +611,10 @@ function SignupForm() {
             <Input
               label="Full name"
               value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              onChange={(e) => {
+                seededForUserRef.current.nameSeeded = true;
+                setFullName(e.target.value);
+              }}
               placeholder="e.g. Rajeev Ranjan"
               leftIcon={<User className="w-4 h-4" />}
               required
@@ -626,7 +651,10 @@ function SignupForm() {
             <Input
               label="UPI ID (optional)"
               value={upiId}
-              onChange={(e) => setUpiId(e.target.value)}
+              onChange={(e) => {
+                seededForUserRef.current.upiSeeded = true;
+                setUpiId(e.target.value);
+              }}
               placeholder="yourname@upi"
               hint="For receiving payments directly"
               leftIcon={<AtSign className="w-4 h-4" />}

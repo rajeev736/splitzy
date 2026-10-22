@@ -8,7 +8,7 @@
  * 5. Balances are derived authoritatively from valid expenses and confirmed settlements.
  */
 
-import { Expense, Group, SplitType } from "../types";
+import { Expense, Group, SharePaymentStatus, SplitType } from "../types";
 
 export function rupeesToPaise(rupees: number | string): number {
   if (typeof rupees === "string") {
@@ -211,10 +211,30 @@ export function calculateNetBalances(
   };
 }
 
+export type SettlementScope =
+  | { type: "all" }
+  | { type: "group"; groupId: string; groupName?: string }
+  | { type: "direct" }
+  | { type: "contexts"; contextKeys: string[] }
+
+export function filterExpensesByScope(expenses: Expense[], scope?: SettlementScope): Expense[] {
+  if (!scope || scope.type === "all") return expenses.filter((e) => !e.deletedAt)
+  if (scope.type === "group") return expenses.filter((e) => !e.deletedAt && e.groupId === scope.groupId)
+  if (scope.type === "direct") {
+    return expenses.filter((e) => !e.deletedAt && (!e.groupId || e.expenseType === "friend" || e.isDirect))
+  }
+  if (scope.type === "contexts") {
+    return expenses.filter((e) => !e.deletedAt && scope.contextKeys.includes(e.groupId || "direct"))
+  }
+  return expenses.filter((e) => !e.deletedAt)
+}
+
 export interface PersonBalance {
   userId: string;
   name: string;
   photoURL?: string;
+  upiId?: string;
+  subtitle?: string;
   /** positive: they owe you; negative: you owe them */
   netBalancePaise: number;
 }
@@ -222,15 +242,35 @@ export interface PersonBalance {
 /**
  * Net balance with every person the user shares an expense with — friends or
  * not (e.g. group members). Sums to `calculateNetBalances(...).netBalancePaise`.
+ * Optionally scoped to a specific group or direct splits.
  */
-export function calculatePersonBalances(userId: string, expenses: Expense[]): PersonBalance[] {
+export function calculatePersonBalances(
+  userId: string,
+  expenses: Expense[],
+  scope?: SettlementScope
+): PersonBalance[] {
+  const scopedExpenses = filterExpensesByScope(expenses, scope);
   const people = new Map<string, PersonBalance>();
-  const names = new Map<string, { name: string; photoURL?: string }>();
+  const names = new Map<string, { name: string; photoURL?: string; upiId?: string }>();
 
-  for (const exp of expenses) {
-    if (!names.has(exp.payerId)) names.set(exp.payerId, { name: exp.payerName });
-    if (exp.recipientId && !names.has(exp.recipientId)) names.set(exp.recipientId, { name: exp.recipientName });
-    for (const s of exp.shares || []) names.set(s.userId, { name: s.userName, photoURL: s.userPhoto });
+  for (const exp of scopedExpenses) {
+    if (!names.has(exp.payerId)) {
+      names.set(exp.payerId, {
+        name: exp.payerName,
+        upiId: exp.recipientId === exp.payerId ? exp.recipientUpiId : undefined,
+      });
+    }
+    if (exp.recipientId && !names.has(exp.recipientId)) {
+      names.set(exp.recipientId, { name: exp.recipientName, upiId: exp.recipientUpiId });
+    }
+    for (const s of exp.shares || []) {
+      const existing = names.get(s.userId);
+      names.set(s.userId, {
+        name: s.userName || existing?.name || "Member",
+        photoURL: s.userPhoto || existing?.photoURL,
+        upiId: existing?.upiId,
+      });
+    }
 
     for (const debt of getExpenseDebts(exp)) {
       const other =
@@ -244,28 +284,38 @@ export function calculatePersonBalances(userId: string, expenses: Expense[]): Pe
   }
 
   return Array.from(people.values())
-    .map((row) => ({ ...row, name: names.get(row.userId)?.name || "Member", photoURL: names.get(row.userId)?.photoURL }))
+    .map((row) => {
+      const info = names.get(row.userId);
+      return {
+        ...row,
+        name: info?.name || "Member",
+        photoURL: info?.photoURL,
+        upiId: info?.upiId,
+      };
+    })
     .filter((row) => row.netBalancePaise !== 0)
     .sort((a, b) => Math.abs(b.netBalancePaise) - Math.abs(a.netBalancePaise));
 }
 
 /**
- * Calculates direct net balance between two users.
+ * Calculates direct net balance between two users within a given scope.
  * Returns positive if userB owes userA, negative if userA owes userB.
  */
 export function calculateDirectBalance(
   userA: string,
   userB: string,
-  expenses: Expense[]
+  expenses: Expense[],
+  scope?: SettlementScope
 ): {
   netBalancePaise: number; // positive: userB owes userA; negative: userA owes userB
   userBOwesUserAPaise: number;
   userAOwesUserBPaise: number;
 } {
+  const scopedExpenses = filterExpensesByScope(expenses, scope);
   let userBOwesUserAPaise = 0;
   let userAOwesUserBPaise = 0;
 
-  for (const exp of expenses) {
+  for (const exp of scopedExpenses) {
     for (const debt of getExpenseDebts(exp)) {
       if (debt.fromUserId === userB && debt.toUserId === userA) userBOwesUserAPaise += debt.amountPaise;
       if (debt.fromUserId === userA && debt.toUserId === userB) userAOwesUserBPaise += debt.amountPaise;
@@ -276,6 +326,251 @@ export function calculateDirectBalance(
     netBalancePaise: userBOwesUserAPaise - userAOwesUserBPaise,
     userBOwesUserAPaise,
     userAOwesUserBPaise,
+  };
+}
+
+export interface ExpenseDebtDetail {
+  expense: Expense;
+  amountPaise: number;
+  status: SharePaymentStatus;
+  isOffset?: boolean;
+  label?: string;
+}
+
+export interface PersonNetBreakdown {
+  userA: string;
+  userB: string;
+  userBName: string;
+  userBPhoto?: string;
+  userBUpiId?: string;
+  /** Gross obligations userA owes to userB */
+  aOwesBTotalPaise: number;
+  /** Gross obligations userB owes to userA */
+  bOwesATotalPaise: number;
+  /** Reciprocal mutual offset that cancels out automatically */
+  offsetPaise: number;
+  /**
+   * Net balance from userA's perspective:
+   * > 0: userB owes userA
+   * < 0: userA owes userB
+   * == 0: balanced
+   */
+  netBalancePaise: number;
+  /** Positive number: net amount userA needs to pay userB */
+  netPayablePaise: number;
+  /** Positive number: net amount userB needs to pay userA */
+  netReceivablePaise: number;
+  /** Breakdown lines of expenses userA owes to userB */
+  aOwesBLines: ExpenseDebtDetail[];
+  /** Breakdown lines of expenses userB owes to userA */
+  bOwesALines: ExpenseDebtDetail[];
+  /** Context breakdown by group / direct */
+  contexts: {
+    key: string;
+    label: string;
+    groupId?: string;
+    netPaise: number;
+    aOwesBPaise: number;
+    bOwesAPaise: number;
+  }[];
+  hasPendingReport: boolean;
+  pendingReportedAmountPaise: number;
+}
+
+/**
+ * Authoritative PhonePe-style person-to-person net settlement breakdown.
+ * Offsets reciprocal obligations between userA and userB, producing one
+ * final net obligation and complete itemized audit trail.
+ */
+export function calculatePersonNetBreakdown(
+  userA: string,
+  userB: string,
+  expenses: Expense[],
+  scope?: SettlementScope
+): PersonNetBreakdown {
+  const scopedExpenses = filterExpensesByScope(expenses, scope);
+  const aOwesBLines: ExpenseDebtDetail[] = [];
+  const bOwesALines: ExpenseDebtDetail[] = [];
+
+  let userBName = "Member";
+  let userBPhoto: string | undefined;
+  let userBUpiId: string | undefined;
+  let hasPendingReport = false;
+  let pendingReportedAmountPaise = 0;
+
+  const contextMap = new Map<
+    string,
+    { key: string; label: string; groupId?: string; aOwesBPaise: number; bOwesAPaise: number }
+  >();
+
+  for (const exp of scopedExpenses) {
+    if (exp.payerId === userB) {
+      userBName = exp.payerName;
+      if (exp.recipientId === userB && exp.recipientUpiId) userBUpiId = exp.recipientUpiId;
+    }
+    if (exp.recipientId === userB) {
+      userBName = exp.recipientName;
+      if (exp.recipientUpiId) userBUpiId = exp.recipientUpiId;
+    }
+
+    const shareB = exp.shares?.find((s) => s.userId === userB);
+    if (shareB) {
+      if (shareB.userName) userBName = shareB.userName;
+      if (shareB.userPhoto) userBPhoto = shareB.userPhoto;
+    }
+
+    const debts = getExpenseDebts(exp);
+    for (const debt of debts) {
+      const isAtoB = debt.fromUserId === userA && debt.toUserId === userB;
+      const isBtoA = debt.fromUserId === userB && debt.toUserId === userA;
+
+      if (!isAtoB && !isBtoA) continue;
+
+      const matchingShare = exp.shares?.find((s) => s.userId === debt.fromUserId);
+      const shareStatus = matchingShare?.status || "PENDING";
+
+      if (shareStatus === "PAYMENT_REPORTED") {
+        hasPendingReport = true;
+        if (isAtoB) pendingReportedAmountPaise += debt.amountPaise;
+      }
+
+      const ctxKey = exp.groupId || "direct";
+      const ctxLabel = exp.groupName || (exp.groupId ? "Group Expense" : "Direct Split");
+      const ctxEntry = contextMap.get(ctxKey) ?? {
+        key: ctxKey,
+        label: ctxLabel,
+        groupId: exp.groupId,
+        aOwesBPaise: 0,
+        bOwesAPaise: 0,
+      };
+
+      if (isAtoB) {
+        aOwesBLines.push({
+          expense: exp,
+          amountPaise: debt.amountPaise,
+          status: shareStatus,
+        });
+        ctxEntry.aOwesBPaise += debt.amountPaise;
+      } else {
+        bOwesALines.push({
+          expense: exp,
+          amountPaise: debt.amountPaise,
+          status: shareStatus,
+        });
+        ctxEntry.bOwesAPaise += debt.amountPaise;
+      }
+
+      contextMap.set(ctxKey, ctxEntry);
+    }
+  }
+
+  // Sort debts oldest first for deterministic allocation and display
+  aOwesBLines.sort(
+    (a, b) => new Date(a.expense.createdAt).getTime() - new Date(b.expense.createdAt).getTime()
+  );
+  bOwesALines.sort(
+    (a, b) => new Date(a.expense.createdAt).getTime() - new Date(b.expense.createdAt).getTime()
+  );
+
+  const aOwesBTotalPaise = aOwesBLines.reduce((sum, line) => sum + line.amountPaise, 0);
+  const bOwesATotalPaise = bOwesALines.reduce((sum, line) => sum + line.amountPaise, 0);
+  const offsetPaise = Math.min(aOwesBTotalPaise, bOwesATotalPaise);
+  const netBalancePaise = bOwesATotalPaise - aOwesBTotalPaise;
+  const netPayablePaise = netBalancePaise < 0 ? Math.abs(netBalancePaise) : 0;
+  const netReceivablePaise = netBalancePaise > 0 ? netBalancePaise : 0;
+
+  const contexts = Array.from(contextMap.values()).map((c) => ({
+    ...c,
+    netPaise: c.bOwesAPaise - c.aOwesBPaise,
+  }));
+
+  return {
+    userA,
+    userB,
+    userBName,
+    userBPhoto,
+    userBUpiId,
+    aOwesBTotalPaise,
+    bOwesATotalPaise,
+    offsetPaise,
+    netBalancePaise,
+    netPayablePaise,
+    netReceivablePaise,
+    aOwesBLines,
+    bOwesALines,
+    contexts,
+    hasPendingReport,
+    pendingReportedAmountPaise,
+  };
+}
+
+/**
+ * Checks an individual expense share against the pair's net balance.
+ * Determines whether this share is already offset by reciprocal debts (net balance <= 0),
+ * or requires paying a net balance.
+ */
+export function getExpenseShareSettlementStatus(
+  expense: Expense,
+  userUid: string,
+  expenses: Expense[],
+  scope?: SettlementScope
+) {
+  const isPayer = expense.payerId === userUid;
+  const creditorId = expense.recipientId || expense.payerId;
+  const isCreditor = creditorId === userUid;
+  const creditorName = expense.recipientId === expense.payerId ? expense.payerName : expense.recipientName;
+  const creditorUpiId = expense.recipientUpiId || "";
+
+  const myShare = expense.shares?.find((s) => s.userId === userUid);
+  const mySharePaise = myShare?.amountPaise || 0;
+  const shareStatus: SharePaymentStatus = myShare?.status || "PENDING";
+  const isPaid = shareStatus === "PAID";
+  const isReported = shareStatus === "PAYMENT_REPORTED";
+  const isDisputed = shareStatus === "DISPUTED";
+
+  if (isPayer || isCreditor || !myShare || isPaid) {
+    return {
+      isPayer,
+      isCreditor,
+      creditorId,
+      creditorName,
+      creditorUpiId,
+      creditorPhoto: undefined,
+      mySharePaise,
+      shareStatus,
+      isPaid,
+      isReported,
+      isDisputed,
+      netBalanceWithCreditorPaise: 0,
+      isOffsetSettled: isPaid,
+      netPayablePaise: 0,
+      canPayNet: false,
+    };
+  }
+
+  // Calculate true person-to-person net balance with creditor across all mutual expenses (group + personal)
+  const breakdown = calculatePersonNetBreakdown(userUid, creditorId, expenses, scope);
+  const netPayablePaise = breakdown.netPayablePaise;
+  // If user doesn't owe net money to the creditor (e.g. netBalance >= 0),
+  // this obligation is completely balanced out by reciprocal splits!
+  const isOffsetSettled = netPayablePaise === 0;
+
+  return {
+    isPayer,
+    isCreditor,
+    creditorId,
+    creditorName: breakdown.userBName || creditorName,
+    creditorUpiId: breakdown.userBUpiId || creditorUpiId,
+    creditorPhoto: breakdown.userBPhoto,
+    mySharePaise,
+    shareStatus,
+    isPaid,
+    isReported,
+    isDisputed,
+    netBalanceWithCreditorPaise: breakdown.netBalancePaise,
+    isOffsetSettled,
+    netPayablePaise,
+    canPayNet: !isPaid && netPayablePaise > 0,
   };
 }
 
@@ -333,14 +628,27 @@ export function calculateMemberGroupBalance(
   netPaise: number;
   allSettled: boolean;
 } {
+  // Only consider expenses belonging to this group
+  const groupExpenses = expenses.filter((e) => !e.deletedAt && e.groupId === groupId);
+
+  // Find all counterparties who have open debts with userId in this group
+  const counterparties = new Set<string>();
+  for (const exp of groupExpenses) {
+    for (const debt of getExpenseDebts(exp)) {
+      if (debt.toUserId === userId && debt.fromUserId !== userId) counterparties.add(debt.fromUserId);
+      if (debt.fromUserId === userId && debt.toUserId !== userId) counterparties.add(debt.toUserId);
+    }
+  }
+
   let owedToUserPaise = 0;
   let userOwesPaise = 0;
 
-  for (const exp of expenses) {
-    if (exp.groupId !== groupId) continue;
-    for (const debt of getExpenseDebts(exp)) {
-      if (debt.toUserId === userId) owedToUserPaise += debt.amountPaise;
-      if (debt.fromUserId === userId) userOwesPaise += debt.amountPaise;
+  for (const other of counterparties) {
+    const breakdown = calculatePersonNetBreakdown(userId, other, groupExpenses);
+    if (breakdown.netBalancePaise > 0) {
+      owedToUserPaise += breakdown.netReceivablePaise;
+    } else if (breakdown.netBalancePaise < 0) {
+      userOwesPaise += breakdown.netPayablePaise;
     }
   }
 

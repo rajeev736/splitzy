@@ -10,40 +10,28 @@ import {
   Delete02Icon,
   Copy01Icon,
   Invoice01Icon,
-  Notification01Icon,
   Tick02Icon,
   UserIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
-import { toast } from "sonner"
 
 import { AppHeader } from "@/components/layout/app-header"
 import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
 import { Amount } from "@/components/shared/amount"
 import { DEFAULT_GROUP_ICON } from "@/components/shared/group-icon"
-import { StatusBadge } from "@/components/shared/status-badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
-import {
-  useConfirmPayment,
-  useDeleteExpense,
-  useDisputePayment,
-  useSendPaymentReminder,
-} from "@/hooks/mutations"
-import { getExpenseDebts } from "@/lib/money"
-import type { Expense, ExpenseShare } from "@/lib/types"
-import { ConfirmDialog } from "@/components/shared/confirm-dialog"
-import { ConfirmShareDialog } from "./_components/confirm-share-dialog"
+import { useDeleteExpense } from "@/hooks/mutations"
+import type { Expense } from "@/lib/types"
 import { DeleteExpenseDialog } from "./_components/delete-expense-dialog"
 import { ExpenseActionsMenu } from "./_components/expense-actions-menu"
 import { ExpenseGate } from "./_components/expense-gate"
 import { ShareRow } from "./_components/share-row"
 import { useUnreadTracking } from "@/hooks/use-unread-tracking"
-import { cn } from "@/lib/utils"
 
 export default function ExpenseDetailsPage() {
   const params = useParams<{ expenseId: string }>()
@@ -53,37 +41,6 @@ export default function ExpenseDetailsPage() {
       {(expense) => <ExpenseDetails expense={expense} />}
     </ExpenseGate>
   )
-}
-
-/**
- * What this expense means for the viewer, from the same debt model as every
- * balance in the app (so it always agrees with the dashboard).
- */
-function getMyPosition(expense: Expense, uid: string | undefined) {
-  const debts = uid ? getExpenseDebts(expense) : []
-  const owe = debts.filter((d) => d.fromUserId === uid).reduce((s, d) => s + d.amountPaise, 0)
-  const getBack = debts.filter((d) => d.toUserId === uid).reduce((s, d) => s + d.amountPaise, 0)
-  const isInvolved = expense.shares.some((s) => s.userId === uid) || expense.payerId === uid
-
-  if (owe > 0) {
-    const to = debts.find((d) => d.fromUserId === uid)?.toUserId === expense.payerId ? expense.payerName : expense.recipientName
-    return { label: "You owe", paise: owe, className: "text-destructive", detail: `to ${to}` }
-  }
-  if (getBack > 0) {
-    const people = new Set(debts.filter((d) => d.toUserId === uid).map((d) => d.fromUserId)).size
-    return {
-      label: "You get back",
-      paise: getBack,
-      className: "text-success",
-      detail: `from ${people} ${people === 1 ? "person" : "people"}`,
-    }
-  }
-  return {
-    label: isInvolved ? "You're all settled" : "You're not part of this split",
-    paise: 0,
-    className: "text-muted-foreground",
-    detail: "",
-  }
 }
 
 function DetailRow({ icon, label, children }: { icon: IconSvgElement; label: string; children: React.ReactNode }) {
@@ -103,8 +60,6 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
   const { user } = useSession()
   const { copied, copy } = useCopyToClipboard()
 
-  const [selectedShare, setSelectedShare] = React.useState<ExpenseShare | null>(null)
-  const [disputeShareTarget, setDisputeShareTarget] = React.useState<ExpenseShare | null>(null)
   const [isDeleteOpen, setIsDeleteOpen] = React.useState(false)
 
   const { markSeen } = useUnreadTracking()
@@ -113,57 +68,14 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
     markSeen(expense.id)
   }, [expense.id, markSeen])
 
-  const reminder = useSendPaymentReminder()
-  const confirmPayment = useConfirmPayment({ successMessage: "Payment confirmed and marked as Paid!" })
-  const disputePayment = useDisputePayment()
   const deleteExpense = useDeleteExpense({ successMessage: "Expense deleted successfully" })
 
-  const isRecipient = expense.recipientId === user?.uid
   const isPayer = expense.payerId === user?.uid
   const isCreator = expense.createdBy === user?.uid
   const isDeleted = !!expense.deletedAt
   const canDelete = (isPayer || isCreator) && !isDeleted
 
   const myShare = expense.shares.find((s) => s.userId === user?.uid)
-  const position = getMyPosition(expense, user?.uid)
-  const canPay = !isPayer && !isDeleted && !!myShare && myShare.status !== "PAID" && position.paise > 0
-  const unpaids = expense.shares.filter((s) => s.status !== "PAID" && s.userId !== user?.uid)
-  const canRemind = !isDeleted && unpaids.length > 0 && (isPayer || isRecipient)
-
-  // Invariant check: cannot delete if member payments are confirmed or awaiting confirmation
-  const hasPaidMembers =
-    expense.shares?.some(
-      (s) => s.userId !== expense.payerId && (s.status === "PAID" || s.status === "PAYMENT_REPORTED")
-    ) || false
-  const allPaid = expense.shares.every((s) => s.status === "PAID")
-
-  const goToPay = () => router.push(`/expenses/${expense.id}/pay`)
-
-  const handleRemindAll = async () => {
-    if (unpaids.length === 0) return
-    try {
-      for (const u of unpaids) {
-        await reminder.mutateAsync({ expenseId: expense.id, targetUserId: u.userId })
-      }
-    } catch {
-      return // error toast is shown globally
-    }
-    toast.success(`Reminder sent to ${unpaids.length} members!`)
-  }
-
-  const handleConfirmReceipt = (userId: string) =>
-    confirmPayment.mutate({ expenseId: expense.id, memberUserId: userId }, { onSuccess: () => setSelectedShare(null) })
-
-  const handleDisputeReceipt = (userId: string) =>
-    disputePayment.mutate(
-      { expenseId: expense.id, memberUserId: userId },
-      {
-        onSuccess: () => {
-          toast.error("Payment marked as disputed")
-          setSelectedShare(null)
-        },
-      }
-    )
 
   const handleConfirmDelete = () =>
     deleteExpense.mutate(expense.id, {
@@ -179,16 +91,12 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
         title="Expense Details"
         showBack
         rightAction={
-          !isDeleted && (
-          <ExpenseActionsMenu
-            canPay={canPay}
-            canRemind={canRemind}
-            canDelete={canDelete}
-            onPay={goToPay}
-            onRemind={handleRemindAll}
-            onDelete={() => setIsDeleteOpen(true)}
-          />
-          )
+          !isDeleted && canDelete ? (
+            <ExpenseActionsMenu
+              canDelete={canDelete}
+              onDelete={() => setIsDeleteOpen(true)}
+            />
+          ) : undefined
         }
       />
 
@@ -221,28 +129,42 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
           </div>
         </div>
 
-        {/* Your position: what you owe / get back is the headline, total is secondary */}
-        <Card>
+        {/* Expense overview / details */}
+        <Card className="rounded-3xl">
           <CardHeader>
-            <CardDescription className="text-xs font-semibold">{position.label}</CardDescription>
+            <CardDescription className="text-xs font-semibold">
+              {isPayer
+                ? "You paid this bill"
+                : myShare
+                  ? "Your Share in this bill"
+                  : "Total Bill"}
+            </CardDescription>
             <CardTitle>
               <Amount
-                paise={position.paise}
-                className={cn("text-3xl font-extrabold tracking-tight sm:text-4xl", position.className)}
+                paise={
+                  isPayer
+                    ? expense.amountPaise
+                    : myShare
+                      ? myShare.amountPaise
+                      : expense.amountPaise
+                }
+                className="text-3xl font-extrabold tracking-tight sm:text-4xl text-foreground"
               />
             </CardTitle>
             <CardDescription className="text-xs">
-              {position.detail && <>{position.detail} · </>}
-              Total bill <Amount paise={expense.amountPaise} className="font-semibold" />
+              {isPayer ? (
+                <>Split between {expense.shares.length} participants · Paid on {expense.date}</>
+              ) : myShare ? (
+                <>Total bill <Amount paise={expense.amountPaise} className="font-semibold" /> · Paid by {expense.payerName}</>
+              ) : (
+                <>Paid by {expense.payerName} · Split between {expense.shares.length} participants</>
+              )}
             </CardDescription>
-            <CardAction className="self-center">
-              <StatusBadge status={allPaid ? "paid" : "pending"} />
-            </CardAction>
           </CardHeader>
         </Card>
 
         {/* Participants & shares */}
-        <Card>
+        <Card className="rounded-3xl">
           <CardHeader>
             <CardTitle className="text-sm font-bold">Participants &amp; Shares</CardTitle>
             <CardAction className="text-xs text-muted-foreground">
@@ -257,11 +179,6 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
                   share={share}
                   isMe={share.userId === user?.uid}
                   isPayer={share.userId === expense.payerId}
-                  canConfirm={!isDeleted && (isRecipient || isPayer) && share.status === "PAYMENT_REPORTED"}
-                  canDispute={!isDeleted && (isRecipient || isPayer) && share.userId !== user?.uid && share.status === "PAID"}
-                  onVerify={() => setSelectedShare(share)}
-                  onDispute={() => setDisputeShareTarget(share)}
-                  onPay={!isDeleted && share.userId === user?.uid && !isPayer && share.status !== "PAID" ? goToPay : undefined}
                 />
               </React.Fragment>
             ))}
@@ -269,7 +186,7 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
         </Card>
 
         {/* Bill metadata */}
-        <Card>
+        <Card className="rounded-3xl">
           <CardContent className="flex flex-col gap-2 text-xs">
             <DetailRow icon={UserIcon} label="Paid by">
               <span className="font-bold">{expense.payerName}</span>
@@ -306,59 +223,16 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
             )}
           </CardContent>
         </Card>
-
-        {/* Action bar */}
-        {/* Paying happens inline on your own share row; only reminders live here */}
-        {canRemind && (
-          <div className="flex gap-3 pt-2">
-            <Button
-              variant="outline"
-              size="lg"
-              className="w-full"
-              disabled={reminder.isPending}
-              onClick={handleRemindAll}
-            >
-              <HugeiconsIcon icon={Notification01Icon} data-icon="inline-start" />
-              Remind Unpaid
-            </Button>
-          </div>
-        )}
       </PageContainer>
-
-      <ConfirmShareDialog
-        share={selectedShare}
-        expenseTitle={expense.title}
-        onClose={() => setSelectedShare(null)}
-        onConfirm={handleConfirmReceipt}
-        onDispute={handleDisputeReceipt}
-        isConfirming={confirmPayment.isPending}
-        isDisputing={disputePayment.isPending}
-      />
 
       <DeleteExpenseDialog
         open={isDeleteOpen}
         onOpenChange={setIsDeleteOpen}
         title={expense.title}
         amountPaise={expense.amountPaise}
-        hasPaidMembers={hasPaidMembers}
+        hasPaidMembers={false}
         isPending={deleteExpense.isPending}
         onConfirm={handleConfirmDelete}
-      />
-
-      <ConfirmDialog
-        open={!!disputeShareTarget}
-        onOpenChange={(open) => !open && setDisputeShareTarget(null)}
-        title="Mark Payment as Not Received?"
-        description={`Are you sure you want to mark ${disputeShareTarget?.userName}'s payment of ₹${((disputeShareTarget?.amountPaise || 0) / 100).toFixed(0)} as not received? This will revert their share to Disputed.`}
-        confirmLabel="Dispute Payment"
-        destructive
-        isPending={disputePayment.isPending}
-        onConfirm={() => {
-          if (disputeShareTarget) {
-            handleDisputeReceipt(disputeShareTarget.userId)
-            setDisputeShareTarget(null)
-          }
-        }}
       />
     </>
   )

@@ -89,7 +89,8 @@ export default function HomePage() {
               userId: b.userId,
               name: friend?.displayName || b.name,
               photoURL: friend?.photoURL || b.photoURL,
-              subtitle: friend?.splitzyId || "Group member",
+              subtitle: friend?.splitzyId || b.subtitle || "Group member",
+              upiId: friend?.upiId || b.upiId,
               netBalancePaise: b.netBalancePaise,
             }
           })
@@ -153,6 +154,17 @@ export default function HomePage() {
                     </div>
                   </div>
                 </div>
+
+                <div className="mt-3.5 border-t border-primary-foreground/20 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/split-summary")}
+                    className="flex w-full items-center justify-between rounded-xl bg-primary-foreground/15 px-3 py-2 text-xs font-bold text-primary-foreground transition hover:bg-primary-foreground/25 active:scale-[0.99]"
+                  >
+                    <span>View Split Expense Summary</span>
+                    <span className="font-bold">→</span>
+                  </button>
+                </div>
               </div>
             </Card>
 
@@ -199,15 +211,15 @@ export default function HomePage() {
                 ) : (
                   <>
                     <FriendBalanceSection
-                      title="Who owes you"
-                      emptyText="No one owes you right now."
-                      rows={whoOwesYou}
+                      title="People you need to pay"
+                      emptyText="You do not owe anyone right now."
+                      rows={youOweTo}
                     />
                     <Separator />
                     <FriendBalanceSection
-                      title="You owe to"
-                      emptyText="You do not owe anyone right now."
-                      rows={youOweTo}
+                      title="People who need to pay you"
+                      emptyText="No one owes you right now."
+                      rows={whoOwesYou}
                     />
                   </>
                 )}
@@ -258,7 +270,7 @@ export default function HomePage() {
             </Card>
 
             <Card className="rounded-3xl">
-              <SectionHeader title="Recent Activity" href="/activity" />
+              <SectionHeader title="Recent Expenses" href="/history" />
               <CardContent>
                 {expensesQuery.isPending ? (
                   <ListSkeleton />
@@ -387,6 +399,7 @@ interface BalanceRow {
   name: string
   photoURL?: string
   subtitle: string
+  upiId?: string
   netBalancePaise: number
 }
 
@@ -406,7 +419,7 @@ function FriendBalanceSection({
       </div>
       {rows.length > 0 ? (
         <ItemGroup className="gap-1">
-          {rows.map(({ userId, name, photoURL, subtitle, netBalancePaise }) => (
+          {rows.map(({ userId, name, photoURL, subtitle, upiId, netBalancePaise }) => (
             <Item
               key={userId}
               size="sm"
@@ -436,7 +449,12 @@ function FriendBalanceSection({
                 </span>
                 {/* Where you owe someone, settle right here instead of hunting for the expense */}
                 {netBalancePaise < 0 && (
-                  <PayPersonButton personId={userId} personName={name} />
+                  <PayPersonButton
+                    personId={userId}
+                    personName={name}
+                    personPhoto={photoURL}
+                    personUpiId={upiId}
+                  />
                 )}
               </ItemActions>
             </Item>

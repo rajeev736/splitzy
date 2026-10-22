@@ -39,7 +39,32 @@ function SignupForm() {
   const [upiId, setUpiId] = React.useState("")
   const [selectedAvatar, setSelectedAvatar] = React.useState(DEFAULT_AVATAR)
 
-  const setFullName = (fullName: string) => setAccount((a) => ({ ...a, fullName }))
+  const seededForUserRef = React.useRef<{
+    uid: string | null
+    nameSeeded: boolean
+    upiSeeded: boolean
+  }>({
+    uid: null,
+    nameSeeded: false,
+    upiSeeded: false,
+  })
+
+  const setFullName = React.useCallback((fullName: string) => {
+    setAccount((a) => ({ ...a, fullName }))
+  }, [])
+
+  const handleFullNameChange = React.useCallback(
+    (fullName: string) => {
+      seededForUserRef.current.nameSeeded = true
+      setFullName(fullName)
+    },
+    [setFullName]
+  )
+
+  const handleUpiIdChange = React.useCallback((val: string) => {
+    seededForUserRef.current.upiSeeded = true
+    setUpiId(val)
+  }, [])
 
   // Read URL query params (?email=, ?step=verify|profile) whenever they change
   const emailParam = searchParams.get("email")
@@ -60,9 +85,24 @@ function SignupForm() {
     const nextStep: SignupStep =
       isPasswordAccount && !isEmailVerified ? "verify" : isEmailVerified || step === "profile" ? "profile" : step
     if (nextStep !== step) setStep(nextStep)
-    if (user.displayName && !account.fullName) setFullName(user.displayName)
+
+    if (seededForUserRef.current.uid !== user.uid) {
+      seededForUserRef.current = {
+        uid: user.uid,
+        nameSeeded: false,
+        upiSeeded: false,
+      }
+    }
+
+    if (user.displayName && !seededForUserRef.current.nameSeeded) {
+      seededForUserRef.current.nameSeeded = true
+      if (!account.fullName) setAccount((a) => ({ ...a, fullName: user.displayName }))
+    }
     if (user.splitzyId && user.splitzyId !== splitzyId) setSplitzyId(user.splitzyId)
-    if (user.upiId && !upiId) setUpiId(user.upiId)
+    if (user.upiId && !seededForUserRef.current.upiSeeded) {
+      seededForUserRef.current.upiSeeded = true
+      if (!upiId) setUpiId(user.upiId)
+    }
     if (user.photoURL && user.photoURL !== syncedPhotoURL) {
       setSyncedPhotoURL(user.photoURL)
       setSelectedAvatar(user.photoURL)
@@ -130,10 +170,10 @@ function SignupForm() {
       {step === "profile" && (
         <ProfileStep
           fullName={account.fullName}
-          onFullNameChange={setFullName}
+          onFullNameChange={handleFullNameChange}
           splitzyId={splitzyId}
           upiId={upiId}
-          onUpiIdChange={setUpiId}
+          onUpiIdChange={handleUpiIdChange}
           selectedAvatar={selectedAvatar}
           onAvatarChange={setSelectedAvatar}
         />

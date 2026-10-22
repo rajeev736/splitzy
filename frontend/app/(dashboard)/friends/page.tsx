@@ -15,6 +15,7 @@ import {
   Search01Icon,
   UserAdd01Icon,
   UserCheck01Icon,
+  UserGroupIcon,
   UserIcon,
   UserRemove01Icon,
 } from "@hugeicons/core-free-icons"
@@ -43,14 +44,21 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemSeparator, ItemTitle } from "@/components/ui/item"
+import { Separator } from "@/components/ui/separator"
 import { useRemoveFriend, useSendFriendBalanceReminder } from "@/hooks/mutations"
-import { useExpenses, useFriendRequests, useFriends } from "@/hooks/queries"
-import { calculateDirectBalance, canRemoveFriend, formatPaise } from "@/lib/money"
+import { useExpenses, useFriendRequests, useFriends, useGroups } from "@/hooks/queries"
+import {
+  calculateDirectBalance,
+  calculateMemberGroupBalance,
+  canRemoveFriend,
+  filterExpensesByScope,
+  formatPaise,
+} from "@/lib/money"
 import type { UserProfile } from "@/lib/types"
 
 import { IdLookupResult, JOYSPLIT_ID_PATTERN } from "./_components/id-lookup-result"
 
-const splitHref =(uid: string) => `/expenses/new?friend=${uid}`
+const splitHref = (uid: string) => `/expenses/new?friend=${uid}`
 
 export default function FriendsPage() {
   const router = useRouter()
@@ -58,6 +66,7 @@ export default function FriendsPage() {
   const friendsQuery = useFriends()
   const { data: friendRequests } = useFriendRequests()
   const { data: expenses } = useExpenses()
+  const { data: groups } = useGroups()
   const removeFriend = useRemoveFriend()
   const sendReminder = useSendFriendBalanceReminder()
 
@@ -92,11 +101,33 @@ export default function FriendsPage() {
   const removalCheck =
     removeTarget && user ? canRemoveFriend(user.uid, removeTarget.uid, expenses) : { allowed: true, reason: "" }
 
+  // Direct-only expenses (no groupId)
+  const directExpenses = React.useMemo(
+    () => filterExpensesByScope(expenses, { type: "direct" }),
+    [expenses]
+  )
+
   const profileDirect = React.useMemo(() => {
     if (!user || !profileFriend) return null
-    return calculateDirectBalance(user.uid, profileFriend.uid, expenses)
-  }, [user, profileFriend, expenses])
+    return calculateDirectBalance(user.uid, profileFriend.uid, directExpenses)
+  }, [user, profileFriend, directExpenses])
 
+  // Per-group balances for the profile friend (groups that BOTH are members of)
+  const profileGroupBalances = React.useMemo(() => {
+    if (!user || !profileFriend) return []
+    return groups
+      .filter((g) => g.members.includes(user.uid) && g.members.includes(profileFriend.uid))
+      .map((g) => {
+        const groupExpenses = expenses.filter((e) => !e.deletedAt && e.groupId === g.id)
+        const balance = calculateMemberGroupBalance(user.uid, g.id, groupExpenses)
+        // Only return groups where this pair have an open balance
+        const friendBalance = calculateDirectBalance(user.uid, profileFriend.uid, groupExpenses)
+        return { group: g, netPaise: friendBalance.netBalancePaise }
+      })
+      .filter((r) => r.netPaise !== 0)
+  }, [user, profileFriend, groups, expenses])
+
+  // Mutual expenses for the profile panel
   const mutualExpenses = React.useMemo(() => {
     if (!user || !profileFriend) return []
     return expenses.filter((exp) => {
@@ -107,6 +138,22 @@ export default function FriendsPage() {
       return userInvolved && friendInvolved
     })
   }, [user, profileFriend, expenses])
+
+  // Combined net (direct + group) for friend list display
+  const getFriendNetBalance = React.useCallback(
+    (friend: UserProfile) => {
+      if (!user) return 0
+      const direct = calculateDirectBalance(user.uid, friend.uid, directExpenses).netBalancePaise
+      const groupNet = groups
+        .filter((g) => g.members.includes(user.uid) && g.members.includes(friend.uid))
+        .reduce((sum, g) => {
+          const gExp = expenses.filter((e) => !e.deletedAt && e.groupId === g.id)
+          return sum + calculateDirectBalance(user.uid, friend.uid, gExp).netBalancePaise
+        }, 0)
+      return direct + groupNet
+    },
+    [user, directExpenses, groups, expenses]
+  )
 
   const handleConfirmRemove = () => {
     if (!removeTarget) return
@@ -191,9 +238,7 @@ export default function FriendsPage() {
               ) : (
                 <ItemGroup className="gap-0 px-1">
                   {filteredFriends.map((friend, i) => {
-                    const direct = user
-                      ? calculateDirectBalance(user.uid, friend.uid, expenses)
-                      : { netBalancePaise: 0 }
+                    const netBalance = getFriendNetBalance(friend)
 
                     return (
                       <React.Fragment key={friend.uid}>
@@ -208,19 +253,19 @@ export default function FriendsPage() {
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
                                 <span className="truncate text-sm font-bold">{friend.displayName}</span>
-                                {direct.netBalancePaise > 0 ? (
+                                {netBalance > 0 ? (
                                   <Badge
                                     variant="outline"
                                     className="border-success/30 bg-success/10 text-success text-[10px] font-bold"
                                   >
-                                    +{formatPaise(direct.netBalancePaise)}
+                                    +{formatPaise(netBalance)}
                                   </Badge>
-                                ) : direct.netBalancePaise < 0 ? (
+                                ) : netBalance < 0 ? (
                                   <Badge
                                     variant="outline"
                                     className="border-destructive/30 bg-destructive/10 text-destructive text-[10px] font-bold"
                                   >
-                                    -{formatPaise(Math.abs(direct.netBalancePaise))}
+                                    -{formatPaise(Math.abs(netBalance))}
                                   </Badge>
                                 ) : (
                                   <span className="text-[10px] text-muted-foreground font-medium">Settled</span>
@@ -241,7 +286,7 @@ export default function FriendsPage() {
                           </button>
 
                           <ItemActions className="gap-2">
-                            {direct.netBalancePaise > 0 ? (
+                            {netBalance > 0 ? (
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -250,14 +295,14 @@ export default function FriendsPage() {
                                 onClick={() =>
                                   sendReminder.mutate({
                                     targetUserId: friend.uid,
-                                    amountPaise: direct.netBalancePaise,
+                                    amountPaise: netBalance,
                                   })
                                 }
                               >
                                 <HugeiconsIcon icon={Notification01Icon} className="size-3.5" />
                                 Remind
                               </Button>
-                            ) : direct.netBalancePaise < 0 ? (
+                            ) : netBalance < 0 ? (
                               <PayPersonButton
                                 personId={friend.uid}
                                 personName={friend.displayName}
@@ -307,7 +352,7 @@ export default function FriendsPage() {
       <Dialog open={!!profileFriend} onOpenChange={(open) => !open && setProfileFriend(null)}>
         <DialogContent className="max-w-lg max-h-[85vh] flex flex-col p-6">
           <DialogHeader>
-            <DialogTitle>Friend Profile & Expenses</DialogTitle>
+            <DialogTitle>Friend Profile</DialogTitle>
           </DialogHeader>
           {profileFriend && (
             <div className="flex flex-1 flex-col gap-4 overflow-y-auto pr-1">
@@ -320,55 +365,6 @@ export default function FriendsPage() {
                   </p>
                 </div>
               </div>
-
-              {/* Balance Card */}
-              {profileDirect && (
-                <div className="flex items-center justify-between rounded-2xl border p-4 bg-muted/40">
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Net Mutual Balance
-                    </div>
-                    {profileDirect.netBalancePaise > 0 ? (
-                      <div className="text-lg font-extrabold text-success">
-                        +{formatPaise(profileDirect.netBalancePaise)}
-                        <span className="ml-1.5 text-xs font-semibold text-muted-foreground">(owes you)</span>
-                      </div>
-                    ) : profileDirect.netBalancePaise < 0 ? (
-                      <div className="text-lg font-extrabold text-destructive">
-                        -{formatPaise(Math.abs(profileDirect.netBalancePaise))}
-                        <span className="ml-1.5 text-xs font-semibold text-muted-foreground">(you owe)</span>
-                      </div>
-                    ) : (
-                      <div className="text-sm font-bold text-muted-foreground">All Settled Up</div>
-                    )}
-                  </div>
-                  <div>
-                    {profileDirect.netBalancePaise > 0 ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5 border-success/40 text-xs font-bold text-success hover:bg-success/10"
-                        disabled={sendReminder.isPending}
-                        onClick={() =>
-                          sendReminder.mutate({
-                            targetUserId: profileFriend.uid,
-                            amountPaise: profileDirect.netBalancePaise,
-                          })
-                        }
-                      >
-                        <HugeiconsIcon icon={Notification01Icon} className="size-3.5" />
-                        Remind
-                      </Button>
-                    ) : profileDirect.netBalancePaise < 0 ? (
-                      <PayPersonButton
-                        personId={profileFriend.uid}
-                        personName={profileFriend.displayName}
-                        size="sm"
-                      />
-                    ) : null}
-                  </div>
-                </div>
-              )}
 
               {/* Contact & Meta Details */}
               <div className="flex flex-col gap-2 rounded-2xl border bg-card p-3 text-xs">
@@ -388,7 +384,141 @@ export default function FriendsPage() {
                 </div>
               </div>
 
+              {/* Direct Splits Balance */}
+              {profileDirect && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <HugeiconsIcon icon={Invoice01Icon} className="size-4 text-primary" />
+                    <span className="text-xs font-bold tracking-tight">Direct Splits</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-2xl border p-4 bg-muted/40">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Direct Balance
+                      </div>
+                      {profileDirect.netBalancePaise > 0 ? (
+                        <div className="text-base font-extrabold text-success">
+                          +{formatPaise(profileDirect.netBalancePaise)}
+                          <span className="ml-1.5 text-xs font-semibold text-muted-foreground">(owes you)</span>
+                        </div>
+                      ) : profileDirect.netBalancePaise < 0 ? (
+                        <div className="text-base font-extrabold text-destructive">
+                          -{formatPaise(Math.abs(profileDirect.netBalancePaise))}
+                          <span className="ml-1.5 text-xs font-semibold text-muted-foreground">(you owe)</span>
+                        </div>
+                      ) : (
+                        <div className="text-sm font-bold text-muted-foreground">Settled</div>
+                      )}
+                    </div>
+                    <div>
+                      {profileDirect.netBalancePaise > 0 ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 border-success/40 text-xs font-bold text-success hover:bg-success/10"
+                          disabled={sendReminder.isPending}
+                          onClick={() =>
+                            sendReminder.mutate({
+                              targetUserId: profileFriend.uid,
+                              amountPaise: profileDirect.netBalancePaise,
+                            })
+                          }
+                        >
+                          <HugeiconsIcon icon={Notification01Icon} className="size-3.5" />
+                          Remind
+                        </Button>
+                      ) : profileDirect.netBalancePaise < 0 ? (
+                        <PayPersonButton
+                          personId={profileFriend.uid}
+                          personName={profileFriend.displayName}
+                          size="sm"
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Group Balances */}
+              {profileGroupBalances.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <HugeiconsIcon icon={UserGroupIcon} className="size-4 text-primary" />
+                    <span className="text-xs font-bold tracking-tight">Group Balances</span>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {profileGroupBalances.map(({ group, netPaise }) => (
+                      <div
+                        key={group.id}
+                        className="flex items-center justify-between rounded-xl border p-3 bg-muted/30"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-bold">{group.name}</div>
+                          {netPaise > 0 ? (
+                            <div className="text-xs font-semibold text-success">
+                              +{formatPaise(netPaise)} — they owe you
+                            </div>
+                          ) : (
+                            <div className="text-xs font-semibold text-destructive">
+                              -{formatPaise(Math.abs(netPaise))} — you owe
+                            </div>
+                          )}
+                        </div>
+                        <div className="ml-3 flex shrink-0 gap-2">
+                          {netPaise > 0 ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 gap-1 border-success/40 px-2 text-[11px] font-bold text-success hover:bg-success/10"
+                              disabled={sendReminder.isPending}
+                              onClick={() =>
+                                sendReminder.mutate({
+                                  targetUserId: profileFriend.uid,
+                                  amountPaise: netPaise,
+                                })
+                              }
+                            >
+                              <HugeiconsIcon icon={Notification01Icon} className="size-3" />
+                              Remind
+                            </Button>
+                          ) : (
+                            <PayPersonButton
+                              personId={profileFriend.uid}
+                              personName={`${profileFriend.displayName} (${group.name})`}
+                              size="sm"
+                            />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Combined Pay All — if owing across multiple contexts */}
+              {(() => {
+                const directOwe = profileDirect && profileDirect.netBalancePaise < 0 ? Math.abs(profileDirect.netBalancePaise) : 0
+                const groupOwe = profileGroupBalances.filter((r) => r.netPaise < 0).reduce((s, r) => s + Math.abs(r.netPaise), 0)
+                const totalOwe = directOwe + groupOwe
+                const hasMultipleContexts = (directOwe > 0 ? 1 : 0) + profileGroupBalances.filter((r) => r.netPaise < 0).length > 1
+                if (!hasMultipleContexts || totalOwe === 0) return null
+                return (
+                  <div className="rounded-2xl border border-primary/30 bg-primary/5 p-3 flex items-center justify-between">
+                    <div>
+                      <div className="text-[11px] font-semibold text-primary/70 uppercase tracking-wider">Pay All at Once</div>
+                      <div className="text-sm font-extrabold text-destructive">-{formatPaise(totalOwe)} total</div>
+                    </div>
+                    <PayPersonButton
+                      personId={profileFriend.uid}
+                      personName={profileFriend.displayName}
+                      size="sm"
+                    />
+                  </div>
+                )
+              })()}
+
               {/* Shared Expenses (Group & Personal) */}
+              <Separator />
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold tracking-tight">
@@ -414,7 +544,7 @@ export default function FriendsPage() {
                           <div className="flex items-center gap-2">
                             <span className="truncate text-xs font-bold">{exp.title}</span>
                             <Badge variant="secondary" className="text-[10px] py-0 px-1.5">
-                              {exp.groupId ? (exp.groupName || "Group") : "Personal"}
+                              {exp.groupId ? (exp.groupName || "Group") : "Direct"}
                             </Badge>
                           </div>
                           <div className="mt-0.5 text-[11px] text-muted-foreground">

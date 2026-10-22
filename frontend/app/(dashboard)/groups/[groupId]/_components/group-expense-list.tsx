@@ -6,12 +6,11 @@ import { ReceiptIndianRupeeIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { Amount } from "@/components/shared/amount"
-import { StatusBadge } from "@/components/shared/status-badge"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemSeparator, ItemTitle } from "@/components/ui/item"
 import { useUnreadTracking } from "@/hooks/use-unread-tracking"
 import type { Expense } from "@/lib/types"
 
-/** Linked list of group expenses with payer, date, amount and paid/pending badge. */
+/** Linked list of group expenses with payer, date, and amount (view only). */
 export function GroupExpenseList({
   expenses,
   emptyText,
@@ -55,12 +54,12 @@ export function GroupExpenseList({
                   )}
                 </ItemTitle>
                 <ItemDescription className="line-clamp-1 text-[11px]">
-                  Paid by {exp.payerName} • {exp.date}
+                  Paid by {exp.payerName}
                 </ItemDescription>
               </ItemContent>
-              <ItemActions className="flex-col items-end gap-1">
+              <ItemActions className="flex-col items-end gap-0.5">
                 <Amount paise={exp.amountPaise} className="text-xs font-bold" />
-                <StatusBadge status={exp.shares.every((s) => s.status === "PAID") ? "paid" : "pending"} />
+                <span className="text-[10px] text-muted-foreground">{exp.date}</span>
               </ItemActions>
             </Item>
           </Fragment>
