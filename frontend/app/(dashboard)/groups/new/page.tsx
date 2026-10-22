@@ -294,9 +294,9 @@ export default function CreateGroupPage() {
               )}
 
               <div className="flex flex-col gap-2">
-                <InputGroup className="h-9">
-                  <InputGroupAddon>
-                    <HugeiconsIcon icon={Search01Icon} />
+                <InputGroup className="h-10 bg-card/60 transition-colors">
+                  <InputGroupAddon className="pl-3 text-muted-foreground">
+                    <HugeiconsIcon icon={Search01Icon} className="size-4" />
                   </InputGroupAddon>
                   <InputGroupInput
                     value={memberSearch}
@@ -314,16 +314,16 @@ export default function CreateGroupPage() {
                     className="text-xs"
                   />
                   {memberSearch.trim().length >= 3 && (
-                    <InputGroupAddon align="inline-end">
-                      <InputGroupButton
-                        variant="default"
-                        size="sm"
+                    <InputGroupAddon align="inline-end" className="pr-1.5 has-[>button]:mr-0">
+                      <Button
+                        type="button"
                         onClick={handleSearchId}
                         disabled={isSearchingId}
+                        className="h-7 px-3 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                       >
-                        {isSearchingId && <Spinner />}
-                        {isSearchingId ? "Searching..." : "Lookup ID"}
-                      </InputGroupButton>
+                        {isSearchingId && <Spinner className="size-3" />}
+                        <span>{isSearchingId ? "Searching..." : "Lookup ID"}</span>
+                      </Button>
                     </InputGroupAddon>
                   )}
                 </InputGroup>

@@ -268,7 +268,7 @@ export default function CreateGroupPage() {
                     type="button"
                     onClick={handleSearchId}
                     disabled={isSearchingId}
-                    className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-medium transition-colors disabled:opacity-50"
+                    className="h-8 px-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center shrink-0"
                   >
                     {isSearchingId ? "Searching..." : "Lookup ID"}
                   </button>
