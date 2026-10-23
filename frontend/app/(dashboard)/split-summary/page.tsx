@@ -117,10 +117,10 @@ function SplitSummaryContent() {
   const isError = expensesQuery.isError || groupsQuery.isError
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-4xl flex-col bg-background text-foreground pb-24 md:pb-12">
+    <div className="mx-auto flex h-[calc(100dvh-5rem)] max-h-[calc(100dvh-5rem)] w-full max-w-4xl flex-col overflow-hidden bg-background text-foreground md:h-auto md:max-h-none md:min-h-[calc(100vh-4rem)] md:overflow-visible md:pb-12">
       {/* Top Header */}
-      <header className="sticky top-0 z-30 border-b border-border/50 bg-background/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3.5 sm:px-6">
+      <header className="shrink-0 border-b border-border/50 bg-background/95 backdrop-blur-md">
+        <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3 sm:px-6 sm:py-3.5">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -149,11 +149,12 @@ function SplitSummaryContent() {
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="flex-1 px-4 py-4 sm:px-6 sm:py-6">
-        {isLoading ? (
+      {isLoading ? (
+        <main className="flex-1 px-4 py-4 sm:px-6 sm:py-6">
           <ListSkeleton rows={5} />
-        ) : isError ? (
+        </main>
+      ) : isError ? (
+        <main className="flex-1 px-4 py-4 sm:px-6 sm:py-6">
           <QueryError
             error={expensesQuery.error || groupsQuery.error}
             onRetry={() => {
@@ -161,18 +162,21 @@ function SplitSummaryContent() {
               groupsQuery.refetch()
             }}
           />
-        ) : (
-          <>
+        </main>
+      ) : (
+        <>
+          {/* Sticky Top Balance & Tabs Area for Mobile */}
+          <div className="shrink-0 border-b border-border/60 bg-background/95 px-4 pt-3 pb-0 backdrop-blur-md sm:border-0 sm:bg-transparent sm:px-6 sm:pt-6">
             {/* Total Split Balance Hero Card */}
-            <Card className="relative overflow-hidden rounded-3xl border border-border/80 bg-gradient-to-br from-card via-card to-muted/30 p-5 shadow-xs sm:p-6">
-              <div className="flex flex-col gap-1.5">
+            <Card className="relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-br from-card via-card to-muted/30 p-3.5 shadow-xs sm:rounded-3xl sm:p-6">
+              <div className="flex flex-col gap-1 sm:gap-1.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground sm:text-xs">
                     Total Split Balance
                   </span>
                   <span
                     className={cn(
-                      "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold",
+                      "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold sm:px-2.5 sm:text-[11px]",
                       isNetPayable
                         ? "bg-destructive/10 text-destructive"
                         : isNetReceivable
@@ -191,7 +195,7 @@ function SplitSummaryContent() {
                 <div className="flex items-baseline gap-2">
                   <span
                     className={cn(
-                      "text-3xl font-black tracking-tight tabular-nums sm:text-4xl",
+                      "text-2xl font-black tracking-tight tabular-nums sm:text-4xl",
                       isNetPayable
                         ? "text-destructive"
                         : isNetReceivable
@@ -207,7 +211,7 @@ function SplitSummaryContent() {
                   </span>
                 </div>
 
-                <p className="text-xs text-muted-foreground">
+                <p className="line-clamp-2 text-xs text-muted-foreground sm:line-clamp-none">
                   {isNetPayable
                     ? "Total pending amount across all groups and direct splits you need to pay."
                     : isNetReceivable
@@ -215,7 +219,7 @@ function SplitSummaryContent() {
                       : "All balances are settled up across your groups and friends."}
                 </p>
                 <GameDiscountNote
-                  className="mt-2"
+                  className="mt-1"
                   discountPaise={netOverview.gameDiscountPaise}
                   endsAt={netOverview.gameDiscountEndsAt}
                   now={netOverview.now}
@@ -224,12 +228,12 @@ function SplitSummaryContent() {
             </Card>
 
             {/* Navigation Tabs (Groups | People) */}
-            <div className="mt-6 flex border-b border-border/60">
+            <div className="mt-2.5 flex sm:mt-6 sm:border-b sm:border-border/60">
               <button
                 type="button"
                 onClick={() => setActiveTab("groups")}
                 className={cn(
-                  "relative flex-1 pb-3 text-center text-sm font-bold transition-all select-none",
+                  "relative flex-1 pb-2.5 text-center text-sm font-bold transition-all select-none sm:pb-3",
                   activeTab === "groups"
                     ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
                     : "text-muted-foreground hover:text-foreground"
@@ -242,7 +246,7 @@ function SplitSummaryContent() {
                 type="button"
                 onClick={() => setActiveTab("people")}
                 className={cn(
-                  "relative flex-1 pb-3 text-center text-sm font-bold transition-all select-none",
+                  "relative flex-1 pb-2.5 text-center text-sm font-bold transition-all select-none sm:pb-3",
                   activeTab === "people"
                     ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
                     : "text-muted-foreground hover:text-foreground"
@@ -251,194 +255,199 @@ function SplitSummaryContent() {
                 People
               </button>
             </div>
+          </div>
 
-            {/* Tab 1: Groups Content */}
-            {activeTab === "groups" && (
-              <div className="mt-4">
-                {groupRows.length === 0 ? (
-                  <EmptyState
-                    icon={UserGroupIcon}
-                    title="No groups found"
-                    description="You are not part of any groups yet."
-                    action={{
-                      label: "Create a Group",
-                      onClick: () => router.push("/groups/new"),
-                    }}
-                  />
-                ) : (
-                  <div className="flex flex-col gap-3">
-                    {groupRows.map((row) => {
-                      const youOwe = row.userOwesPaise > row.owedToUserPaise
-                      const amount = Math.abs(row.netPaise)
+          {/* Scrollable Container for Tab Items */}
+          <main className="flex-1 min-h-0 overflow-y-auto px-4 py-3.5 overscroll-contain sm:px-6 sm:py-6 md:overflow-visible md:flex-initial">
+            <div className="pb-28 sm:pb-8">
+              {/* Tab 1: Groups Content */}
+              {activeTab === "groups" && (
+                <div>
+                  {groupRows.length === 0 ? (
+                    <EmptyState
+                      icon={UserGroupIcon}
+                      title="No groups found"
+                      description="You are not part of any groups yet."
+                      action={{
+                        label: "Create a Group",
+                        onClick: () => router.push("/groups/new"),
+                      }}
+                    />
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {groupRows.map((row) => {
+                        const youOwe = row.userOwesPaise > row.owedToUserPaise
+                        const amount = Math.abs(row.netPaise)
 
-                      return (
-                        <div
-                          key={row.group.id}
-                          onClick={() => setSelectedGroupId(row.group.id)}
-                          className="flex flex-row cursor-pointer items-center justify-between gap-4 rounded-3xl border border-border bg-card p-4 text-card-foreground shadow-xs transition hover:border-primary/40 hover:bg-muted/30 active:scale-[0.99]"
-                        >
-                          <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                            {/* Group Avatar / Icon */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                router.push(`/groups/${row.group.id}`)
-                              }}
-                              title="View group expenses and members"
-                              className="shrink-0 transition-transform hover:scale-105 active:scale-95"
-                            >
-                              <GroupIcon
-                                src={row.group.icon}
-                                alt={row.group.name}
-                                size="md"
-                                className="size-12 rounded-full border shadow-2xs"
-                              />
-                            </button>
+                        return (
+                          <div
+                            key={row.group.id}
+                            onClick={() => setSelectedGroupId(row.group.id)}
+                            className="flex flex-row cursor-pointer items-center justify-between gap-4 rounded-3xl border border-border bg-card p-4 text-card-foreground shadow-xs transition hover:border-primary/40 hover:bg-muted/30 active:scale-[0.99]"
+                          >
+                            <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                              {/* Group Avatar / Icon */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  router.push(`/groups/${row.group.id}`)
+                                }}
+                                title="View group expenses and members"
+                                className="shrink-0 transition-transform hover:scale-105 active:scale-95"
+                              >
+                                <GroupIcon
+                                  src={row.group.icon}
+                                  alt={row.group.name}
+                                  size="md"
+                                  className="size-12 rounded-full border shadow-2xs"
+                                />
+                              </button>
 
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-base font-bold text-foreground">
-                                {row.group.name}
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-base font-bold text-foreground">
+                                  {row.group.name}
+                                </div>
+                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
+                                  <span>{row.group.members.length} members</span>
+                                  <span>•</span>
+                                  <span>
+                                    {row.expenseCount} {row.expenseCount === 1 ? "expense" : "expenses"}
+                                  </span>
+                                </div>
+                                {row.offsetPaise > 0 && (
+                                  <div className="mt-1 text-[11px] font-semibold text-info">
+                                    {formatPaise(row.offsetPaise)} cancelled out with other splits
+                                  </div>
+                                )}
                               </div>
-                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
-                                <span>{row.group.members.length} members</span>
-                                <span>•</span>
-                                <span>
-                                  {row.expenseCount} {row.expenseCount === 1 ? "expense" : "expenses"}
+                            </div>
+
+                            {/* Right side: You get / You owe + Large Amount + Arrow */}
+                            <div className="flex shrink-0 items-center gap-3.5 text-right">
+                              <div className="flex flex-col items-end">
+                                <span className="text-xs font-semibold text-muted-foreground">
+                                  {!row.hasBalance ? "Settled" : youOwe ? "You owe" : "You get"}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "text-xl font-black tabular-nums leading-tight mt-0.5 sm:text-2xl",
+                                    !row.hasBalance
+                                      ? "text-muted-foreground"
+                                      : youOwe
+                                        ? "text-destructive"
+                                        : "text-emerald-600 dark:text-emerald-400"
+                                  )}
+                                >
+                                  ₹{(amount / 100).toFixed(0)}
                                 </span>
                               </div>
-                              {row.offsetPaise > 0 && (
-                                <div className="mt-1 text-[11px] font-semibold text-info">
-                                  {formatPaise(row.offsetPaise)} cancelled out with other splits
-                                </div>
-                              )}
+
+                              <HugeiconsIcon
+                                icon={ArrowRight01Icon}
+                                className="size-5 shrink-0 text-muted-foreground/70"
+                              />
                             </div>
                           </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
-                          {/* Right side: You get / You owe + Large Amount + Arrow */}
-                          <div className="flex shrink-0 items-center gap-3.5 text-right">
-                            <div className="flex flex-col items-end">
-                              <span className="text-xs font-semibold text-muted-foreground">
-                                {!row.hasBalance ? "Settled" : youOwe ? "You owe" : "You get"}
-                              </span>
-                              <span
-                                className={cn(
-                                  "text-xl font-black tabular-nums leading-tight mt-0.5 sm:text-2xl",
-                                  !row.hasBalance
-                                    ? "text-muted-foreground"
-                                    : youOwe
+              {/* Tab 2: People Content */}
+              {activeTab === "people" && (
+                <div>
+                  {peopleRows.length === 0 ? (
+                    <EmptyState
+                      icon={Invoice01Icon}
+                      title="No pending balances"
+                      description="You are settled up with all your friends and group members!"
+                    />
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {peopleRows.map((person) => {
+                        return (
+                          <div
+                            key={person.userId}
+                            onClick={() => setSelectedPersonId(person.userId)}
+                            className="flex flex-row cursor-pointer items-center justify-between gap-4 rounded-3xl border border-border bg-card p-4 text-card-foreground shadow-xs transition hover:border-primary/40 hover:bg-muted/30 active:scale-[0.99]"
+                          >
+                            <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                              {/* Person Avatar */}
+                              <UserAvatar
+                                src={person.photoURL}
+                                name={person.name}
+                                size="md"
+                                className="size-12 ring-1 ring-border/50 shrink-0"
+                              />
+
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-base font-bold text-foreground">
+                                  {person.name}
+                                </div>
+                                {person.upiId ? (
+                                  <div className="truncate font-mono text-xs text-muted-foreground mt-0.5">
+                                    {person.upiId}
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-muted-foreground mt-0.5">Direct & Groups</div>
+                                )}
+                                {!person.youOwe && (
+                                  <ChallengeButton
+                                    className="mt-1.5"
+                                    person={{ uid: person.userId, name: person.name, photoURL: person.photoURL }}
+                                    owedPaise={person.amountPaise}
+                                  />
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Right side: Pay Now / You get */}
+                            <div className="flex shrink-0 items-center gap-3.5 text-right">
+                              <div className="flex flex-col items-end">
+                                <span className="text-xs font-semibold text-muted-foreground">
+                                  {person.youOwe ? "You owe" : "You get"}
+                                  {gameDiscounts.byPerson.has(person.userId) && " (if paid now)"}
+                                </span>
+                                <GameDiscountAmount
+                                  amountPaise={person.amountPaise}
+                                  discount={gameDiscounts.byPerson.get(person.userId)}
+                                  now={gameDiscounts.now}
+                                  className={cn(
+                                    "text-xl font-black leading-tight mt-0.5 sm:text-2xl",
+                                    person.youOwe
                                       ? "text-destructive"
                                       : "text-emerald-600 dark:text-emerald-400"
-                                )}
-                              >
-                                ₹{(amount / 100).toFixed(0)}
-                              </span>
-                            </div>
-
-                            <HugeiconsIcon
-                              icon={ArrowRight01Icon}
-                              className="size-5 shrink-0 text-muted-foreground/70"
-                            />
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Tab 2: People Content */}
-            {activeTab === "people" && (
-              <div className="mt-4">
-                {peopleRows.length === 0 ? (
-                  <EmptyState
-                    icon={Invoice01Icon}
-                    title="No pending balances"
-                    description="You are settled up with all your friends and group members!"
-                  />
-                ) : (
-                  <div className="flex flex-col gap-3">
-                    {peopleRows.map((person) => {
-                      return (
-                        <div
-                          key={person.userId}
-                          onClick={() => setSelectedPersonId(person.userId)}
-                          className="flex flex-row cursor-pointer items-center justify-between gap-4 rounded-3xl border border-border bg-card p-4 text-card-foreground shadow-xs transition hover:border-primary/40 hover:bg-muted/30 active:scale-[0.99]"
-                        >
-                          <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                            {/* Person Avatar */}
-                            <UserAvatar
-                              src={person.photoURL}
-                              name={person.name}
-                              size="md"
-                              className="size-12 ring-1 ring-border/50 shrink-0"
-                            />
-
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-base font-bold text-foreground">
-                                {person.name}
-                              </div>
-                              {person.upiId ? (
-                                <div className="truncate font-mono text-xs text-muted-foreground mt-0.5">
-                                  {person.upiId}
-                                </div>
-                              ) : (
-                                <div className="text-xs text-muted-foreground mt-0.5">Direct & Groups</div>
-                              )}
-                              {!person.youOwe && (
-                                <ChallengeButton
-                                  className="mt-1.5"
-                                  person={{ uid: person.userId, name: person.name, photoURL: person.photoURL }}
-                                  owedPaise={person.amountPaise}
+                                  )}
                                 />
-                              )}
-                            </div>
-                          </div>
+                                {person.awaitingConfirmation && <AwaitingConfirmationBadge className="mt-1" />}
+                              </div>
 
-                          {/* Right side: Pay Now / You get */}
-                          <div className="flex shrink-0 items-center gap-3.5 text-right">
-                            <div className="flex flex-col items-end">
-                              <span className="text-xs font-semibold text-muted-foreground">
-                                {person.youOwe ? "You owe" : "You get"}
-                                {gameDiscounts.byPerson.has(person.userId) && " (if paid now)"}
-                              </span>
-                              <GameDiscountAmount
-                                amountPaise={person.amountPaise}
-                                discount={gameDiscounts.byPerson.get(person.userId)}
-                                now={gameDiscounts.now}
-                                className={cn(
-                                  "text-xl font-black leading-tight mt-0.5 sm:text-2xl",
-                                  person.youOwe
-                                    ? "text-destructive"
-                                    : "text-emerald-600 dark:text-emerald-400"
-                                )}
+                              <HugeiconsIcon
+                                icon={ArrowRight01Icon}
+                                className="size-5 shrink-0 text-muted-foreground/70"
                               />
-                              {person.awaitingConfirmation && <AwaitingConfirmationBadge className="mt-1" />}
                             </div>
-
-                            <HugeiconsIcon
-                              icon={ArrowRight01Icon}
-                              className="size-5 shrink-0 text-muted-foreground/70"
-                            />
                           </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </main>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </main>
+        </>
+      )}
 
-      {/* Sticky Bottom Button for Mobile */}
-      <div className="fixed inset-x-0 bottom-16 z-30 mx-auto max-w-md px-4 sm:hidden">
+      {/* Floating Bottom Button for Mobile (positioned comfortably above the bottom nav bar) */}
+      <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] z-40 mx-auto max-w-md px-4 pointer-events-none sm:hidden">
         <Button
           type="button"
           onClick={() => router.push("/expenses/new")}
-          className="h-12 w-full rounded-2xl bg-primary text-sm font-extrabold tracking-wider text-primary-foreground shadow-xl transition hover:bg-primary/90 active:scale-[0.99]"
+          className="pointer-events-auto h-12 w-full rounded-2xl bg-primary text-sm font-extrabold tracking-wider text-primary-foreground shadow-2xl transition hover:bg-primary/90 active:scale-[0.99]"
         >
           SPLIT NEW EXPENSE
         </Button>

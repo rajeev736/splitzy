@@ -152,9 +152,22 @@
   body {
     @apply bg-background text-foreground;
     -webkit-tap-highlight-color: transparent;
+    touch-action: pan-x pan-y;
   }
   html {
     @apply font-sans;
+    touch-action: pan-x pan-y;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* Prevent automatic iOS Safari / mobile WebView zoom on input focus */
+  @media screen and (max-width: 768px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
   }
 
   /* Tailwind v4 resets buttons to `cursor: default`; restore the pointer for

@@ -17,6 +17,53 @@ export function Providers({ children }: { children: React.ReactNode }) {
   // One client per browser session (never shared across requests)
   const [queryClient] = React.useState(makeQueryClient)
 
+  React.useEffect(() => {
+    // Restrict multi-finger pinch zooming on mobile/PWA
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault()
+      }
+    }
+
+    // Restrict iOS Safari / WebKit pinch gesture zoom
+    const handleGesture = (e: Event) => {
+      e.preventDefault()
+    }
+
+    // Restrict double-tap zoom on non-input elements
+    let lastTouchEnd = 0
+    const handleTouchEnd = (e: TouchEvent) => {
+      const now = Date.now()
+      if (now - lastTouchEnd <= 300) {
+        const target = e.target as HTMLElement | null
+        const isInput =
+          target &&
+          (target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            target.tagName === "SELECT" ||
+            target.isContentEditable)
+        if (!isInput) {
+          e.preventDefault()
+        }
+      }
+      lastTouchEnd = now
+    }
+
+    document.addEventListener("touchmove", handleTouchMove, { passive: false })
+    document.addEventListener("gesturestart", handleGesture)
+    document.addEventListener("gesturechange", handleGesture)
+    document.addEventListener("gestureend", handleGesture)
+    document.addEventListener("touchend", handleTouchEnd, { passive: false })
+
+    return () => {
+      document.removeEventListener("touchmove", handleTouchMove)
+      document.removeEventListener("gesturestart", handleGesture)
+      document.removeEventListener("gesturechange", handleGesture)
+      document.removeEventListener("gestureend", handleGesture)
+      document.removeEventListener("touchend", handleTouchEnd)
+    }
+  }, [])
+
   return (
     <ThemeProvider storageKey="joysplit_theme">
       <QueryClientProvider client={queryClient}>
