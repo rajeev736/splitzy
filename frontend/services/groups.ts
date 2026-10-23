@@ -44,16 +44,6 @@ const toMemberInfo = (p: PublicProfile, role: GroupMemberInfo["role"]): GroupMem
   role,
 })
 
-const toInviteInfo = (target: PublicProfile, inviter: UserProfile): GroupInviteInfo => ({
-  uid: target.uid,
-  name: target.displayName,
-  splitzyId: target.splitzyId,
-  photoURL: target.photoURL,
-  invitedBy: inviter.uid,
-  invitedByName: inviter.displayName,
-  invitedAt: nowIso(),
-})
-
 /** A friend request that travels with a group invitation (shown linked on both sides). */
 async function writeGroupFriendRequest(
   firestore: Firestore,
@@ -89,12 +79,12 @@ async function writeGroupFriendRequest(
   return request
 }
 
-async function sendGroupInviteNotification(user: UserProfile, targetUid: string, group: Pick<Group, "id" | "name">) {
+async function sendGroupAddedNotification(user: UserProfile, targetUid: string, group: Pick<Group, "id" | "name">) {
   await sendNotification({
-    id: `notif_grpinv_${group.id}_${targetUid}_${Date.now()}`,
+    id: `notif_grpadd_${group.id}_${targetUid}_${Date.now()}`,
     userId: targetUid,
-    title: "Group Invitation",
-    message: `${user.displayName} invited you to join group "${group.name}"`,
+    title: "Added to Group",
+    message: `${user.displayName} added you to group "${group.name}"`,
     type: "GROUP_INVITE",
     data: {
       groupId: group.id,
@@ -126,6 +116,12 @@ export async function createGroup(
   const seen = new Set([user.uid])
   const invites = input.invites.filter((p) => !seen.has(p.user.uid) && seen.add(p.user.uid))
 
+  const allMembers = [user.uid, ...invites.map((p) => p.user.uid)]
+  const memberDetails: Record<string, GroupMemberInfo> = {
+    [user.uid]: toMemberInfo(user, "admin"),
+    ...Object.fromEntries(invites.map((p) => [p.user.uid, toMemberInfo(p.user, "member")])),
+  }
+
   const group: Group = {
     id: groupId,
     name,
@@ -133,10 +129,10 @@ export async function createGroup(
     icon,
     createdBy: user.uid,
     creatorName: user.displayName,
-    members: [user.uid],
-    invitedMembers: invites.map((p) => p.user.uid),
-    invitedMemberDetails: Object.fromEntries(invites.map((p) => [p.user.uid, toInviteInfo(p.user, user)])),
-    memberDetails: { [user.uid]: toMemberInfo(user, "admin") },
+    members: allMembers,
+    invitedMembers: [],
+    invitedMemberDetails: {},
+    memberDetails,
     status: "ACTIVE",
     createdAt: nowIso(),
   }
@@ -147,7 +143,7 @@ export async function createGroup(
   await setDoc(doc(firestore, "groups", groupId), sanitizeForFirestore(group))
 
   for (const invite of invites) {
-    await sendGroupInviteNotification(user, invite.user.uid, group)
+    await sendGroupAddedNotification(user, invite.user.uid, group)
     const wantsFriendRequest =
       invite.sendFriendRequest &&
       !friends.some((f) => f.uid === invite.user.uid) &&
@@ -172,14 +168,20 @@ export async function leaveGroup(user: UserProfile, group: Group | undefined, ex
   const check = canUserLeaveGroup(user.uid, group, expenses)
   if (!check.allowed) throw new AppError(check.reason || "You can't leave this group yet")
 
+  const remaining = group.members.filter((m) => m !== user.uid)
   const updatedDetails = { ...group.memberDetails }
   delete updatedDetails[user.uid]
+  // The creator hands the group over to the next member; the last one out archives it
+  const newOwner = group.createdBy === user.uid ? remaining[0] : undefined
+  if (newOwner && updatedDetails[newOwner]) updatedDetails[newOwner] = { ...updatedDetails[newOwner], role: "admin" }
 
   const firestore = getDb()
   if (!firestore) return
 
   await updateDoc(doc(firestore, "groups", group.id), {
-    members: group.members.filter((m) => m !== user.uid),
+    members: remaining,
+    ...(newOwner ? { createdBy: newOwner } : {}),
+    ...(remaining.length === 0 ? { status: "ARCHIVED", archivedAt: nowIso() } : {}),
     invitedMembers: (group.invitedMembers || []).filter((id) => id !== user.uid),
     formerMembers: Array.from(new Set([...(group.formerMembers || []), user.uid])),
     memberDetails: updatedDetails,
@@ -256,58 +258,56 @@ export async function inviteGroupMember(
     (await fetchUserBySplitzyId(cleanId))
 
   if (!target) throw new AppError(`User "${cleanId}" not found`)
-  if (target.uid === user.uid) throw new AppError("You cannot invite yourself")
+  if (target.uid === user.uid) throw new AppError("You cannot add yourself")
 
   const isMember = group.members.includes(target.uid)
-  const isInvited = !!group.invitedMembers?.includes(target.uid)
   const isFriend = friends.some((f) => f.uid === target.uid)
   const requestPending = hasPendingRequest(friendRequests, user.uid, target.uid)
 
   const wantsGroup = option !== "FRIEND_ONLY"
   const wantsFriend = option !== "GROUP_ONLY"
-  const sendGroup = wantsGroup && !isMember && !isInvited
+  const sendGroup = wantsGroup && !isMember
   const sendFriend = wantsFriend && !isFriend && !requestPending
 
   if (!sendGroup && !sendFriend) {
     if (wantsGroup && isMember) throw new AppError(`${target.displayName} is already a member of this group`)
-    if (wantsGroup && isInvited && !wantsFriend)
-      throw new AppError(`${target.displayName} has already been invited to this group`)
     if (isFriend) throw new AppError(`${target.displayName} is already your friend`)
     throw new AppError(`A friend request is already pending with ${target.displayName}`)
   }
 
   const firestore = getDb()
-  let invitedMembers: string[] | null = null
-  let invitedMemberDetails: Record<string, GroupInviteInfo> | undefined
   let friendRequest: FriendRequest | undefined
 
   if (sendGroup) {
-    invitedMembers = Array.from(new Set([...(group.invitedMembers || []), target.uid]))
-    const info = toInviteInfo(target, user)
-    invitedMemberDetails = { ...(group.invitedMemberDetails || {}), [target.uid]: info }
+    const updatedMembers = Array.from(new Set([...group.members, target.uid]))
+    const newMemberInfo = toMemberInfo(target, "member")
+    const invitedMembers = (group.invitedMembers || []).filter((id) => id !== target.uid)
+
     if (firestore) {
       await updateDoc(doc(firestore, "groups", groupId), {
+        members: updatedMembers,
+        [`memberDetails.${target.uid}`]: sanitizeForFirestore(newMemberInfo),
         invitedMembers,
-        [`invitedMemberDetails.${target.uid}`]: sanitizeForFirestore(info),
+        [`invitedMemberDetails.${target.uid}`]: deleteField(),
       })
-      await sendGroupInviteNotification(user, target.uid, group)
+      await sendGroupAddedNotification(user, target.uid, group)
     }
   }
 
   if (sendFriend) {
-    if (sendGroup && firestore) {
-      friendRequest = await writeGroupFriendRequest(firestore, user, target, group)
-    } else {
-      friendRequest = (await sendFriendRequest(ctx, target.splitzyId)).request
-    }
+    friendRequest = (await sendFriendRequest(ctx, target.splitzyId)).request
   }
 
-  const parts = [sendGroup && "Group invitation", sendFriend && "friend request"].filter(Boolean).join(" and ")
+  const message = sendGroup && sendFriend
+    ? `${target.displayName} added to group and friend request sent!`
+    : sendGroup
+      ? `${target.displayName} added to group!`
+      : `Friend request sent to ${target.displayName}!`
+
   return {
-    invitedMembers,
-    invitedMemberDetails,
+    invitedMembers: null,
     friendRequest,
-    message: `${parts.charAt(0).toUpperCase()}${parts.slice(1)} sent to ${target.displayName}!`,
+    message,
   }
 }
 
@@ -403,7 +403,7 @@ async function acceptLinkedFriendRequest(user: UserProfile, requestId: string) {
   if (req.status !== "PENDING" || req.receiverId !== user.uid) return
 
   await updateDoc(doc(firestore, "friendRequests", requestId), { status: "ACCEPTED", updatedAt: nowIso() })
-  await activateFriendship(user.uid, req.senderId, { merge: true })
+  await activateFriendship(user.uid, req.senderId, { requestId, merge: true })
   await sendNotification(
     {
       userId: req.senderId,
@@ -411,8 +411,7 @@ async function acceptLinkedFriendRequest(user: UserProfile, requestId: string) {
       message: `${user.displayName} accepted your friend request!`,
       type: "FRIEND_ACCEPTED",
       data: { actorId: user.uid, actorName: user.displayName },
-    },
-    { scoped: false }
+    }
   )
 }
 

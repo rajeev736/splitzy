@@ -5,7 +5,6 @@ import { useRouter } from "nextjs-toploader/app"
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
-  HelpCircleIcon,
   Invoice01Icon,
   PlusSignIcon,
   UserGroupIcon,
@@ -16,26 +15,27 @@ import { useSession } from "@/components/providers/session-provider"
 import { GroupSettlementDialog } from "@/components/settlement/group-settlement-dialog"
 import { SettleExpensesDialog } from "@/components/settlement/settle-expenses-dialog"
 import { EmptyState } from "@/components/shared/empty-state"
+import { GroupIcon } from "@/components/shared/group-icon"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { useExpenses, useFriends, useGroups } from "@/hooks/queries"
+import { useQueryTab } from "@/hooks/use-query-tab"
 import {
   calculateMemberGroupBalance,
-  calculateNetBalances,
   calculatePersonBalances,
+  formatPaise,
+  isAwaitingConfirmation,
 } from "@/lib/money"
+import { AwaitingConfirmationBadge } from "@/components/shared/awaiting-confirmation-badge"
+import { ChallengeButton } from "@/components/games/challenge-button"
+import { GameDiscountAmount, GameDiscountNote } from "@/components/games/game-discount-amount"
+import { useDiscountedBalances, useLiveGameDiscounts } from "@/hooks/use-game-discounts"
 import { cn } from "@/lib/utils"
 
-export default function SplitSummaryPage() {
+function SplitSummaryContent() {
+  const gameDiscounts = useLiveGameDiscounts()
   const router = useRouter()
   const { user } = useSession()
   const expensesQuery = useExpenses()
@@ -46,39 +46,45 @@ export default function SplitSummaryPage() {
   const groups = groupsQuery.data || []
   const friends = friendsQuery.data || []
 
-  const [activeTab, setActiveTab] = React.useState<"groups" | "people">("groups")
+  const [activeTab, setActiveTab] = useQueryTab<"groups" | "people">({
+    defaultValue: "groups",
+    validValues: ["groups", "people"] as const,
+  })
   const [selectedPersonId, setSelectedPersonId] = React.useState<string | null>(null)
   const [selectedGroupId, setSelectedGroupId] = React.useState<string | null>(null)
-  const [showHelpDialog, setShowHelpDialog] = React.useState(false)
 
   // Overall combined net balances across all groups and direct splits
-  const netOverview = React.useMemo(() => {
-    if (!user) return { totalYouOwePaise: 0, totalOwedToYouPaise: 0, netBalancePaise: 0 }
-    return calculateNetBalances(user.uid, expenses)
-  }, [user, expenses])
+  // (with any live game discount applied for its 10 minutes)
+  const netOverview = useDiscountedBalances()
 
   const netBalancePaise = netOverview.netBalancePaise
   const isNetPayable = netBalancePaise < 0
   const isNetReceivable = netBalancePaise > 0
   const netDisplayAmountPaise = Math.abs(netBalancePaise)
 
-  // Groups list with active non-zero balances
+  // All active groups with their calculated balances & metrics
   const groupRows = React.useMemo(() => {
     if (!user) return []
     return groups
       .map((grp) => {
         const bal = calculateMemberGroupBalance(user.uid, grp.id, expenses)
+        const groupExpenseCount = expenses.filter((e) => e.groupId === grp.id && !e.deletedAt).length
         return {
           group: grp,
           balance: bal,
           netPaise: bal.netPaise,
           userOwesPaise: bal.userOwesPaise,
           owedToUserPaise: bal.owedToUserPaise,
+          offsetPaise: bal.offsetPaise,
           hasBalance: bal.userOwesPaise > 0 || bal.owedToUserPaise > 0,
+          expenseCount: groupExpenseCount,
         }
       })
-      .filter((row) => row.hasBalance)
-      .sort((a, b) => b.userOwesPaise - a.userOwesPaise)
+      .sort((a, b) => {
+        if (a.hasBalance && !b.hasBalance) return -1
+        if (!a.hasBalance && b.hasBalance) return 1
+        return b.userOwesPaise - a.userOwesPaise
+      })
   }, [user, groups, expenses])
 
   // People list with active non-zero net balances across everything
@@ -95,6 +101,7 @@ export default function SplitSummaryPage() {
           photoURL: friend?.photoURL || p.photoURL,
           upiId: friend?.upiId || p.upiId,
           youOwe: p.netBalancePaise < 0,
+          awaitingConfirmation: p.netBalancePaise < 0 && isAwaitingConfirmation(user.uid, p.userId, expenses),
           amountPaise: Math.abs(p.netBalancePaise),
         }
       })
@@ -138,14 +145,6 @@ export default function SplitSummaryPage() {
               <HugeiconsIcon icon={PlusSignIcon} className="size-4" />
               Split New Expense
             </Button>
-            <button
-              type="button"
-              onClick={() => setShowHelpDialog(true)}
-              className="flex size-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95"
-              aria-label="Help"
-            >
-              <HugeiconsIcon icon={HelpCircleIcon} className="size-5" />
-            </button>
           </div>
         </div>
       </header>
@@ -164,46 +163,63 @@ export default function SplitSummaryPage() {
           />
         ) : (
           <>
-            {/* Total Split Balance Card with colored indicator on the left */}
-            <Card
-              className={cn(
-                "relative overflow-hidden rounded-2xl border border-border bg-card p-4.5 text-card-foreground shadow-xs transition-all sm:p-5",
-                isNetPayable
-                  ? "border-l-4 border-l-destructive"
-                  : isNetReceivable
-                    ? "border-l-4 border-l-emerald-600 dark:border-l-emerald-500"
-                    : "border-l-4 border-l-muted-foreground/30"
-              )}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-bold text-foreground">Total Split Balance</div>
-                  <div className="text-xs text-muted-foreground">
-                    {isNetPayable
-                      ? "Your net payable amount"
-                      : isNetReceivable
-                        ? "Your net receivable amount"
-                        : "All balances are settled"}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2.5">
-                  <span className="text-2xl font-black tracking-tight text-foreground sm:text-3xl tabular-nums">
-                    ₹{(netDisplayAmountPaise / 100).toFixed(0)}
+            {/* Total Split Balance Hero Card */}
+            <Card className="relative overflow-hidden rounded-3xl border border-border/80 bg-gradient-to-br from-card via-card to-muted/30 p-5 shadow-xs sm:p-6">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Total Split Balance
                   </span>
-
-                  {isNetPayable && (
-                    <div className="flex size-7 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-xs font-bold">
-                      <span className="text-sm leading-none">↗</span>
-                    </div>
-                  )}
-
-                  {isNetReceivable && (
-                    <div className="flex size-7 items-center justify-center rounded-full bg-emerald-600 text-white dark:bg-emerald-500 shadow-xs font-bold">
-                      <span className="text-sm leading-none">↙</span>
-                    </div>
-                  )}
+                  <span
+                    className={cn(
+                      "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold",
+                      isNetPayable
+                        ? "bg-destructive/10 text-destructive"
+                        : isNetReceivable
+                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                          : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {isNetPayable
+                      ? "You need to pay"
+                      : isNetReceivable
+                        ? "You will receive"
+                        : "All settled up"}
+                  </span>
                 </div>
+
+                <div className="flex items-baseline gap-2">
+                  <span
+                    className={cn(
+                      "text-3xl font-black tracking-tight tabular-nums sm:text-4xl",
+                      isNetPayable
+                        ? "text-destructive"
+                        : isNetReceivable
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-foreground"
+                    )}
+                  >
+                    {isNetPayable
+                      ? `-₹${(netDisplayAmountPaise / 100).toFixed(0)}`
+                      : isNetReceivable
+                        ? `+₹${(netDisplayAmountPaise / 100).toFixed(0)}`
+                        : "₹0"}
+                  </span>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  {isNetPayable
+                    ? "Total pending amount across all groups and direct splits you need to pay."
+                    : isNetReceivable
+                      ? "Total pending amount across all groups and direct splits owed to you."
+                      : "All balances are settled up across your groups and friends."}
+                </p>
+                <GameDiscountNote
+                  className="mt-2"
+                  discountPaise={netOverview.gameDiscountPaise}
+                  endsAt={netOverview.gameDiscountEndsAt}
+                  now={netOverview.now}
+                />
               </div>
             </Card>
 
@@ -213,107 +229,118 @@ export default function SplitSummaryPage() {
                 type="button"
                 onClick={() => setActiveTab("groups")}
                 className={cn(
-                  "flex-1 pb-3 text-center text-sm font-bold transition-all select-none",
+                  "relative flex-1 pb-3 text-center text-sm font-bold transition-all select-none",
                   activeTab === "groups"
-                    ? "border-b-2 border-primary text-foreground"
+                    ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 Groups
-                {groupRows.length > 0 && (
-                  <span className="ml-2 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-secondary-foreground">
-                    {groupRows.length}
-                  </span>
-                )}
               </button>
 
               <button
                 type="button"
                 onClick={() => setActiveTab("people")}
                 className={cn(
-                  "flex-1 pb-3 text-center text-sm font-bold transition-all select-none",
+                  "relative flex-1 pb-3 text-center text-sm font-bold transition-all select-none",
                   activeTab === "people"
-                    ? "border-b-2 border-primary text-foreground"
+                    ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 People
-                {peopleRows.length > 0 && (
-                  <span className="ml-2 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-secondary-foreground">
-                    {peopleRows.length}
-                  </span>
-                )}
               </button>
             </div>
 
-            {/* Tab 1: Groups Content (Screenshot 1) */}
+            {/* Tab 1: Groups Content */}
             {activeTab === "groups" && (
               <div className="mt-4">
                 {groupRows.length === 0 ? (
                   <EmptyState
                     icon={UserGroupIcon}
-                    title="No group balances"
-                    description="You are completely settled up in all your groups!"
+                    title="No groups found"
+                    description="You are not part of any groups yet."
+                    action={{
+                      label: "Create a Group",
+                      onClick: () => router.push("/groups/new"),
+                    }}
                   />
                 ) : (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="flex flex-col gap-3">
                     {groupRows.map((row) => {
                       const youOwe = row.userOwesPaise > row.owedToUserPaise
                       const amount = Math.abs(row.netPaise)
 
                       return (
-                        <Card
+                        <div
                           key={row.group.id}
                           onClick={() => setSelectedGroupId(row.group.id)}
-                          className="flex cursor-pointer items-center justify-between gap-3.5 rounded-2xl border border-border bg-card p-3.5 text-card-foreground shadow-xs transition hover:border-primary/40 hover:bg-muted/40 active:scale-[0.99]"
+                          className="flex flex-row cursor-pointer items-center justify-between gap-4 rounded-3xl border border-border bg-card p-4 text-card-foreground shadow-xs transition hover:border-primary/40 hover:bg-muted/30 active:scale-[0.99]"
                         >
-                          <div className="flex items-center gap-3.5 min-w-0">
-                            {/* Group Avatar */}
-                            <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
-                              <HugeiconsIcon icon={UserGroupIcon} className="size-5.5 text-muted-foreground" />
-                            </div>
+                          <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                            {/* Group Avatar / Icon */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                router.push(`/groups/${row.group.id}`)
+                              }}
+                              title="View group expenses and members"
+                              className="shrink-0 transition-transform hover:scale-105 active:scale-95"
+                            >
+                              <GroupIcon
+                                src={row.group.icon}
+                                alt={row.group.name}
+                                size="md"
+                                className="size-12 rounded-full border shadow-2xs"
+                              />
+                            </button>
 
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-bold text-foreground">
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-base font-bold text-foreground">
                                 {row.group.name}
                               </div>
-                              <div className="text-xs text-muted-foreground">
-                                {row.group.members.length} members
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
+                                <span>{row.group.members.length} members</span>
+                                <span>•</span>
+                                <span>
+                                  {row.expenseCount} {row.expenseCount === 1 ? "expense" : "expenses"}
+                                </span>
                               </div>
+                              {row.offsetPaise > 0 && (
+                                <div className="mt-1 text-[11px] font-semibold text-info">
+                                  {formatPaise(row.offsetPaise)} cancelled out with other splits
+                                </div>
+                              )}
                             </div>
                           </div>
 
-                          {/* Right side: You need to pay / You will receive */}
-                          <div className="flex items-center gap-2.5 text-right">
-                            <div>
-                              <div
+                          {/* Right side: You get / You owe + Large Amount + Arrow */}
+                          <div className="flex shrink-0 items-center gap-3.5 text-right">
+                            <div className="flex flex-col items-end">
+                              <span className="text-xs font-semibold text-muted-foreground">
+                                {!row.hasBalance ? "Settled" : youOwe ? "You owe" : "You get"}
+                              </span>
+                              <span
                                 className={cn(
-                                  "text-xs font-semibold",
-                                  youOwe
-                                    ? "text-destructive"
-                                    : "text-emerald-600 dark:text-emerald-400"
-                                )}
-                              >
-                                {youOwe ? "You need to pay" : "You will receive"}
-                              </div>
-                              <div
-                                className={cn(
-                                  "text-base font-black tabular-nums",
-                                  youOwe
-                                    ? "text-destructive"
-                                    : "text-emerald-600 dark:text-emerald-400"
+                                  "text-xl font-black tabular-nums leading-tight mt-0.5 sm:text-2xl",
+                                  !row.hasBalance
+                                    ? "text-muted-foreground"
+                                    : youOwe
+                                      ? "text-destructive"
+                                      : "text-emerald-600 dark:text-emerald-400"
                                 )}
                               >
                                 ₹{(amount / 100).toFixed(0)}
-                              </div>
+                              </span>
                             </div>
 
                             <HugeiconsIcon
                               icon={ArrowRight01Icon}
-                              className="size-4.5 text-muted-foreground"
+                              className="size-5 shrink-0 text-muted-foreground/70"
                             />
                           </div>
-                        </Card>
+                        </div>
                       )
                     })}
                   </div>
@@ -321,7 +348,7 @@ export default function SplitSummaryPage() {
               </div>
             )}
 
-            {/* Tab 2: People Content (Screenshot 2) */}
+            {/* Tab 2: People Content */}
             {activeTab === "people" && (
               <div className="mt-4">
                 {peopleRows.length === 0 ? (
@@ -331,76 +358,71 @@ export default function SplitSummaryPage() {
                     description="You are settled up with all your friends and group members!"
                   />
                 ) : (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="flex flex-col gap-3">
                     {peopleRows.map((person) => {
                       return (
-                        <Card
+                        <div
                           key={person.userId}
                           onClick={() => setSelectedPersonId(person.userId)}
-                          className="flex cursor-pointer items-center justify-between gap-3.5 rounded-2xl border border-border bg-card p-3.5 text-card-foreground shadow-xs transition hover:border-primary/40 hover:bg-muted/40 active:scale-[0.99]"
+                          className="flex flex-row cursor-pointer items-center justify-between gap-4 rounded-3xl border border-border bg-card p-4 text-card-foreground shadow-xs transition hover:border-primary/40 hover:bg-muted/30 active:scale-[0.99]"
                         >
-                          <div className="flex items-center gap-3.5 min-w-0">
-                            {/* Person Avatar with PhonePe Badge */}
-                            <div className="relative">
-                              <UserAvatar
-                                src={person.photoURL}
-                                name={person.name}
-                                size="md"
-                                className="size-11 ring-1 ring-border/50"
-                              />
-                              <div
-                                className="absolute -bottom-1 -right-1 flex size-4.5 items-center justify-center rounded-full bg-[#5f259f] text-[8px] font-black text-white shadow-xs ring-2 ring-card"
-                                title="PhonePe / UPI Verified"
-                              >
-                                Pe
-                              </div>
-                            </div>
+                          <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                            {/* Person Avatar */}
+                            <UserAvatar
+                              src={person.photoURL}
+                              name={person.name}
+                              size="md"
+                              className="size-12 ring-1 ring-border/50 shrink-0"
+                            />
 
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-bold text-foreground">
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-base font-bold text-foreground">
                                 {person.name}
                               </div>
                               {person.upiId ? (
-                                <div className="truncate font-mono text-[11px] text-muted-foreground">
+                                <div className="truncate font-mono text-xs text-muted-foreground mt-0.5">
                                   {person.upiId}
                                 </div>
                               ) : (
-                                <div className="text-xs text-muted-foreground">Direct & Groups</div>
+                                <div className="text-xs text-muted-foreground mt-0.5">Direct & Groups</div>
+                              )}
+                              {!person.youOwe && (
+                                <ChallengeButton
+                                  className="mt-1.5"
+                                  person={{ uid: person.userId, name: person.name, photoURL: person.photoURL }}
+                                  owedPaise={person.amountPaise}
+                                />
                               )}
                             </div>
                           </div>
 
                           {/* Right side: Pay Now / You get */}
-                          <div className="flex items-center gap-2.5 text-right">
-                            <div>
-                              <div
+                          <div className="flex shrink-0 items-center gap-3.5 text-right">
+                            <div className="flex flex-col items-end">
+                              <span className="text-xs font-semibold text-muted-foreground">
+                                {person.youOwe ? "You owe" : "You get"}
+                                {gameDiscounts.byPerson.has(person.userId) && " (if paid now)"}
+                              </span>
+                              <GameDiscountAmount
+                                amountPaise={person.amountPaise}
+                                discount={gameDiscounts.byPerson.get(person.userId)}
+                                now={gameDiscounts.now}
                                 className={cn(
-                                  "text-xs font-semibold",
+                                  "text-xl font-black leading-tight mt-0.5 sm:text-2xl",
                                   person.youOwe
                                     ? "text-destructive"
                                     : "text-emerald-600 dark:text-emerald-400"
                                 )}
-                              >
-                                {person.youOwe ? "Pay Now" : "You get"}
-                              </div>
-                              <div
-                                className={cn(
-                                  "text-base font-black tabular-nums",
-                                  person.youOwe
-                                    ? "text-destructive"
-                                    : "text-emerald-600 dark:text-emerald-400"
-                                )}
-                              >
-                                ₹{(person.amountPaise / 100).toFixed(0)}
-                              </div>
+                              />
+                              {person.awaitingConfirmation && <AwaitingConfirmationBadge className="mt-1" />}
                             </div>
 
                             <HugeiconsIcon
                               icon={ArrowRight01Icon}
-                              className="size-4.5 text-muted-foreground"
+                              className="size-5 shrink-0 text-muted-foreground/70"
                             />
                           </div>
-                        </Card>
+                        </div>
                       )
                     })}
                   </div>
@@ -447,36 +469,14 @@ export default function SplitSummaryPage() {
           }}
         />
       )}
-
-      {/* Help Dialog */}
-      <Dialog open={showHelpDialog} onOpenChange={setShowHelpDialog}>
-        <DialogContent className="max-w-md rounded-2xl border-border bg-card text-card-foreground">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold text-foreground">Split Expense Summary</DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              How person-to-person and group settlements work
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-2 text-xs text-foreground/90">
-            <div>
-              <span className="font-semibold text-foreground">1. Unified Net Balance: </span>
-              All mutual splits between you and a person—whether from group expenses or direct
-              splits—are combined. Reciprocal debts automatically cancel each other out.
-            </div>
-            <div>
-              <span className="font-semibold text-foreground">2. Settle by Group or Person: </span>
-              Under the <b>Groups</b> tab, you can view and settle specific group obligations. Under
-              the <b>People</b> tab, you can view the final net person-to-person balance and select
-              which groups/direct splits to settle together.
-            </div>
-            <div>
-              <span className="font-semibold text-foreground">3. Real-Time Sync: </span>
-              Paying from a group automatically reduces that person’s total balance under the People
-              tab, keeping everything balanced and consistent.
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
+  )
+}
+
+export default function SplitSummaryPage() {
+  return (
+    <React.Suspense fallback={<ListSkeleton rows={5} />}>
+      <SplitSummaryContent />
+    </React.Suspense>
   )
 }

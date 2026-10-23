@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx lib/money/__tests__/money.test.ts && tsx services/__tests__/settlement.test.ts && tsx lib/games/__tests__/games.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -41,6 +42,7 @@
     "prettier": "^3.9.10",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

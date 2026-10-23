@@ -16,6 +16,9 @@ import { toast } from "sonner"
 
 import { UpiAppSheet } from "@/app/(dashboard)/expenses/[expenseId]/pay/_components/upi-app-sheet"
 import { useSession } from "@/components/providers/session-provider"
+import { useLiveGameDiscounts } from "@/hooks/use-game-discounts"
+import { formatCountdown, useNow } from "@/hooks/use-now"
+import { AwaitingConfirmationBadge } from "@/components/shared/awaiting-confirmation-badge"
 import { Amount } from "@/components/shared/amount"
 import { BottomSheet } from "@/components/shared/bottom-sheet"
 import { UserAvatar } from "@/components/shared/user-avatar"
@@ -49,6 +52,15 @@ export interface PersonSettlementDialogProps {
   personUpiId?: string
   payeeUpiId?: string
   scope?: SettlementScope
+  /** Discount from a game you just won against this person (only while it lasts). */
+  gameDiscount?: {
+    challengeId: string
+    /** Discount at full value; it drops to 0 once `expiresAt` passes. */
+    discountPaise: number
+    percent: number
+    /** ms since epoch */
+    expiresAt: number
+  }
   onSettled?: () => void
 }
 
@@ -64,6 +76,7 @@ export function PersonSettlementDialog({
   personUpiId,
   payeeUpiId,
   scope,
+  gameDiscount,
   onSettled,
 }: PersonSettlementDialogProps) {
   const effectivePersonId = personId || payeeId || ""
@@ -117,25 +130,48 @@ export function PersonSettlementDialog({
   }, [resolvedScope, targetName])
 
   const [paymentNote, setPaymentNote] = React.useState(defaultNote)
+  // The game discount lives only until its timer runs out
+  // A game discount passed in, or any live one you won against this person
+  const liveDiscounts = useLiveGameDiscounts()
+  const won = liveDiscounts.byPerson.get(effectivePersonId)
+  const activeGame = gameDiscount ?? (won?.role === "winner" ? won : undefined)
+  const now = useNow(activeGame?.expiresAt ?? 0)
+  const discountLive = !!activeGame && now < activeGame.expiresAt
 
-  React.useEffect(() => {
+  // Reset the note whenever the default changes (adjusted during render, not in an effect)
+  const [syncedDefaultNote, setSyncedDefaultNote] = React.useState(defaultNote)
+  if (defaultNote !== syncedDefaultNote) {
+    setSyncedDefaultNote(defaultNote)
     setPaymentNote(defaultNote)
-  }, [defaultNote])
+  }
 
   if (!breakdown || !user) return null
 
   const netPayablePaise = breakdown.netPayablePaise
-  const isAllSettled = netPayablePaise === 0
+  const discountPaise = discountLive ? Math.min(activeGame?.discountPaise ?? 0, netPayablePaise) : 0
+  /** What actually leaves your account: the net minus any game discount. */
+  const payPaise = netPayablePaise - discountPaise
   const hasOffset = breakdown.offsetPaise > 0
+  // Net zero but mutual splits are still open: they can be cancelled out (PhonePe style)
+  const canCancelOut =
+    netPayablePaise === 0 && breakdown.aOwesBLines.some((l) => l.status !== "PAYMENT_REPORTED")
+  const awaitingConfirmation =
+    breakdown.aOwesBLines.length > 0 && breakdown.aOwesBLines.every((l) => l.status === "PAYMENT_REPORTED")
+  const isAllSettled = netPayablePaise === 0 && !canCancelOut
 
   const handleReport = () => {
+    if (awaitingConfirmation) {
+      toast.info(`Already reported — waiting for ${targetName} to confirm.`)
+      return
+    }
     reportSettlement.mutate(
       {
         creditorId: effectivePersonId,
         creditorName: targetName,
-        amountPaise: netPayablePaise,
+        amountPaise: payPaise,
         scope: resolvedScope,
         note: paymentNote,
+        ...(discountPaise > 0 ? { challengeId: activeGame?.challengeId } : {}),
       },
       {
         onSuccess: () => {
@@ -155,7 +191,7 @@ export function PersonSettlementDialog({
     const upiUri = buildUPILink({
       upiId: targetUpiId,
       payeeName: targetName,
-      amountPaise: netPayablePaise,
+      amountPaise: payPaise,
       note: paymentNote,
       app: appId as UPITransactionParams["app"],
     })
@@ -207,7 +243,7 @@ export function PersonSettlementDialog({
               </span>
               <div className="my-2">
                 <Amount
-                  paise={netPayablePaise}
+                  paise={payPaise}
                   className={cn(
                     "text-3xl font-black tracking-tight tabular-nums sm:text-4xl",
                     isAllSettled ? "text-success" : "text-destructive"
@@ -215,6 +251,39 @@ export function PersonSettlementDialog({
                 />
               </div>
 
+              {activeGame && netPayablePaise > 0 && (
+                <div className="mb-3 w-full max-w-xs rounded-2xl border bg-card p-3 text-left text-xs">
+                  <div className="flex justify-between py-0.5">
+                    <span className="text-muted-foreground">You owe {targetName}</span>
+                    <span className="font-semibold tabular-nums">{formatPaise(netPayablePaise)}</span>
+                  </div>
+                  <div
+                    className={cn(
+                      "flex justify-between py-0.5",
+                      discountLive ? "text-success" : "text-muted-foreground line-through"
+                    )}
+                  >
+                    <span>🎮 Game win discount ({activeGame.percent}%)</span>
+                    <span className="font-semibold tabular-nums">
+                      −{formatPaise(Math.min(activeGame.discountPaise, netPayablePaise))}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex justify-between border-t pt-1.5 font-bold">
+                    <span>You pay</span>
+                    <span className="tabular-nums">{formatPaise(payPaise)}</span>
+                  </div>
+                  <p
+                    className={cn(
+                      "mt-2 rounded-lg px-2 py-1 text-center text-[11px] font-bold",
+                      discountLive ? "bg-warning/10 text-warning" : "bg-destructive/10 text-destructive"
+                    )}
+                  >
+                    {discountLive
+                      ? `⏱ Discount ends in ${formatCountdown(activeGame.expiresAt - now)}`
+                      : "⏱ Time's up — the game discount has expired. Full amount applies."}
+                  </p>
+                </div>
+              )}
               {isAllSettled ? (
                 <div className="flex items-center gap-1.5 text-xs font-bold text-success">
                   <HugeiconsIcon icon={CheckmarkCircle02Icon} className="size-4" />
@@ -347,7 +416,7 @@ export function PersonSettlementDialog({
                   <div className="flex items-center justify-between font-bold text-sm">
                     <span>Final Net Payable:</span>
                     <span className="text-destructive tabular-nums">
-                      {formatPaise(netPayablePaise)}
+                      {formatPaise(payPaise)}
                     </span>
                   </div>
                 </div>
@@ -356,7 +425,7 @@ export function PersonSettlementDialog({
           </Card>
 
           {/* Payment Note Input */}
-          {!isAllSettled && (
+          {!isAllSettled && !awaitingConfirmation && (
             <Field>
               <FieldLabel htmlFor="settlement-note" className="text-xs font-semibold">
                 Payment Note
@@ -372,7 +441,17 @@ export function PersonSettlementDialog({
           )}
 
           {/* Actions */}
-          {!isAllSettled ? (
+          {awaitingConfirmation ? (
+            <div className="flex flex-col items-center gap-2.5 pt-1 text-center">
+              <AwaitingConfirmationBadge className="py-1.5 text-xs" />
+              <p className="max-w-xs text-xs text-muted-foreground">
+                You reported this payment. {targetName} will confirm once they receive it.
+              </p>
+              <Button variant="outline" size="lg" className="w-full" onClick={() => onOpenChange(false)}>
+                Close
+              </Button>
+            </div>
+          ) : !isAllSettled ? (
             <div className="flex flex-col gap-2.5 pt-1">
               <Button
                 size="lg"
@@ -380,7 +459,7 @@ export function PersonSettlementDialog({
                 onClick={() => setShowAppChooser(true)}
               >
                 <HugeiconsIcon icon={CreditCardIcon} data-icon="inline-start" />
-                Pay {formatPaise(netPayablePaise)} via UPI
+                Pay {formatPaise(payPaise)} via UPI
               </Button>
 
               <Button
@@ -398,6 +477,16 @@ export function PersonSettlementDialog({
                 <span>Direct peer-to-peer settlement • Zero commission</span>
               </div>
             </div>
+          ) : canCancelOut ? (
+            <Button
+              size="lg"
+              className="h-11 w-full font-bold"
+              disabled={reportSettlement.isPending}
+              onClick={handleReport}
+            >
+              {reportSettlement.isPending && <Spinner />}
+              Cancel out mutual splits ({formatPaise(breakdown.offsetPaise)} each way)
+            </Button>
           ) : (
             <Button
               variant="outline"

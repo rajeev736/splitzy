@@ -7,7 +7,8 @@ import { useQueryClient, type QueryKey } from "@tanstack/react-query"
 import { db, isFirebaseConfigured } from "@/lib/firebase/config"
 import { queryKeys } from "@/lib/query/keys"
 import { publish, publishError } from "@/lib/query/realtime"
-import type { AppNotification, Expense, FriendRequest, Group, UserProfile } from "@/lib/types"
+import type { AppNotification, Challenge, Expense, FriendRequest, Group, UserProfile } from "@/lib/types"
+import { toChallenge } from "@/services/challenges"
 import { fetchUserProfile } from "@/services/shared"
 import { useSession } from "./session-provider"
 
@@ -126,20 +127,22 @@ export function RealtimeSync() {
     listenExpenses("payer", query(expensesCol, where("payerId", "==", uid)))
     listenExpenses("recipient", query(expensesCol, where("recipientId", "==", uid)))
 
-    /** Group expenses: one `in` query per 30 group ids (Firestore limit), re-subscribed when groups change. */
+    /**
+     * Group expenses: one `groupId ==` listener per group. Security rules check
+     * group membership with a lookup on the expense's groupId, which Firestore
+     * can only verify for an equality filter (not `in`). Only changed groups
+     * are re-subscribed.
+     */
     const syncGroupExpenseSources = (groupIds: string[]) => {
-      const next = [...groupIds].sort()
+      const next = Array.from(new Set(groupIds)).sort()
       if (next.join() === groupSourceIds.join()) return
+      const wanted = new Set(next)
+      groupSourceIds.filter((id) => !wanted.has(id)).forEach((id) => stopSource(`group:${id}`))
+      next
+        .filter((id) => !sourceUnsubs.has(`group:${id}`))
+        .forEach((id) => listenExpenses(`group:${id}`, query(expensesCol, where("groupId", "==", id))))
       groupSourceIds = next
-
-      Array.from(sourceUnsubs.keys())
-        .filter((id) => id.startsWith("group:"))
-        .forEach(stopSource)
-
-      const chunks: string[][] = []
-      for (let i = 0; i < next.length; i += 30) chunks.push(next.slice(i, i + 30))
-      expectedSources = 4 + chunks.length
-      chunks.forEach((ids, i) => listenExpenses(`group:${i}`, query(expensesCol, where("groupId", "in", ids))))
+      expectedSources = 4 + next.length
       publishExpenses()
     }
 
@@ -147,10 +150,12 @@ export function RealtimeSync() {
       const map = new Map<string, Group>()
       ;[...memberGroups, ...invitedGroups].filter(isActiveGroup).forEach((g) => map.set(g.id, g))
       publish(queryClient, groupsKey, Array.from(map.values()).sort(byNewest))
-      syncGroupExpenseSources([...memberGroups, ...invitedGroups].map((g) => g.id))
+      // Pending invitees can see the group but not its expenses until they join
+      syncGroupExpenseSources(memberGroups.filter(isActiveGroup).map((g) => g.id))
     }
 
     const notificationsKey = queryKeys.notifications(uid)
+    const challengesKey = queryKeys.challenges(uid)
     const friendsKey = queryKeys.friends(uid)
 
     const unsubscribers = [
@@ -193,6 +198,15 @@ export function RealtimeSync() {
           publish(queryClient, notificationsKey, list)
         },
         onError(notificationsKey)
+      ),
+      // Settle-up games you host or play in
+      onSnapshot(
+        query(collection(firestore, "challenges"), where("participants", "array-contains", uid)),
+        (snap) => {
+          const list: Challenge[] = snap.docs.map((d) => toChallenge(d.data())).sort(byNewest)
+          publish(queryClient, challengesKey, list)
+        },
+        onError(challengesKey)
       ),
       // Canonical friendships → hydrate each active friend's profile
       onSnapshot(

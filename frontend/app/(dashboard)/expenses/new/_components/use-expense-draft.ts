@@ -3,6 +3,7 @@
 import * as React from "react"
 import { toast } from "sonner"
 
+import { useQueryTab } from "@/hooks/use-query-tab"
 import { calculateEqualSplit, rupeesToPaise, validateManualSplit, type SplitShare } from "@/lib/money"
 import type { Group, UserProfile } from "@/lib/types"
 import { newExpenseId, type CreateExpenseInput } from "@/services/expenses"
@@ -62,11 +63,19 @@ interface DraftOptions {
  * among everyone not locked. e.g. ₹12 / 4 people = 3 each → set one to 0 →
  * the other three become 4, 4, 4.
  */
+const VALID_EXPENSE_MODES: ExpenseMode[] = ["group", "friend", "personal"]
+
 export function useExpenseDraft({ user, groups, friends, preselectedGroupId, preselectedFriendId }: DraftOptions) {
   const [isDone, setIsDone] = React.useState(false)
 
-  // 3 distinct modes: "group" | "friend" | "personal"
-  const [expenseMode, setExpenseMode] = React.useState<ExpenseMode>(preselectedFriendId ? "friend" : "group")
+  const initialMode: ExpenseMode = preselectedFriendId ? "friend" : "group"
+
+  // 3 distinct modes: "group" | "friend" | "personal", synced with URL query param `?tab=...`
+  const [expenseMode, setExpenseMode] = useQueryTab<ExpenseMode>({
+    defaultValue: initialMode,
+    validValues: VALID_EXPENSE_MODES,
+    param: "tab",
+  })
 
   // Common fields
   const [title, setTitle] = React.useState("")
@@ -130,7 +139,8 @@ export function useExpenseDraft({ user, groups, friends, preselectedGroupId, pre
           rawName: det?.name || fr?.displayName || `Member`,
           photoURL: det?.photoURL || fr?.photoURL || "/assets/avatar_boy.jpg",
           splitzyId: det?.splitzyId || fr?.splitzyId || mId,
-          upiId: fr?.upiId || `${(det?.name || "user").toLowerCase().replace(/\s+/g, "")}@upi`,
+          // Only a real UPI id — never guess one (money could reach a stranger)
+          upiId: fr?.upiId,
           isCurrentUser: false,
         }
       }),
@@ -184,6 +194,29 @@ export function useExpenseDraft({ user, groups, friends, preselectedGroupId, pre
     if (targetUpi) setRecipientUpiId((prev) => (prev !== targetUpi ? targetUpi : prev))
   }, [recipientId, activeEligibleParticipants, user?.uid, user?.upiId, expenseMode])
 
+  // Included participants in the split (defaults to everyone in the group)
+  const [includedMemberIds, setIncludedMemberIds] = React.useState<string[]>([])
+
+  // Default all active members to be included whenever group or mode changes
+  // (adjusted during render when the selection key changes, rather than in an effect)
+  const [syncedSelection, setSyncedSelection] = React.useState<{
+    groupId: string
+    mode: ExpenseMode
+    friendIds: string[]
+  } | null>(null)
+  if (
+    !syncedSelection ||
+    syncedSelection.groupId !== currentGroup.id ||
+    syncedSelection.mode !== expenseMode ||
+    syncedSelection.friendIds !== selectedFriendIds
+  ) {
+    setSyncedSelection({ groupId: currentGroup.id, mode: expenseMode, friendIds: selectedFriendIds })
+    if (activeEligibleParticipants.length > 0) {
+      setIncludedMemberIds(activeEligibleParticipants.map((m) => m.uid))
+      setLockedShares({})
+    }
+  }
+
   const findMember = (memberUid: string) => activeEligibleParticipants.find((m) => m.uid === memberUid)
 
   /* ── Split: locked amounts + equal remainder ────────────────────────── */
@@ -192,40 +225,75 @@ export function useExpenseDraft({ user, groups, friends, preselectedGroupId, pre
 
   /** One share per participant (including ₹0 ones), always derived — never stale. */
   const splitShares = React.useMemo<SplitShare[]>(() => {
+    const included = activeEligibleParticipants.filter((m) => includedMemberIds.includes(m.uid))
     const isLocked = (m: EligibleMember) => lockedShares[m.uid] !== undefined
-    const lockedPaise = activeEligibleParticipants
+    const lockedPaise = included
       .filter(isLocked)
       .reduce((sum, m) => sum + rupeesToPaise(lockedShares[m.uid] || 0), 0)
-    const free = activeEligibleParticipants.filter((m) => !isLocked(m))
+    const free = included.filter((m) => !isLocked(m))
     const equal = calculateEqualSplit(
       Math.max(0, totalPaise - lockedPaise),
       free.map((m) => ({ id: m.uid, name: m.rawName }))
     )
 
-    return activeEligibleParticipants.map((m) =>
-      isLocked(m)
+    return activeEligibleParticipants.map((m) => {
+      if (!includedMemberIds.includes(m.uid)) {
+        return { userId: m.uid, userName: m.rawName, amountPaise: 0 }
+      }
+      return isLocked(m)
         ? { userId: m.uid, userName: m.rawName, amountPaise: rupeesToPaise(lockedShares[m.uid] || 0) }
         : (equal.find((s) => s.userId === m.uid) ?? { userId: m.uid, userName: m.rawName, amountPaise: 0 })
-    )
-  }, [activeEligibleParticipants, lockedShares, totalPaise])
+    })
+  }, [activeEligibleParticipants, includedMemberIds, lockedShares, totalPaise])
 
   /** Paise not yet covered by the shares (negative = over the total). */
   const remainingPaise = totalPaise - splitShares.reduce((sum, s) => sum + s.amountPaise, 0)
-  const isCustomSplit = activeEligibleParticipants.some((m) => lockedShares[m.uid] !== undefined)
+  const isCustomSplit =
+    activeEligibleParticipants.some(
+      (m) => includedMemberIds.includes(m.uid) && lockedShares[m.uid] !== undefined
+    ) || (includedMemberIds.length > 0 && includedMemberIds.length < activeEligibleParticipants.length)
+
   /** People actually paying something — these become the expense shares. */
   const selectedParticipants = splitShares.filter((s) => s.amountPaise > 0).map((s) => s.userId)
+
+  const isMemberIncluded = (memberUid: string) => includedMemberIds.includes(memberUid)
+
+  const toggleMemberIncluded = (memberUid: string) => {
+    setIncludedMemberIds((prev) => {
+      if (prev.includes(memberUid)) {
+        if (prev.length <= 1) {
+          toast.error("Please keep at least one person in the split")
+          return prev
+        }
+        setLockedShares((locked) => {
+          const next = { ...locked }
+          delete next[memberUid]
+          return next
+        })
+        return prev.filter((id) => id !== memberUid)
+      } else {
+        return [...prev, memberUid]
+      }
+    })
+  }
 
   const isShareLocked = (memberUid: string) => lockedShares[memberUid] !== undefined
 
   /** Value shown in a person's amount input. */
-  const shareInputValue = (memberUid: string) =>
-    isShareLocked(memberUid)
+  const shareInputValue = (memberUid: string) => {
+    if (!includedMemberIds.includes(memberUid)) return "0"
+    return isShareLocked(memberUid)
       ? lockedShares[memberUid]
       : paiseToInput(splitShares.find((s) => s.userId === memberUid)?.amountPaise ?? 0)
+  }
 
   /** Typing an amount locks it; everyone not locked is re-split automatically. */
-  const setShareAmount = (memberUid: string, value: string) =>
+  const setShareAmount = (memberUid: string, value: string) => {
+    if (!includedMemberIds.includes(memberUid)) {
+      setIncludedMemberIds((prev) => [...prev, memberUid])
+    }
     setLockedShares((prev) => ({ ...prev, [memberUid]: value }))
+  }
 
   /** An emptied input goes back to the automatic equal share. */
   const releaseShareIfEmpty = (memberUid: string) =>
@@ -236,7 +304,10 @@ export function useExpenseDraft({ user, groups, friends, preselectedGroupId, pre
       return next
     })
 
-  const resetSplit = () => setLockedShares({})
+  const resetSplit = () => {
+    setLockedShares({})
+    setIncludedMemberIds(activeEligibleParticipants.map((m) => m.uid))
+  }
 
   /* ── Toggles ─────────────────────────────────────────────────────────── */
 
@@ -275,6 +346,10 @@ export function useExpenseDraft({ user, groups, friends, preselectedGroupId, pre
   /** Every check the old wizard ran. Returns the final (non-zero) shares, or null. */
   const validateShared = (): SplitShare[] | null => {
     if (!validateBasics()) return null
+    if (expenseMode === "group" && !groups.some((g) => g.id === currentGroup.id)) {
+      toast.error("Create or pick a group first")
+      return null
+    }
     if (expenseMode === "friend" && selectedFriendIds.length === 0) {
       toast.error("Please select at least one friend to split with")
       return null
@@ -326,7 +401,7 @@ export function useExpenseDraft({ user, groups, friends, preselectedGroupId, pre
 
     return {
       clientId: draftId,
-      groupId: isGroup ? selectedGroupId : undefined,
+      groupId: isGroup ? currentGroup.id : undefined,
       groupName: isGroup ? currentGroup?.name : undefined,
       groupIcon: isGroup ? currentGroup?.icon : undefined,
       expenseType: isGroup ? "group" : "friend",
@@ -385,6 +460,9 @@ export function useExpenseDraft({ user, groups, friends, preselectedGroupId, pre
     setRecipientUpiId,
     activeEligibleParticipants,
     findMember,
+    includedMemberIds,
+    isMemberIncluded,
+    toggleMemberIncluded,
     splitShares,
     remainingPaise,
     isCustomSplit,

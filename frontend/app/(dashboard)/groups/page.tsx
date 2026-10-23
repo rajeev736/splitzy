@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import {
   ArrowRight01Icon,
   PlusSignIcon,
@@ -19,22 +18,14 @@ import { ButtonLink } from "@/components/shared/button-link"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
 import { StatusBadge } from "@/components/shared/status-badge"
-import { Badge } from "@/components/ui/badge"
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group"
-import {
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemMedia,
-  ItemTitle,
-} from "@/components/ui/item"
-import { useExpenses, useGroupInvites, useGroups } from "@/hooks/queries"
+import { ItemGroup } from "@/components/ui/item"
+import { useExpenses, useGroups } from "@/hooks/queries"
+import { useQueryTab } from "@/hooks/use-query-tab"
 import { useUnreadTracking } from "@/hooks/use-unread-tracking"
 import { calculateMemberGroupBalance, formatPaise } from "@/lib/money"
 
@@ -46,6 +37,8 @@ const FILTERS = [
   { value: "settled", label: "settled" },
 ] as const
 
+const GROUP_FILTERS: GroupFilter[] = ["all", "active", "settled"]
+
 const SETTLED = {
   netPaise: 0,
   owedToUserPaise: 0,
@@ -53,19 +46,20 @@ const SETTLED = {
   allSettled: true,
 }
 
-export default function GroupsPage() {
+function GroupsContent() {
   const { user } = useSession()
   const groupsQuery = useGroups()
   const expensesQuery = useExpenses()
-  const { data: groupInvites } = useGroupInvites()
   const { hasGroupUnreadExpenses } = useUnreadTracking()
   const groups = groupsQuery.data
   const expenses = expensesQuery.data
 
-  const pendingReceivedCount = groupInvites.length
-
   const [search, setSearch] = React.useState("")
-  const [filter, setFilter] = React.useState<GroupFilter>("all")
+  const [filter, setFilter] = useQueryTab<GroupFilter>({
+    defaultValue: "all",
+    validValues: GROUP_FILTERS,
+    param: "tab",
+  })
 
   const rows = React.useMemo(
     () =>
@@ -121,34 +115,6 @@ export default function GroupsPage() {
           />
         </InputGroup>
 
-        {/* Group Invitations Banner (Clean layout matching Friends section) */}
-        <Item
-          variant="outline"
-          className="cursor-pointer bg-secondary/60 p-4 transition-colors hover:bg-secondary/80"
-          render={<Link href="/groups/invitations" />}
-        >
-          <ItemMedia className="size-10 rounded-xl bg-primary text-primary-foreground">
-            <HugeiconsIcon icon={UserGroupIcon} className="size-5" />
-          </ItemMedia>
-          <ItemContent className="min-w-0">
-            <ItemTitle className="font-bold">Group Invitations</ItemTitle>
-            <ItemDescription className="text-xs">
-              {pendingReceivedCount > 0
-                ? `${pendingReceivedCount} pending invitation${pendingReceivedCount > 1 ? "s" : ""}`
-                : "View and manage incoming & outgoing group invitations"}
-            </ItemDescription>
-          </ItemContent>
-          <ItemActions>
-            {pendingReceivedCount > 0 && (
-              <Badge variant="default">{pendingReceivedCount}</Badge>
-            )}
-            <HugeiconsIcon
-              icon={ArrowRight01Icon}
-              className="size-4 text-muted-foreground"
-            />
-          </ItemActions>
-        </Item>
-
         <FilterPills
           aria-label="Filter groups"
           options={FILTERS}
@@ -175,26 +141,27 @@ export default function GroupsPage() {
                 hasUnread={hasGroupUnreadExpenses(group.id)}
                 className="rounded-3xl p-4"
                 action={
-                  <HugeiconsIcon
-                    icon={ArrowRight01Icon}
-                    className="size-5 text-muted-foreground"
-                  />
+                  <div className="flex items-center gap-2.5">
+                    {balance.allSettled ? (
+                      <StatusBadge status="all_settled" />
+                    ) : balance.netPaise === 0 ? (
+                      <StatusBadge status="settled" />
+                    ) : balance.netPaise > 0 ? (
+                      <span className="text-sm font-black tabular-nums text-emerald-600 dark:text-emerald-400 sm:text-base">
+                        +{formatPaise(balance.netPaise)}
+                      </span>
+                    ) : (
+                      <span className="text-sm font-black tabular-nums text-destructive sm:text-base">
+                        -{formatPaise(Math.abs(balance.netPaise))}
+                      </span>
+                    )}
+                    <HugeiconsIcon
+                      icon={ArrowRight01Icon}
+                      className="size-5 text-muted-foreground/70"
+                    />
+                  </div>
                 }
-              >
-                {balance.allSettled ? (
-                  <StatusBadge status="all_settled" className="mt-1" />
-                ) : balance.netPaise === 0 ? (
-                  <StatusBadge status="settled" className="mt-1" />
-                ) : balance.netPaise > 0 ? (
-                  <span className="mt-1 inline-flex items-center text-xs font-bold text-success">
-                    +{formatPaise(balance.netPaise)}
-                  </span>
-                ) : (
-                  <span className="mt-1 inline-flex items-center text-xs font-bold text-destructive">
-                    -{formatPaise(Math.abs(balance.netPaise))}
-                  </span>
-                )}
-              </GroupListItem>
+              />
             ))}
           </ItemGroup>
         ) : (
@@ -218,5 +185,13 @@ export default function GroupsPage() {
         )}
       </PageContainer>
     </>
+  )
+}
+
+export default function GroupsPage() {
+  return (
+    <React.Suspense fallback={<ListSkeleton />}>
+      <GroupsContent />
+    </React.Suspense>
   )
 }

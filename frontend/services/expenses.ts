@@ -2,6 +2,7 @@ import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore"
 
 import { AppError } from "@/lib/errors"
 import { buildFirestoreExpense } from "@/lib/expenses/builder"
+import { payeeOf } from "@/lib/money"
 import type { Expense, ExpenseShare, SharePaymentStatus, SplitType, UserProfile } from "@/lib/types"
 import { updateNotificationAction } from "./notifications"
 import { getDb, nowIso, resolveExpense, rupees, sendNotification } from "./shared"
@@ -108,6 +109,7 @@ async function updateShareStatus(
   expenses: Expense[],
   expenseId: string,
   memberUserId: string,
+  actor: { uid: string; role: "debtor" | "payee" },
   patch: (share: ExpenseShare) => ExpenseShare,
   notify: (expense: Expense, share: ExpenseShare | undefined) => Promise<void>
 ): Promise<ExpenseShare[]> {
@@ -116,6 +118,11 @@ async function updateShareStatus(
   if (expense.deletedAt) throw new AppError("This expense was deleted")
 
   const share = expense.shares.find((s) => s.userId === memberUserId)
+  if (!share) throw new AppError("This person is not part of the expense")
+  if (actor.role === "debtor" && memberUserId !== actor.uid) throw new AppError("You can only report your own share")
+  if (actor.role === "payee" && payeeOf(expense, memberUserId) !== actor.uid) {
+    throw new AppError("Only the person who is owed this share can confirm or dispute it")
+  }
   const shares = expense.shares.map((s) => (s.userId === memberUserId ? patch(s) : s))
 
   const firestore = getDb()
@@ -133,6 +140,7 @@ export function reportPayment(user: UserProfile, expenses: Expense[], expenseId:
     expenses,
     expenseId,
     user.uid,
+    { uid: user.uid, role: "debtor" },
     (s) => ({ ...s, status: "PAYMENT_REPORTED" as SharePaymentStatus, reportedAt: now, paymentProofNote: note || "" }),
     async (expense, share) => {
       const recipientUid = expense.recipientId || expense.payerId
@@ -166,6 +174,7 @@ export async function confirmPaymentReceipt(
     expenses,
     expenseId,
     memberUserId,
+    { uid: user.uid, role: "payee" },
     (s) => ({ ...s, status: "PAID" as SharePaymentStatus, confirmedAt: s.confirmedAt || now }),
     async (expense, share) => {
       if (alreadyPaid) return
@@ -204,6 +213,7 @@ export async function disputePaymentReceipt(
     expenses,
     expenseId,
     memberUserId,
+    { uid: user.uid, role: "payee" },
     (s) => ({ ...s, status: "DISPUTED" as SharePaymentStatus }),
     async (expense, share) => {
       if (alreadyDisputed) return
@@ -281,7 +291,6 @@ export async function sendPaymentReminder(user: UserProfile, expenses: Expense[]
       message: `${user.displayName} sent a gentle reminder for "${exp.title}"`,
       type: "PAYMENT_REMINDER",
       data: { expenseId, actorId: user.uid, actorName: user.displayName },
-    },
-    { scoped: false }
+    }
   )
 }

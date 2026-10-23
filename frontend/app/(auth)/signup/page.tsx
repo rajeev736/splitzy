@@ -39,7 +39,8 @@ function SignupForm() {
   const [upiId, setUpiId] = React.useState("")
   const [selectedAvatar, setSelectedAvatar] = React.useState(DEFAULT_AVATAR)
 
-  const seededForUserRef = React.useRef<{
+  // Tracks which signed-in user's profile values have been seeded into (or edited in) the form
+  const [seededFor, setSeededFor] = React.useState<{
     uid: string | null
     nameSeeded: boolean
     upiSeeded: boolean
@@ -55,14 +56,14 @@ function SignupForm() {
 
   const handleFullNameChange = React.useCallback(
     (fullName: string) => {
-      seededForUserRef.current.nameSeeded = true
+      setSeededFor((s) => (s.nameSeeded ? s : { ...s, nameSeeded: true }))
       setFullName(fullName)
     },
     [setFullName]
   )
 
   const handleUpiIdChange = React.useCallback((val: string) => {
-    seededForUserRef.current.upiSeeded = true
+    setSeededFor((s) => (s.upiSeeded ? s : { ...s, upiSeeded: true }))
     setUpiId(val)
   }, [])
 
@@ -86,23 +87,18 @@ function SignupForm() {
       isPasswordAccount && !isEmailVerified ? "verify" : isEmailVerified || step === "profile" ? "profile" : step
     if (nextStep !== step) setStep(nextStep)
 
-    if (seededForUserRef.current.uid !== user.uid) {
-      seededForUserRef.current = {
-        uid: user.uid,
-        nameSeeded: false,
-        upiSeeded: false,
-      }
-    }
-
-    if (user.displayName && !seededForUserRef.current.nameSeeded) {
-      seededForUserRef.current.nameSeeded = true
-      if (!account.fullName) setAccount((a) => ({ ...a, fullName: user.displayName }))
+    // Seed name / UPI once per user (a new user resets the flags)
+    const isNewUser = seededFor.uid !== user.uid
+    const nameSeeded = isNewUser ? false : seededFor.nameSeeded
+    const upiSeeded = isNewUser ? false : seededFor.upiSeeded
+    const seedName = Boolean(user.displayName) && !nameSeeded
+    const seedUpi = Boolean(user.upiId) && !upiSeeded
+    if (isNewUser || seedName || seedUpi) {
+      setSeededFor({ uid: user.uid, nameSeeded: nameSeeded || seedName, upiSeeded: upiSeeded || seedUpi })
+      if (seedName && !account.fullName) setAccount((a) => ({ ...a, fullName: user.displayName }))
+      if (seedUpi && user.upiId && !upiId) setUpiId(user.upiId)
     }
     if (user.splitzyId && user.splitzyId !== splitzyId) setSplitzyId(user.splitzyId)
-    if (user.upiId && !seededForUserRef.current.upiSeeded) {
-      seededForUserRef.current.upiSeeded = true
-      if (!upiId) setUpiId(user.upiId)
-    }
     if (user.photoURL && user.photoURL !== syncedPhotoURL) {
       setSyncedPhotoURL(user.photoURL)
       setSelectedAvatar(user.photoURL)

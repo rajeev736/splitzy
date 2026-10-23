@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
 import { UserAdd01Icon, UserGroupIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
@@ -21,10 +20,11 @@ import { Spinner } from "@/components/ui/spinner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAcceptFriendRequest, useCancelFriendRequest, useRejectFriendRequest, useSendFriendRequest } from "@/hooks/mutations"
 import { useFriendRequests, useFriendSuggestions, useGroupInvites } from "@/hooks/queries"
+import { useQueryTab } from "@/hooks/use-query-tab"
 
 type Tab = "received" | "sent"
 
-const toTab = (param: string | null): Tab | null => (param === "sent" || param === "received" ? param : null)
+const TABS: Tab[] = ["received", "sent"]
 
 function EmptyListCard({ children }: { children: React.ReactNode }) {
   return (
@@ -35,9 +35,6 @@ function EmptyListCard({ children }: { children: React.ReactNode }) {
 }
 
 function FriendRequestsContent() {
-  const searchParams = useSearchParams()
-  const tabParam = searchParams.get("tab")
-
   const { user } = useSession()
   const requestsQuery = useFriendRequests()
   const suggestions = useFriendSuggestions()
@@ -47,14 +44,10 @@ function FriendRequestsContent() {
   const cancelRequest = useCancelFriendRequest()
   const sendRequest = useSendFriendRequest()
 
-  // Follow the ?tab= param whenever it changes (same as the original effect).
-  const [activeTab, setActiveTab] = React.useState<Tab>(toTab(tabParam) ?? "received")
-  const [prevTabParam, setPrevTabParam] = React.useState(tabParam)
-  if (tabParam !== prevTabParam) {
-    setPrevTabParam(tabParam)
-    const next = toTab(tabParam)
-    if (next) setActiveTab(next)
-  }
+  const [activeTab, setActiveTab] = useQueryTab<Tab>({
+    defaultValue: "received",
+    validValues: TABS,
+  })
 
   const myUid = user?.uid
   const receivedRequests = React.useMemo(() => {

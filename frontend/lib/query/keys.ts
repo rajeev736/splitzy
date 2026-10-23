@@ -11,6 +11,7 @@ export const queryKeys = {
   groups: (uid: string) => [...queryKeys.user(uid), "groups"] as const,
   expenses: (uid: string) => [...queryKeys.user(uid), "expenses"] as const,
   notifications: (uid: string) => [...queryKeys.user(uid), "notifications"] as const,
+  challenges: (uid: string) => [...queryKeys.user(uid), "challenges"] as const,
 
   expense: (uid: string, expenseId: string) => [...queryKeys.user(uid), "expense", expenseId] as const,
   group: (uid: string, groupId: string) => [...queryKeys.user(uid), "group", groupId] as const,

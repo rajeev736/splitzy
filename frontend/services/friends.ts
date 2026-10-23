@@ -1,6 +1,7 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore"
 
 import { AppError } from "@/lib/errors"
+import { sanitizeForFirestore } from "@/lib/expenses/builder"
 import { canRemoveFriend, formatPaise } from "@/lib/money"
 import type { Expense, FriendRequest, UserProfile } from "@/lib/types"
 import {
@@ -109,7 +110,8 @@ export async function sendFriendRequest(
   }
 
   if (firestore) {
-    await setDoc(doc(firestore, "friendRequests", reqId), request)
+    // Firestore rejects undefined fields (e.g. a user without a photo)
+    await setDoc(doc(firestore, "friendRequests", reqId), sanitizeForFirestore(request))
     await sendNotification(
       {
         id: `notif_${reqId}`,
@@ -118,8 +120,7 @@ export async function sendFriendRequest(
         message: `${user.displayName} (${user.splitzyId}) sent you a friend request`,
         type: "FRIEND_REQUEST",
         data: { requestId: reqId, actorId: user.uid, actorName: user.displayName },
-      },
-      { scoped: false }
+      }
     )
   }
 
@@ -136,7 +137,7 @@ export async function acceptFriendRequest(ctx: FriendsContext, requestId: string
   const firestore = getDb()
   if (firestore) {
     await updateDoc(doc(firestore, "friendRequests", requestId), { status: "ACCEPTED" })
-    await activateFriendship(user.uid, req.senderId)
+    await activateFriendship(user.uid, req.senderId, { requestId })
     await sendNotification(
       {
         userId: req.senderId,
@@ -145,8 +146,7 @@ export async function acceptFriendRequest(ctx: FriendsContext, requestId: string
         type: "FRIEND_ACCEPTED",
         data: { actorId: user.uid, actorName: user.displayName },
         createdAt: now,
-      },
-      { scoped: false }
+      }
     )
   }
 
@@ -154,8 +154,9 @@ export async function acceptFriendRequest(ctx: FriendsContext, requestId: string
     uid: req.senderId,
     displayName: req.senderName,
     splitzyId: req.senderSplitzyId,
-    email: `${req.senderSplitzyId.toLowerCase()}@joysplit.app`,
-    upiId: `${req.senderName.toLowerCase().replace(/\s+/g, "")}@upi`,
+    // Optimistic placeholder until the realtime listener loads the real profile.
+    // Never invent a UPI id here — money could be sent to a stranger.
+    email: "",
     photoURL: req.senderPhoto || "/assets/avatar_glasses.jpg",
     createdAt: now,
   }
@@ -423,7 +424,6 @@ export async function sendFriendBalanceReminder(
       message: `${user.displayName} sent a reminder to settle your balance of ${formatPaise(amountPaise)}`,
       type: "PAYMENT_REMINDER",
       data: { actorId: user.uid, actorName: user.displayName, amountPaise },
-    },
-    { scoped: false }
+    }
   )
 }

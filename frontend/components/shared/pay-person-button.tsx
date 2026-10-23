@@ -5,6 +5,7 @@ import { CreditCardIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { useSession } from "@/components/providers/session-provider"
+import { AwaitingConfirmationBadge } from "@/components/shared/awaiting-confirmation-badge"
 import { Button } from "@/components/ui/button"
 import { useExpenses } from "@/hooks/queries"
 import { calculatePersonNetBreakdown, type SettlementScope } from "@/lib/money"
@@ -46,6 +47,10 @@ export function PayPersonButton({
   }, [user, personId, expenses, scope])
 
   if (!breakdown || breakdown.netPayablePaise <= 0) return null
+  // Already paid and reported: nothing to pay again until they confirm or dispute
+  if (breakdown.aOwesBLines.length > 0 && breakdown.aOwesBLines.every((l) => l.status === "PAYMENT_REPORTED")) {
+    return <AwaitingConfirmationBadge className={className} />
+  }
 
   return (
     <>

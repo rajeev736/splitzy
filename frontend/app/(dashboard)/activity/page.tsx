@@ -21,6 +21,7 @@ import {
   ItemSeparator,
 } from "@/components/ui/item"
 import { useNotifications } from "@/hooks/queries"
+import { useQueryTab } from "@/hooks/use-query-tab"
 import type { AppNotification } from "@/lib/types"
 
 type ActivityType = "friends" | "groups" | "payments"
@@ -32,6 +33,8 @@ const FILTERS = [
   { value: "groups", label: "groups" },
   { value: "payments", label: "payments" },
 ] as const
+
+const ACTIVITY_FILTERS: ActivityFilter[] = ["all", "friends", "groups", "payments"]
 
 function toActivity(n: AppNotification) {
   let type: ActivityType = "payments"
@@ -60,7 +63,7 @@ function toActivity(n: AppNotification) {
   }
 }
 
-export default function ActivityPage() {
+function ActivityContent() {
   const {
     data: notifications,
     isPending,
@@ -68,7 +71,11 @@ export default function ActivityPage() {
     error,
     refetch,
   } = useNotifications()
-  const [filter, setFilter] = React.useState<ActivityFilter>("all")
+  const [filter, setFilter] = useQueryTab<ActivityFilter>({
+    defaultValue: "all",
+    validValues: ACTIVITY_FILTERS,
+    param: "tab",
+  })
 
   const activities = React.useMemo(
     () => notifications.map(toActivity),
@@ -138,5 +145,13 @@ export default function ActivityPage() {
         )}
       </PageContainer>
     </>
+  )
+}
+
+export default function ActivityPage() {
+  return (
+    <React.Suspense fallback={<ListSkeleton />}>
+      <ActivityContent />
+    </React.Suspense>
   )
 }

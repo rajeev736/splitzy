@@ -56,6 +56,12 @@ function LoginForm() {
     if (emailParam) setEmail(emailParam)
   }
 
+  // Confirmation after account deletion (?deleted=1)
+  const accountDeleted = searchParams.get("deleted") === "1"
+  React.useEffect(() => {
+    if (accountDeleted) toast.success("Your account and its data have been deleted.")
+  }, [accountDeleted])
+
   // Redirects to the saved page (or /home) as soon as a completed profile is signed in
   const isRedirecting = useRedirectIfSignedIn()
 

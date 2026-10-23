@@ -7,7 +7,7 @@ import {
   signOut,
   type User as FirebaseUser,
 } from "firebase/auth"
-import { clearIndexedDbPersistence, doc, getDoc, setDoc, terminate, updateDoc } from "firebase/firestore"
+import { clearIndexedDbPersistence, deleteField, doc, getDoc, setDoc, terminate, updateDoc } from "firebase/firestore"
 
 import { auth, isFirebaseConfigured } from "@/lib/firebase/config"
 import { generateRandomSplitzyId } from "@/lib/firebase/splitzyId"
@@ -22,33 +22,44 @@ function buildAutoProfile(fbUser: FirebaseUser, fallbackName: string): UserProfi
     email: fbUser.email || "",
     displayName: fbUser.displayName || emailName || fallbackName,
     splitzyId: generateRandomSplitzyId(),
-    upiId: `${emailName.toLowerCase().replace(/[^a-z0-9]/g, "")}@upi`,
     photoURL: fbUser.photoURL || "/assets/avatar_boy.jpg",
     onboardingCompleted: false,
     createdAt: nowIso(),
   }
 }
 
-/** Writes the profile + reserves its JoySplit ID. Failures are logged, not thrown (matches original). */
-async function provisionProfile(profile: UserProfile, order: "idFirst" | "userFirst") {
+/**
+ * Profiles are readable by every signed-in user (friend lookup), so the email
+ * address is never stored there — it always comes from the auth account.
+ */
+export function toStoredProfile(profile: UserProfile): Omit<UserProfile, "email"> {
+  const stored: Partial<UserProfile> = { ...profile }
+  delete stored.email
+  return stored as Omit<UserProfile, "email">
+}
+
+/** The stored profile plus the signed-in account's email; strips a legacy stored email. */
+async function hydrateProfile(data: UserProfile, fbUser: FirebaseUser): Promise<UserProfile> {
+  const firestore = getDb()
+  if (firestore && "email" in data) {
+    await updateDoc(doc(firestore, "users", fbUser.uid), { email: deleteField() }).catch(() => {})
+  }
+  return { ...data, email: fbUser.email || "" }
+}
+
+/**
+ * Reserves the JoySplit ID, then writes the profile (security rules require the
+ * ID to be reserved first). Failures are logged, not thrown (matches original).
+ */
+async function provisionProfile(profile: UserProfile) {
   const firestore = getDb()
   if (!firestore) return
-  const reserveId = () =>
-    setDoc(doc(firestore, "splitzyIds", profile.splitzyId), {
+  try {
+    await setDoc(doc(firestore, "splitzyIds", profile.splitzyId), {
       uid: profile.uid,
       createdAt: profile.createdAt,
-      displayName: profile.displayName,
-      email: profile.email,
     })
-  const writeUser = () => setDoc(doc(firestore, "users", profile.uid), profile)
-  try {
-    if (order === "idFirst") {
-      await reserveId()
-      await writeUser()
-    } else {
-      await writeUser()
-      await reserveId()
-    }
+    await setDoc(doc(firestore, "users", profile.uid), toStoredProfile(profile))
   } catch (err) {
     console.warn("Profile provisioning notice:", err)
   }
@@ -68,10 +79,10 @@ export async function loadOrProvisionProfile(fbUser: FirebaseUser): Promise<User
     await new Promise((resolve) => setTimeout(resolve, 800))
     snap = await getDoc(doc(firestore, "users", fbUser.uid))
   }
-  if (snap.exists()) return snap.data() as UserProfile
+  if (snap.exists()) return hydrateProfile(snap.data() as UserProfile, fbUser)
 
   const autoUser = buildAutoProfile(fbUser, "JoySplit User")
-  await provisionProfile(autoUser, "idFirst")
+  await provisionProfile(autoUser)
   return autoUser
 }
 
@@ -93,11 +104,11 @@ export async function loginWithEmail(email: string, password?: string): Promise<
   }
 
   const snap = await getDoc(doc(firestore, "users", cred.user.uid))
-  if (snap.exists()) return snap.data() as UserProfile
+  if (snap.exists()) return hydrateProfile(snap.data() as UserProfile, cred.user)
 
   // Self-heal missing user profile doc
   const autoUser = buildAutoProfile(cred.user, "JoySplit User")
-  await provisionProfile(autoUser, "userFirst")
+  await provisionProfile(autoUser)
   return autoUser
 }
 
@@ -131,7 +142,6 @@ export async function signupWithEmail(input: {
     email: email.trim(),
     displayName: name.trim(),
     splitzyId,
-    upiId: `${name.toLowerCase().replace(/\s+/g, "")}@upi`,
     photoURL: "/assets/avatar_boy.jpg",
     onboardingCompleted: false,
     createdAt: nowIso(),
@@ -143,13 +153,11 @@ export async function signupWithEmail(input: {
       await setDoc(doc(firestore, "splitzyIds", splitzyId), {
         uid,
         createdAt: newUser.createdAt,
-        displayName: newUser.displayName,
-        email: newUser.email,
       })
     } catch (sErr) {
       console.warn("Could not reserve splitzyId:", sErr)
     }
-    await setDoc(doc(firestore, "users", uid), newUser, { merge: true })
+    await setDoc(doc(firestore, "users", uid), toStoredProfile(newUser), { merge: true })
   }
 
   return newUser
@@ -173,12 +181,12 @@ export async function loginWithGoogle(): Promise<{
   try {
     const snap = await getDoc(doc(firestore, "users", cred.user.uid))
     if (snap.exists()) {
-      const profile = snap.data() as UserProfile
+      const profile = await hydrateProfile(snap.data() as UserProfile, cred.user)
       return { profile, isNewUser: false, onboardingCompleted: !!profile.onboardingCompleted }
     }
 
     const newUser = buildAutoProfile(cred.user, "Google User")
-    await provisionProfile(newUser, "userFirst")
+    await provisionProfile(newUser)
     return { profile: newUser, isNewUser: true, onboardingCompleted: false }
   } catch (err) {
     console.warn("Firestore error during Google login:", err)

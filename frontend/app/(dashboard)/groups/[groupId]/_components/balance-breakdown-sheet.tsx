@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "nextjs-toploader/app"
 import { toast } from "sonner"
 
 import { Amount } from "@/components/shared/amount"
@@ -12,7 +11,7 @@ import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
 import { PayPersonButton } from "@/components/shared/pay-person-button"
 import { useSendPaymentReminder } from "@/hooks/mutations"
-import { calculatePersonNetBreakdown, getExpenseDebts } from "@/lib/money"
+import { allocatePersonNetAcrossContexts, calculatePersonNetBreakdown, getExpenseDebts } from "@/lib/money"
 import type { Expense, Group } from "@/lib/types"
 
 interface CounterpartyLine {
@@ -35,8 +34,10 @@ interface Counterparty {
 }
 
 /**
- * Groups this user's open debts with members in a group.
- * Scoped strictly to this group's expenses — no cross-group or personal netting.
+ * Groups this user's open debts with members in a group. Lines are this
+ * group's expenses; totals are what really has to be paid after netting with
+ * the same person's other splits (pass all of the user's expenses). People
+ * whose group balance is fully cancelled out elsewhere are left out.
  */
 function buildBreakdown(userId: string, group: Group, expenses: Expense[]) {
   const people = {
@@ -66,6 +67,11 @@ function buildBreakdown(userId: string, group: Group, expenses: Expense[]) {
     const name = personInfo?.name || breakdown.userBName || "Member"
     const photoURL = personInfo?.photoURL || breakdown.userBPhoto
     const upiId = breakdown.userBUpiId
+    const alloc = allocatePersonNetAcrossContexts(userId, other, expenses).find((c) => c.contextKey === group.id)
+    const effectivePaise = Math.abs(alloc?.effectivePaise ?? breakdown.netBalancePaise)
+    const crossOffset = (alloc?.offsetPaise ?? 0) > 0
+    // Fully cancelled out by the same person's other splits: nothing to pay here
+    if (effectivePaise === 0) continue
 
     if (breakdown.netBalancePaise < 0) {
       // Current user owes this person
@@ -88,10 +94,10 @@ function buildBreakdown(userId: string, group: Group, expenses: Expense[]) {
         name,
         photoURL,
         upiId,
-        totalPaise: breakdown.netPayablePaise,
+        totalPaise: effectivePaise,
         rawOwedToMePaise: breakdown.bOwesATotalPaise,
         rawIOwePaise: breakdown.aOwesBTotalPaise,
-        hasOffset: breakdown.offsetPaise > 0,
+        hasOffset: breakdown.offsetPaise > 0 || crossOffset,
         lines,
       })
     } else if (breakdown.netBalancePaise > 0) {
@@ -115,10 +121,10 @@ function buildBreakdown(userId: string, group: Group, expenses: Expense[]) {
         name,
         photoURL,
         upiId,
-        totalPaise: breakdown.netReceivablePaise,
+        totalPaise: effectivePaise,
         rawOwedToMePaise: breakdown.bOwesATotalPaise,
         rawIOwePaise: breakdown.aOwesBTotalPaise,
-        hasOffset: breakdown.offsetPaise > 0,
+        hasOffset: breakdown.offsetPaise > 0 || crossOffset,
         lines,
       })
     }
@@ -146,7 +152,6 @@ export function BalanceBreakdownSheet({
   expenses: Expense[]
   netPaise: number
 }) {
-  const router = useRouter()
   const { iOwe, owedToMe } = React.useMemo(
     () => buildBreakdown(userId, group, expenses),
     [userId, group, expenses]

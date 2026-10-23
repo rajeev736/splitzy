@@ -1,25 +1,33 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "nextjs-toploader/app"
 import {
   ArrowLeft01Icon,
-  UserGroupIcon,
+  ArrowRight01Icon,
+  Cancel01Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { useSession } from "@/components/providers/session-provider"
+import { GroupIcon } from "@/components/shared/group-icon"
+import { AwaitingConfirmationBadge } from "@/components/shared/awaiting-confirmation-badge"
+import { appliedDiscount, GameDiscountAmount, GameDiscountChip } from "@/components/games/game-discount-amount"
+import { useLiveGameDiscounts } from "@/hooks/use-game-discounts"
+import { PersonSettlementDialog } from "@/components/shared/person-settlement-dialog"
 import { UserAvatar } from "@/components/shared/user-avatar"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { useExpenses, useFriends, useGroups } from "@/hooks/queries"
 import {
+  calculateGroupCounterpartyBalances,
   calculateMemberGroupBalance,
   calculatePersonNetBreakdown,
+  formatPaise,
+  isAwaitingConfirmation,
+  isCancelOutPending,
 } from "@/lib/money"
 import { cn } from "@/lib/utils"
-import { SettleExpensesDialog } from "./settle-expenses-dialog"
 
 export interface GroupSettlementDialogProps {
   open: boolean
@@ -40,6 +48,7 @@ export function GroupSettlementDialog({
   groupName: propGroupName,
   onSettled,
 }: GroupSettlementDialogProps) {
+  const router = useRouter()
   const { user } = useSession()
   const { data: expenses = [] } = useExpenses()
   const { data: groups = [] } = useGroups()
@@ -54,61 +63,48 @@ export function GroupSettlementDialog({
 
   const groupName = propGroupName || group?.name || "Group"
 
-  // Only expenses belonging to this group
-  const groupExpenses = React.useMemo(
-    () => expenses.filter((e) => !e.deletedAt && e.groupId === groupId),
-    [expenses, groupId]
-  )
-
-  // Overall group balance for user
+  // Overall group balance for user (netted across all splits with each person)
   const groupBalance = React.useMemo(() => {
-    if (!user) return { userOwesPaise: 0, owedToUserPaise: 0, netPaise: 0 }
+    if (!user) return { userOwesPaise: 0, owedToUserPaise: 0, netPaise: 0, offsetPaise: 0 }
     return calculateMemberGroupBalance(user.uid, groupId, expenses)
   }, [user, groupId, expenses])
 
-  // Find all counterparties who have open debts with user in this group
+  // Everyone with an open balance in this group. Amounts are what really has to
+  // be paid after netting with your other splits with them; the rest is
+  // "cancelled out" and can be closed with one tap.
   const membersWithBalances = React.useMemo(() => {
     if (!user) return []
-
-    const counterparties = new Set<string>()
-    for (const exp of groupExpenses) {
-      const creditor = exp.recipientId || exp.payerId
-      for (const share of exp.shares || []) {
-        if (share.status === "PAID" || share.amountPaise <= 0) continue
-        const toUserId = share.userId === creditor ? exp.payerId : creditor
-        if (toUserId === user.uid && share.userId !== user.uid) counterparties.add(share.userId)
-        if (share.userId === user.uid && toUserId !== user.uid) counterparties.add(toUserId)
-      }
-    }
-
-    const rows: {
-      userId: string
-      name: string
-      photoURL?: string
-      upiId?: string
-      netPayablePaise: number
-      netReceivablePaise: number
-      netPaise: number
-    }[] = []
-
-    for (const otherId of counterparties) {
-      const breakdown = calculatePersonNetBreakdown(user.uid, otherId, groupExpenses)
-      if (breakdown.netPayablePaise > 0 || breakdown.netReceivablePaise > 0) {
-        const friend = friends.find((f) => f.uid === otherId)
-        rows.push({
-          userId: otherId,
+    return calculateGroupCounterpartyBalances(user.uid, groupId, expenses)
+      .map((row) => {
+        const friend = friends.find((f) => f.uid === row.userId)
+        const breakdown = calculatePersonNetBreakdown(user.uid, row.userId, expenses)
+        const pendingCancel = isCancelOutPending(user.uid, row.userId, expenses)
+        return {
+          ...row,
           name: friend?.displayName || breakdown.userBName || "Member",
           photoURL: friend?.photoURL || breakdown.userBPhoto,
           upiId: friend?.upiId || breakdown.userBUpiId,
-          netPayablePaise: breakdown.netPayablePaise,
-          netReceivablePaise: breakdown.netReceivablePaise,
-          netPaise: breakdown.netBalancePaise,
-        })
-      }
-    }
+          netPayablePaise: Math.max(0, -row.effectivePaise),
+          netReceivablePaise: Math.max(0, row.effectivePaise),
+          pendingCancel,
+          awaitingConfirmation: isAwaitingConfirmation(user.uid, row.userId, expenses),
+        }
+      })
+      .sort((a, b) => b.netPayablePaise - a.netPayablePaise || b.offsetPaise - a.offsetPaise)
+  }, [user, groupId, expenses, friends])
 
-    return rows.sort((a, b) => b.netPayablePaise - a.netPayablePaise)
-  }, [user, groupExpenses, friends])
+  const settleTarget = membersWithBalances.find((m) => m.userId === settlePersonId)
+
+  // Live game discounts with each member (you pay less / they pay you less)
+  const liveDiscounts = useLiveGameDiscounts()
+  const winnerDiscount = (id: string) => {
+    const d = liveDiscounts.byPerson.get(id)
+    return d?.role === "winner" ? d : undefined
+  }
+  const hostDiscount = (id: string) => {
+    const d = liveDiscounts.byPerson.get(id)
+    return d?.role === "host" ? d : undefined
+  }
 
   const userOwesNet = groupBalance.userOwesPaise > groupBalance.owedToUserPaise
 
@@ -117,10 +113,11 @@ export function GroupSettlementDialog({
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
           side="bottom"
+          showCloseButton={false}
           className="mx-auto flex h-[85vh] max-h-[85vh] w-full max-w-xl flex-col gap-0 rounded-t-[28px] border-border bg-background p-0 text-foreground shadow-2xl sm:rounded-3xl sm:border"
         >
           {/* Top Bar */}
-          <div className="flex items-center justify-between border-b border-border/60 bg-background/95 px-4 py-3.5 backdrop-blur-md sm:px-6">
+          <div className="flex items-center justify-between border-b border-border/60 bg-background/95 px-4 py-3 backdrop-blur-md sm:px-6">
             <button
               type="button"
               onClick={() => onOpenChange(false)}
@@ -132,41 +129,86 @@ export function GroupSettlementDialog({
             <SheetTitle className="text-base font-bold tracking-tight text-foreground">
               Group Settlement
             </SheetTitle>
-            <div className="size-9" />
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onOpenChange(false)
+                  router.push(`/groups/${groupId}`)
+                }}
+                className="h-8 gap-1 rounded-xl border-primary/30 px-2.5 text-xs font-bold text-primary hover:bg-primary/10"
+              >
+                View Group
+                <HugeiconsIcon icon={ArrowRight01Icon} className="size-3.5" />
+              </Button>
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95"
+                aria-label="Close"
+              >
+                <HugeiconsIcon icon={Cancel01Icon} className="size-4" />
+              </button>
+            </div>
           </div>
 
           {/* Body */}
           <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
             {/* Group Banner */}
-            <Card className="flex items-center gap-3.5 rounded-2xl border-border bg-card p-4 text-card-foreground shadow-xs">
-              <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <HugeiconsIcon icon={UserGroupIcon} className="size-6" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-base font-bold text-foreground">{groupName}</div>
-                <div className="text-xs text-muted-foreground">
-                  {userOwesNet ? "Group Net Payable" : "Group Net Receivable"}
+            <div className="flex flex-row items-center justify-between gap-4 rounded-3xl border border-border bg-card p-4 text-card-foreground shadow-xs">
+              <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenChange(false)
+                    router.push(`/groups/${groupId}`)
+                  }}
+                  className="shrink-0 transition-transform hover:scale-105 active:scale-95"
+                  title="Go to group dashboard"
+                >
+                  <GroupIcon src={group?.icon} alt={groupName} size="md" className="size-12 rounded-full border shadow-2xs" />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenChange(false)
+                      router.push(`/groups/${groupId}`)
+                    }}
+                    className="truncate text-left text-base font-bold text-foreground hover:text-primary transition-colors block"
+                  >
+                    {groupName}
+                  </button>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {groupBalance.netPaise === 0
+                      ? "Nothing to pay here"
+                      : userOwesNet
+                        ? "Group Net Payable"
+                        : "Group Net Receivable"}
+                  </div>
+                  {groupBalance.offsetPaise > 0 && (
+                    <div className="mt-0.5 text-[11px] font-semibold text-info">
+                      {formatPaise(groupBalance.offsetPaise)} cancelled out with other splits
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="text-right">
-                <div
+              <div className="flex shrink-0 flex-col items-end text-right">
+                <span className="text-xs font-semibold text-muted-foreground">
+                  {groupBalance.netPaise === 0 ? "Settled" : userOwesNet ? "You owe" : "You get"}
+                </span>
+                <span
                   className={cn(
-                    "text-lg font-black tabular-nums",
+                    "text-xl sm:text-2xl font-black tabular-nums leading-tight mt-0.5",
                     userOwesNet ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"
                   )}
                 >
                   ₹{(Math.abs(groupBalance.netPaise) / 100).toFixed(0)}
-                </div>
-                <div
-                  className={cn(
-                    "text-[10px] font-semibold uppercase tracking-wider",
-                    userOwesNet ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"
-                  )}
-                >
-                  {userOwesNet ? "You need to pay" : "You will receive"}
-                </div>
+                </span>
               </div>
-            </Card>
+            </div>
 
             {/* Members Section */}
             <div className="mt-5 mb-2.5 px-0.5">
@@ -183,57 +225,86 @@ export function GroupSettlementDialog({
               ) : (
                 membersWithBalances.map((m) => {
                   const youOwe = m.netPayablePaise > 0
+                  const cancelledOnly = m.effectivePaise === 0
                   return (
                     <div
                       key={m.userId}
-                      className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card p-3.5 text-card-foreground shadow-xs transition hover:border-border"
+                      className="flex flex-row items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card p-3.5 text-card-foreground shadow-xs transition hover:border-border"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="relative">
-                          <UserAvatar
-                            src={m.photoURL}
-                            name={m.name}
-                            size="md"
-                            className="size-10 ring-1 ring-border/50"
-                          />
-                          <div
-                            className="absolute -bottom-1 -right-1 flex size-4 items-center justify-center rounded-full bg-[#5f259f] text-[7px] font-black text-white ring-1 ring-card"
-                            title="UPI"
-                          >
-                            Pe
-                          </div>
-                        </div>
-                        <div className="min-w-0">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <UserAvatar
+                          src={m.photoURL}
+                          name={m.name}
+                          size="md"
+                          className="size-10 ring-1 ring-border/50 shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-bold text-foreground">{m.name}</div>
-                          <div
-                            className={cn(
-                              "text-[11px] font-semibold",
-                              youOwe ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"
-                            )}
-                          >
-                            {youOwe ? "You owe" : "Owes you"}: ₹
-                            {((youOwe ? m.netPayablePaise : m.netReceivablePaise) / 100).toFixed(0)}
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {cancelledOnly ? "No money to move" : youOwe ? "Pending payment" : "Pending collection"}
                           </div>
+                          {m.offsetPaise > 0 && (
+                            <div className="mt-0.5 text-[11px] font-semibold text-info">
+                              {formatPaise(m.offsetPaise)} cancelled out with your other splits
+                            </div>
+                          )}
                         </div>
                       </div>
 
-                      <div>
-                        {youOwe ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => setSettlePersonId(m.userId)}
-                            className="h-8 rounded-xl bg-primary px-3 text-xs font-bold text-primary-foreground hover:bg-primary/90"
-                          >
-                            Pay ₹{(m.netPayablePaise / 100).toFixed(0)}
-                          </Button>
+                      <div className="flex shrink-0 items-center gap-2.5 text-right">
+                        {cancelledOnly ? (
+                          m.pendingCancel ? (
+                            <span className="text-[11px] font-semibold text-muted-foreground">
+                              Awaiting confirmation
+                            </span>
+                          ) : m.grossPaise < 0 ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setSettlePersonId(m.userId)}
+                              className="h-8 rounded-xl px-3 text-xs font-bold"
+                            >
+                              Cancel out
+                            </Button>
+                          ) : (
+                            <span className="max-w-28 text-[11px] font-semibold text-muted-foreground">
+                              {m.name} can cancel it out
+                            </span>
+                          )
+                        ) : youOwe && m.awaitingConfirmation ? (
+                          <AwaitingConfirmationBadge />
+                        ) : youOwe ? (
+                          <div className="flex flex-col items-end gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => setSettlePersonId(m.userId)}
+                              className="h-8 rounded-xl bg-primary px-3 text-xs font-bold text-primary-foreground hover:bg-primary/90"
+                            >
+                              Pay {formatPaise(m.netPayablePaise - appliedDiscount(winnerDiscount(m.userId), m.netPayablePaise))}
+                            </Button>
+                            {winnerDiscount(m.userId) && (
+                              <GameDiscountChip
+                                discount={winnerDiscount(m.userId)!}
+                                amountPaise={m.netPayablePaise}
+                                now={liveDiscounts.now}
+                              />
+                            )}
+                          </div>
                         ) : (
-                          <Badge
-                            variant="outline"
-                            className="border-emerald-600/30 bg-emerald-500/10 text-xs font-bold text-emerald-600 dark:border-emerald-500/30 dark:text-emerald-400"
-                          >
-                            +₹{(m.netReceivablePaise / 100).toFixed(0)}
-                          </Badge>
+                          <div className="flex flex-col items-end">
+                            <span className="text-[11px] font-semibold text-muted-foreground">
+                              Owes you
+                            </span>
+                            <GameDiscountAmount
+                              prefix="+"
+                              amountPaise={m.netReceivablePaise}
+                              discount={hostDiscount(m.userId)}
+                              now={liveDiscounts.now}
+                              className="text-base font-black text-emerald-600 dark:text-emerald-400 leading-tight"
+                            />
+                          </div>
                         )}
                       </div>
                     </div>
@@ -245,13 +316,16 @@ export function GroupSettlementDialog({
         </SheetContent>
       </Sheet>
 
-      {/* When tapping Pay, open SettleExpensesDialog scoped to this group */}
+      {/* Pay / Cancel out settle the person's overall net (all splits), the
+          only amount that is ever real money — same figure shown above */}
       {settlePersonId && (
-        <SettleExpensesDialog
+        <PersonSettlementDialog
           open={Boolean(settlePersonId)}
           onOpenChange={(isOpen) => !isOpen && setSettlePersonId(null)}
           personId={settlePersonId}
-          initialScope={{ type: "group", groupId, groupName }}
+          personName={settleTarget?.name}
+          personPhoto={settleTarget?.photoURL}
+          personUpiId={settleTarget?.upiId}
           onSettled={() => {
             setSettlePersonId(null)
             onSettled?.()

@@ -1,7 +1,6 @@
 "use client"
 
 import { useRouter } from "nextjs-toploader/app"
-import { toast } from "sonner"
 
 import { useSession } from "@/components/providers/session-provider"
 import { Amount } from "@/components/shared/amount"
@@ -11,15 +10,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Spinner } from "@/components/ui/spinner"
 import {
   useAcceptGroupInvite,
-  useConfirmPayment,
-  useConfirmPersonSettlement,
   useDeclineGroupInvite,
-  useDisputePayment,
-  useDisputePersonSettlement,
 } from "@/hooks/mutations"
 import { useFriendRequests, useGroupInvites, useGroups } from "@/hooks/queries"
 import type { AppNotification } from "@/lib/types"
 import { NotificationIcon } from "./notification-icon"
+import { usePaymentReportActions } from "./use-payment-report-actions"
 
 const CTA = "h-11 w-full"
 
@@ -72,10 +68,7 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
     successMessage: (data) => (data as { message?: string } | undefined)?.message || "You have joined the group!",
   })
   const declineInvite = useDeclineGroupInvite({ successMessage: "Group invitation declined" })
-  const confirmPayment = useConfirmPayment({ successMessage: "Payment confirmed!" })
-  const disputePayment = useDisputePayment()
-  const confirmPersonSettlement = useConfirmPersonSettlement({ successMessage: "Settlement confirmed!" })
-  const disputePersonSettlement = useDisputePersonSettlement()
+  const paymentActions = usePaymentReportActions()
 
   const data = notif.data
   const go = (href: string) => {
@@ -175,60 +168,11 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
   }
 
   if (notif.type === "PAYMENT_REPORTED") {
-    const expenseId = data?.expenseId
-    const debtorId = data?.debtorId || data?.actorId
-    const isPersonSettlement = !expenseId && !!debtorId
-    const busy =
-      confirmPayment.isPending ||
-      disputePayment.isPending ||
-      confirmPersonSettlement.isPending ||
-      disputePersonSettlement.isPending
+    const busy = paymentActions.isBusy(notif)
     const isConfirmed = notif.actionTaken === "CONFIRMED"
     const isDisputed = notif.actionTaken === "DISPUTED"
-
-    const handleConfirm = () => {
-      if (isPersonSettlement && debtorId) {
-        const scope = data?.groupId
-          ? { type: "group" as const, groupId: data.groupId }
-          : { type: "direct" as const }
-        confirmPersonSettlement.mutate(
-          { debtorId, notifId: notif.id, scope },
-          { onSuccess: onClose }
-        )
-      } else if (expenseId && debtorId) {
-        confirmPayment.mutate(
-          { expenseId, memberUserId: debtorId, notifId: notif.id },
-          { onSuccess: onClose }
-        )
-      }
-    }
-
-    const handleDispute = () => {
-      if (isPersonSettlement && debtorId) {
-        const scope = data?.groupId
-          ? { type: "group" as const, groupId: data.groupId }
-          : { type: "direct" as const }
-        disputePersonSettlement.mutate(
-          { debtorId, notifId: notif.id, scope },
-          {
-            onSuccess: () => {
-              toast.error("Settlement marked as not received (disputed)")
-              onClose()
-            },
-          }
-        )
-      } else if (expenseId && debtorId) {
-        disputePayment.mutate(
-          { expenseId, memberUserId: debtorId, notifId: notif.id },
-          {
-            onSuccess: () => {
-              toast.error("Payment marked as not received (disputed)")
-              onClose()
-            },
-          }
-        )
-      }
-    }
+    const handleConfirm = () => paymentActions.confirm(notif, onClose)
+    const handleDispute = () => paymentActions.dispute(notif, onClose)
 
     return (
       <div className="flex flex-col gap-3">
@@ -248,7 +192,7 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
               disabled={busy}
               onClick={handleConfirm}
             >
-              {(confirmPayment.isPending || confirmPersonSettlement.isPending) && <Spinner />}
+              {paymentActions.isConfirming(notif) && <Spinner />}
               Yes, Received
             </Button>
             <Button
@@ -258,7 +202,7 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
               disabled={busy}
               onClick={handleDispute}
             >
-              {(disputePayment.isPending || disputePersonSettlement.isPending) && <Spinner />}
+              {busy && !paymentActions.isConfirming(notif) && <Spinner />}
               No, Not Received
             </Button>
           </div>
@@ -267,6 +211,14 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
           {data?.expenseId ? "View Full Expense Details" : data?.groupId ? "View Group" : "View Activity"}
         </Button>
       </div>
+    )
+  }
+
+  if ((notif.type === "CHALLENGE_RECEIVED" || notif.type === "CHALLENGE_RESULT") && data?.challengeId) {
+    return (
+      <Button size="lg" className={CTA} onClick={() => go(`/challenges/${data.challengeId}`)}>
+        {notif.type === "CHALLENGE_RECEIVED" ? "Play now" : "See result"}
+      </Button>
     )
   }
 

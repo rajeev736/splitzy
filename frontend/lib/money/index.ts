@@ -8,7 +8,7 @@
  * 5. Balances are derived authoritatively from valid expenses and confirmed settlements.
  */
 
-import { Expense, Group, SharePaymentStatus, SplitType } from "../types";
+import { Expense, Group, SharePaymentStatus } from "../types";
 
 export function rupeesToPaise(rupees: number | string): number {
   if (typeof rupees === "string") {
@@ -153,6 +153,16 @@ export interface Debt {
 }
 
 /**
+ * Who a share is owed to: the expense's creditor (recipient, falling back to
+ * the payer), or the payer when the share belongs to the recipient themself.
+ * Only this person may confirm or dispute the share — Firestore rules mirror it.
+ */
+export function payeeOf(exp: Pick<Expense, "recipientId" | "payerId">, shareUserId: string): string {
+  const creditor = exp.recipientId || exp.payerId;
+  return shareUserId === creditor ? exp.payerId : creditor;
+}
+
+/**
  * Single source of truth for "who owes whom" in an expense. Every balance
  * function below is built on this, so the dashboard, friend balances and group
  * balances can never disagree.
@@ -167,12 +177,11 @@ export function getExpenseDebts(exp: Expense): Debt[] {
   if (exp.deletedAt) return [];
   if (exp.isPersonal || exp.expenseType === "personal") return [];
 
-  const creditor = exp.recipientId || exp.payerId;
   const debts: Debt[] = [];
 
   for (const share of exp.shares || []) {
     if (share.status === "PAID" || share.amountPaise <= 0) continue;
-    const toUserId = share.userId === creditor ? exp.payerId : creditor;
+    const toUserId = payeeOf(exp, share.userId);
     if (!toUserId || toUserId === share.userId) continue;
     debts.push({ fromUserId: share.userId, toUserId, amountPaise: share.amountPaise });
   }
@@ -615,55 +624,161 @@ export function canRemoveFriend(
   return { allowed: true, canRemove: true, unsettledPaise: 0 };
 }
 
+/** One person's balance with you inside one context (a group, or "direct"). */
+export interface ContextBalance {
+  userId: string;
+  contextKey: string;
+  /** What this context alone says (> 0: they owe you). */
+  grossPaise: number;
+  /**
+   * The part of `grossPaise` that is real money after netting across every
+   * context with this person — what actually has to be paid here.
+   */
+  effectivePaise: number;
+  /** The part cancelled out by opposite balances in other contexts. */
+  offsetPaise: number;
+}
+
 /**
- * Calculates a member's net balance within a specific group.
+ * PhonePe-style single source of truth: money only moves for the *overall*
+ * net between two people. That net is shared out across the contexts that
+ * point the same way (largest first); contexts pointing the other way are
+ * fully cancelled out. So a group never asks you to pay what your direct
+ * splits with the same person already cancel.
+ *
+ * e.g. Abhijeet owes Rajeev ₹50 directly, Rajeev owes Abhijeet ₹50 in a group
+ * → overall ₹0 → the group shows ₹0 to pay, ₹50 cancelled out.
  */
-export function calculateMemberGroupBalance(
+export function allocatePersonNetAcrossContexts(
+  userId: string,
+  otherId: string,
+  expenses: Expense[]
+): ContextBalance[] {
+  const breakdown = calculatePersonNetBreakdown(userId, otherId, expenses);
+  const overall = breakdown.netBalancePaise;
+  const sign = Math.sign(overall);
+  let remaining = Math.abs(overall);
+
+  const sameWay = breakdown.contexts
+    .filter((c) => sign !== 0 && Math.sign(c.netPaise) === sign)
+    .sort((a, b) => Math.abs(b.netPaise) - Math.abs(a.netPaise) || a.key.localeCompare(b.key));
+  const effective = new Map<string, number>();
+  for (const c of sameWay) {
+    const take = Math.min(Math.abs(c.netPaise), remaining);
+    effective.set(c.key, take * sign);
+    remaining -= take;
+  }
+
+  return breakdown.contexts.map((c) => {
+    const eff = effective.get(c.key) ?? 0;
+    return {
+      userId: otherId,
+      contextKey: c.key,
+      grossPaise: c.netPaise,
+      effectivePaise: eff,
+      offsetPaise: Math.abs(c.netPaise) - Math.abs(eff),
+    };
+  });
+}
+
+/**
+ * You've reported paying everything you owe this person (in scope) and are
+ * waiting for them to confirm — show "Waiting for confirmation" instead of Pay.
+ */
+export function isAwaitingConfirmation(
+  userId: string,
+  creditorId: string,
+  expenses: Expense[],
+  scope?: SettlementScope
+): boolean {
+  const lines = calculatePersonNetBreakdown(userId, creditorId, expenses, scope).aOwesBLines;
+  return lines.length > 0 && lines.every((l) => l.status === "PAYMENT_REPORTED");
+}
+
+/**
+ * True while a cancel-out between the two is waiting for confirmation: a share
+ * is reported or approved for cancelling out under a settlement.
+ */
+export function isCancelOutPending(userId: string, otherId: string, expenses: Expense[]): boolean {
+  return expenses.some(
+    (e) =>
+      !e.deletedAt &&
+      e.shares?.some(
+        (s) =>
+          !!s.settlementId &&
+          s.status !== "PAID" &&
+          (s.status === "PAYMENT_REPORTED" || !!s.offsetApprovedBy) &&
+          ((s.userId === userId && payeeOf(e, s.userId) === otherId) ||
+            (s.userId === otherId && payeeOf(e, s.userId) === userId))
+      )
+  );
+}
+
+/** Everyone you have an open balance with inside a group, netted across all contexts. */
+export function calculateGroupCounterpartyBalances(
   userId: string,
   groupId: string,
   expenses: Expense[]
-): {
-  owedToUserPaise: number; // what others in group owe this user
-  userOwesPaise: number;   // what this user owes others in group
-  netPaise: number;
-  allSettled: boolean;
-} {
-  // Only consider expenses belonging to this group
-  const groupExpenses = expenses.filter((e) => !e.deletedAt && e.groupId === groupId);
-
-  // Find all counterparties who have open debts with userId in this group
+): ContextBalance[] {
   const counterparties = new Set<string>();
-  for (const exp of groupExpenses) {
+  for (const exp of expenses) {
+    if (exp.deletedAt || exp.groupId !== groupId) continue;
     for (const debt of getExpenseDebts(exp)) {
       if (debt.toUserId === userId && debt.fromUserId !== userId) counterparties.add(debt.fromUserId);
       if (debt.fromUserId === userId && debt.toUserId !== userId) counterparties.add(debt.toUserId);
     }
   }
 
+  const rows: ContextBalance[] = [];
+  for (const other of counterparties) {
+    const row = allocatePersonNetAcrossContexts(userId, other, expenses).find((c) => c.contextKey === groupId);
+    if (row && row.grossPaise !== 0) rows.push(row);
+  }
+  return rows;
+}
+
+/**
+ * A member's balance within a group. Amounts are what really has to be paid
+ * after netting with the same people's other splits; `offsetPaise` is the
+ * group balance that other splits cancel out (closed with "Cancel out").
+ * Pass every expense you have, not just the group's, so netting can happen.
+ */
+export function calculateMemberGroupBalance(
+  userId: string,
+  groupId: string,
+  expenses: Expense[]
+): {
+  owedToUserPaise: number; // what others in group really owe this user
+  userOwesPaise: number;   // what this user really owes others in group
+  netPaise: number;
+  /** Group balance cancelled out by the same people's other splits. */
+  offsetPaise: number;
+  allSettled: boolean;
+} {
   let owedToUserPaise = 0;
   let userOwesPaise = 0;
+  let offsetPaise = 0;
 
-  for (const other of counterparties) {
-    const breakdown = calculatePersonNetBreakdown(userId, other, groupExpenses);
-    if (breakdown.netBalancePaise > 0) {
-      owedToUserPaise += breakdown.netReceivablePaise;
-    } else if (breakdown.netBalancePaise < 0) {
-      userOwesPaise += breakdown.netPayablePaise;
-    }
+  for (const row of calculateGroupCounterpartyBalances(userId, groupId, expenses)) {
+    if (row.effectivePaise > 0) owedToUserPaise += row.effectivePaise;
+    else userOwesPaise += -row.effectivePaise;
+    offsetPaise += row.offsetPaise;
   }
 
   return {
     owedToUserPaise,
     userOwesPaise,
     netPaise: owedToUserPaise - userOwesPaise,
+    offsetPaise,
     allSettled: owedToUserPaise === 0 && userOwesPaise === 0,
   };
 }
 
 /**
  * Checks whether a user can safely leave a group.
- * Creator cannot leave without transfer/delete.
- * Non-zero balance in either direction blocks leaving.
+ * A creator who leaves hands ownership to the next member; a sole member must delete instead.
+ * Non-creator members can leave freely even with unsettled balances
+ * (debts remain tracked in person-to-person split summary).
  */
 export function canUserLeaveGroup(
   userId: string,
@@ -676,11 +791,12 @@ export function canUserLeaveGroup(
   owedToUserPaise: number;
   userOwesPaise: number;
 } {
-  if (group.createdBy === userId) {
+  // The creator can leave when someone else can take the group over
+  if (group.createdBy === userId && group.members.filter((m) => m !== userId).length === 0) {
     return {
       allowed: false,
       canLeave: false,
-      reason: "As the group creator, you cannot leave the group. You must transfer group ownership or delete the group.",
+      reason: "You are the only member. Delete the group instead.",
       owedToUserPaise: 0,
       userOwesPaise: 0,
     };
@@ -692,29 +808,11 @@ export function canUserLeaveGroup(
     expenses
   );
 
-  if (owedToUserPaise > 0 || userOwesPaise > 0) {
-    const reasonParts = [];
-    if (userOwesPaise > 0) {
-      reasonParts.push(`You owe ${formatPaise(userOwesPaise)} in this group`);
-    }
-    if (owedToUserPaise > 0) {
-      reasonParts.push(`You are owed ${formatPaise(owedToUserPaise)} by group members`);
-    }
-
-    return {
-      allowed: false,
-      canLeave: false,
-      reason: `Cannot leave group while balances remain. ${reasonParts.join(" and ")}. Please settle all balances before leaving.`,
-      owedToUserPaise,
-      userOwesPaise,
-    };
-  }
-
   return {
     allowed: true,
     canLeave: true,
-    owedToUserPaise: 0,
-    userOwesPaise: 0,
+    owedToUserPaise,
+    userOwesPaise,
   };
 }
 

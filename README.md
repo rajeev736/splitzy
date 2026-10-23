@@ -57,15 +57,19 @@ upi://pay?pa={recipientUpiId}&pn={payeeName}&am={rupees}&cu=INR&tn={note}
 
 ## 🚀 Getting Started Locally
 
+The app lives in `frontend/`. The repo root holds the Firebase rules (`firestore.rules`, `firebase.json`) and design references (`ui-images/`).
+
 ### 1. Clone & Install Dependencies
 ```bash
-cd splitzy
+cd splitzy/frontend
 npm install
 ```
 
-### 2. Run Financial Invariant Unit Tests
+### 2. Run the Tests
 ```bash
-npx tsx src/lib/money/__tests__/money.test.ts
+npm test        # money engine invariants + settlement flow
+npm run typecheck
+npm run lint
 ```
 
 ### 3. Start Development Server
@@ -97,10 +101,20 @@ Splitzy includes **interactive demo persistence out-of-the-box**. To connect to 
    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
    NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
    ```
-5. Deploy Firestore Security Rules:
+5. Deploy Firestore Security Rules (from the repo root, where `firebase.json` is). **Required** — the app
+   relies on these rules to keep expenses private and to stop anyone confirming their own payments:
    ```bash
    firebase deploy --only firestore:rules
    ```
+6. Enable **Google** as a sign-in provider too if you use "Continue with Google", and add your production
+   domain under Authentication ➔ Settings ➔ Authorized domains.
+
+### Account deletion
+
+Settings ➔ Danger zone deletes the account. It is only allowed once every balance is settled, and it asks
+for the password (or Google sign-in) again. It removes the profile, JoySplit ID, personal expenses,
+friendships, friend requests, notifications and solo groups. Shared expenses and groups stay for the other
+people in them, with the name replaced by "Deleted user".
 
 ---
 

@@ -6,6 +6,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 
 import { useSession } from "@/components/providers/session-provider"
 import { UserAvatar } from "@/components/shared/user-avatar"
+import { useGamesYourTurn } from "@/hooks/queries"
 import { useUnreadTracking } from "@/hooks/use-unread-tracking"
 import { cn } from "@/lib/utils"
 import { isNavActive, NAV_ITEMS } from "./nav-items"
@@ -15,7 +16,8 @@ const MOBILE_ITEMS = NAV_ITEMS.filter((i) => i.mobile)
 export function BottomNav() {
   const pathname = usePathname()
   const { user } = useSession()
-  const { hasPendingFriendRequests, hasGroupsBadge } = useUnreadTracking()
+  const { hasPendingFriendRequests } = useUnreadTracking()
+  const gamesYourTurn = useGamesYourTurn()
 
   return (
     <nav className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 px-2 pt-2 backdrop-blur-md md:hidden">
@@ -28,8 +30,7 @@ export function BottomNav() {
           const active = isNavActive(pathname, item.href)
           const isProfile = item.href === "/profile"
           const showDot =
-            (item.href === "/friends" && hasPendingFriendRequests) ||
-            (item.href === "/groups" && hasGroupsBadge)
+            (item.href === "/friends" && hasPendingFriendRequests) || (item.href === "/challenges" && gamesYourTurn > 0)
 
           return (
             <Link
@@ -60,7 +61,7 @@ export function BottomNav() {
                   <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-destructive ring-2 ring-background animate-pulse" />
                 )}
               </div>
-              <span className="truncate text-[11px] tracking-tight">{item.label}</span>
+              <span className="truncate text-[11px] tracking-tight">{item.mobileLabel || item.label}</span>
             </Link>
           )
         })}

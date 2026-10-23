@@ -38,13 +38,13 @@ type NotificationInput = Omit<AppNotification, "id" | "read" | "createdAt" | "da
 }
 
 /**
- * Writes a notification for `userId`. Id format matches the original app:
- * `notif_<timestamp>_<userId>` (or `notif_<timestamp>` when `scoped` is false).
+ * Writes a notification for `userId`. Ids carry a random suffix so two
+ * notifications written in the same millisecond never overwrite each other.
  */
-export async function sendNotification(input: NotificationInput, { scoped = true } = {}) {
+export async function sendNotification(input: NotificationInput) {
   const firestore = getDb()
   if (!firestore) return
-  const id = input.id ?? (scoped ? `notif_${Date.now()}_${input.userId}` : `notif_${Date.now()}`)
+  const id = input.id ?? `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${input.userId}`
   await setDoc(doc(firestore, "notifications", id), {
     ...input,
     id,
@@ -99,8 +99,16 @@ export async function resolveGroup(groupId: string, cached: Group[]): Promise<Gr
   return snap.exists() ? (snap.data() as Group) : null
 }
 
-/** Creates (or re-activates) the canonical bidirectional friendship record. */
-export async function activateFriendship(uidA: string, uidB: string, { merge = false } = {}) {
+/**
+ * Creates (or re-activates) the canonical bidirectional friendship record.
+ * `requestId` is the friend request just accepted; security rules check it so
+ * nobody can make themselves someone's friend without that person accepting.
+ */
+export async function activateFriendship(
+  uidA: string,
+  uidB: string,
+  { requestId, merge = false }: { requestId: string; merge?: boolean }
+) {
   const firestore = getDb()
   if (!firestore) return
   const id = friendshipId(uidA, uidB)
@@ -113,6 +121,7 @@ export async function activateFriendship(uidA: string, uidB: string, { merge = f
       userA: uidA < uidB ? uidA : uidB,
       userB: uidA < uidB ? uidB : uidA,
       status: "ACTIVE",
+      requestId,
       createdAt: now,
       updatedAt: now,
     },

@@ -1,9 +1,7 @@
 import {
   rupeesToPaise,
-  paiseToRupees,
   formatPaise,
   calculateEqualSplit,
-  validateManualSplit,
   calculateNetBalances,
   calculateDirectBalance,
   canRemoveFriend,
@@ -12,7 +10,6 @@ import {
   calculatePersonBalances,
   calculatePersonNetBreakdown,
   getExpenseShareSettlementStatus,
-  filterExpensesByScope,
 } from "../index";
 import { Expense, Group } from "../../types";
 
@@ -139,13 +136,16 @@ const mockGroup: Group = {
   createdAt: "2026-10-15T10:00:00Z",
 };
 
-// Creator attempt
+// Creator can leave while others remain (ownership passes to the next member)...
 const creatorLeave = canUserLeaveGroup("usr_rajeev", mockGroup, mockExpenses);
-assert(creatorLeave.canLeave === false, "Creator cannot leave the group");
+assert(creatorLeave.canLeave === true, "Creator can hand the group over and leave");
+// ...but a sole-member creator must delete the group instead
+const soloLeave = canUserLeaveGroup("usr_rajeev", { ...mockGroup, members: ["usr_rajeev"] }, mockExpenses);
+assert(soloLeave.canLeave === false, "Sole member cannot leave, only delete");
 
-// Member with unpaid balance attempt
+// Member with unpaid balance can now leave (debt tracked under People)
 const sitalLeave = canUserLeaveGroup("usr_sital", mockGroup, mockExpenses);
-assert(sitalLeave.canLeave === false, "Sital cannot leave while owing ₹1,000");
+assert(sitalLeave.canLeave === true, "Sital can leave freely, balance remains tracked in people");
 assert(sitalLeave.userOwesPaise === 100000, "Sital owes 100000 paise");
 
 // Member after settling

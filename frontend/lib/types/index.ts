@@ -96,6 +96,14 @@ export interface ExpenseShare {
   confirmedAt?: string;
   paymentProofNote?: string;
   utr?: string;
+  /** Person-to-person settlement this share was reported or offset in. */
+  settlementId?: string;
+  /**
+   * Set by the person this share is owed to when they cancel it out against
+   * what they owe the share's owner. The owner may then close it (PAID) while
+   * confirming that settlement. Security rules enforce who may set it.
+   */
+  offsetApprovedBy?: string;
 }
 
 export interface Expense {
@@ -158,7 +166,50 @@ export type NotificationType =
   | "PAYMENT_REPORTED"
   | "PAYMENT_CONFIRMED"
   | "PAYMENT_DISPUTED"
-  | "PAYMENT_REMINDER";
+  | "PAYMENT_REMINDER"
+  | "CHALLENGE_RECEIVED"
+  | "CHALLENGE_RESULT";
+
+/**
+ * A settle-up game. The host is owed money by every player; winners get
+ * `discountPercent` off their `bases` amount if they pay right after the result.
+ * The host's secret (their RPS moves / the lucky number) lives in
+ * `challenges/{id}/secret/value`, readable by players only once they've played.
+ */
+export interface Challenge {
+  id: string;
+  kind: "friend" | "group";
+  game: "rps" | "lucky_number";
+  hostId: string;
+  hostName: string;
+  players: string[];
+  playerNames: Record<string, string>;
+  /** hostId + players, for queries and read access. */
+  participants: string[];
+  discountPercent: number;
+  /** What each player owed the host when the game was set up (paise). */
+  bases: Record<string, number>;
+  /** Group games: the expense the game was attached to. */
+  expenseId?: string;
+  expenseTitle?: string;
+  groupId?: string;
+  groupName?: string;
+  status: "OPEN" | "DONE" | "CANCELLED";
+  /** RPS: 3 moves per player. Lucky number: one guess per player. */
+  moves: Record<string, string[] | number>;
+  result?: {
+    winners: string[];
+    /** Revealed secret, for showing the outcome. */
+    hostMoves?: string[];
+    number?: number;
+    winningDistance?: number;
+  };
+  /** ISO time of the result (stored as a server timestamp). */
+  resolvedAt?: string;
+  /** Discount each winner actually used when paying (paise). */
+  redeemed?: Record<string, number>;
+  createdAt: string;
+}
 
 export interface AppNotification {
   id: string;
@@ -177,6 +228,11 @@ export interface AppNotification {
     amountPaise?: number;
     debtorId?: string;
     creditorId?: string;
+    settlementId?: string;
+    offsetPaise?: number;
+    challengeId?: string;
+    /** Game discount applied to a reported settlement. */
+    discountPaise?: number;
   };
   read: boolean;
   actionTaken?: "CONFIRMED" | "DISPUTED";
