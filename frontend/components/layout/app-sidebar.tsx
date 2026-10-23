@@ -14,7 +14,9 @@ import { UserAvatar } from "@/components/shared/user-avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useBalances, useUnreadCount } from "@/hooks/queries"
+import { useGamesYourTurn, useUnreadCount } from "@/hooks/queries"
+import { useDiscountedBalances } from "@/hooks/use-game-discounts"
+import { GameDiscountNote } from "@/components/games/game-discount-amount"
 import { useUnreadTracking } from "@/hooks/use-unread-tracking"
 import { cn } from "@/lib/utils"
 import { LogoutDialog } from "./logout-dialog"
@@ -23,9 +25,10 @@ import { isNavActive, NAV_ITEMS } from "./nav-items"
 export function AppSidebar() {
   const pathname = usePathname()
   const { user } = useSession()
-  const { netBalancePaise } = useBalances()
+  const { netBalancePaise, gameDiscountPaise, gameDiscountEndsAt, now } = useDiscountedBalances()
   const unread = useUnreadCount()
-  const { hasPendingFriendRequests, hasGroupsBadge } = useUnreadTracking()
+  const { hasPendingFriendRequests } = useUnreadTracking()
+  const gamesYourTurn = useGamesYourTurn()
   const [logoutOpen, setLogoutOpen] = React.useState(false)
 
   return (
@@ -45,8 +48,7 @@ export function AppSidebar() {
         {NAV_ITEMS.map((item) => {
           const active = isNavActive(pathname, item.href)
           const showDot =
-            (item.href === "/friends" && hasPendingFriendRequests) ||
-            (item.href === "/groups" && hasGroupsBadge)
+            (item.href === "/friends" && hasPendingFriendRequests) || (item.href === "/challenges" && gamesYourTurn > 0)
 
           return (
             <Link
@@ -84,6 +86,7 @@ export function AppSidebar() {
         <div className="mt-0.5 text-[11px] text-muted-foreground">
           {netBalancePaise >= 0 ? "You will receive" : "You need to pay"}
         </div>
+        <GameDiscountNote className="mt-1.5" discountPaise={gameDiscountPaise} endsAt={gameDiscountEndsAt} now={now} />
       </div>
 
       {user && (

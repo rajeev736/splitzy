@@ -34,13 +34,14 @@ import { GroupError, GroupLoading, GroupNotFound } from "./_components/group-sta
 import { InviteDialog } from "./_components/invite-dialog"
 import { MembersTab } from "./_components/members-tab"
 import { OverviewTab } from "./_components/overview-tab"
+import { useQueryTab } from "@/hooks/use-query-tab"
 
 type Tab = "overview" | "expenses" | "members"
 type OpenDialog = "edit" | "leave" | "delete" | "invite" | null
 
 const TABS: Tab[] = ["overview", "expenses", "members"]
 
-export default function GroupDashboardPage() {
+function GroupDashboardContent() {
   const params = useParams<{ groupId: string }>()
   const groupId = params.groupId
   const router = useRouter()
@@ -50,7 +51,10 @@ export default function GroupDashboardPage() {
   const { data: groupExpenses } = useGroupExpenses(groupId)
   const { data: expenses } = useExpenses()
 
-  const [activeTab, setActiveTab] = React.useState<Tab>("overview")
+  const [activeTab, setActiveTab] = useQueryTab<Tab>({
+    defaultValue: "overview",
+    validValues: TABS,
+  })
   const [dialog, setDialog] = React.useState<OpenDialog>(null)
   const closeDialog = (open: boolean) => !open && setDialog(null)
 
@@ -195,6 +199,7 @@ export default function GroupDashboardPage() {
             <>
               Are you sure you want to leave <strong>{group.name}</strong>? All historical expenses and your records in
               them will be preserved.
+              {isCreator && " You created this group, so the next member becomes its admin."}
             </>
           ) : undefined
         }
@@ -238,5 +243,13 @@ function BlockedNotice({ title, reason }: { title: string; reason?: string }) {
       <AlertTitle className="font-bold">{title}</AlertTitle>
       <AlertDescription className="leading-relaxed text-foreground">{reason}</AlertDescription>
     </Alert>
+  )
+}
+
+export default function GroupDashboardPage() {
+  return (
+    <React.Suspense fallback={<GroupLoading />}>
+      <GroupDashboardContent />
+    </React.Suspense>
   )
 }

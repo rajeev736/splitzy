@@ -9,7 +9,7 @@ import { db, isFirebaseConfigured } from "@/lib/firebase/config"
 import { calculateNetBalances } from "@/lib/money"
 import { queryKeys } from "@/lib/query/keys"
 import { awaitRealtime, publish, publishError } from "@/lib/query/realtime"
-import type { AppNotification, Expense, FriendRequest, Group, GroupInviteInfo, UserProfile } from "@/lib/types"
+import type { AppNotification, Challenge, Expense, FriendRequest, Group, GroupInviteInfo, UserProfile } from "@/lib/types"
 import { fetchExpenseById } from "@/services/expenses"
 import { getMutualFriendSuggestions, searchUserBySplitzyId } from "@/services/friends"
 import { fetchGroupById } from "@/services/groups"
@@ -38,6 +38,21 @@ function useRealtimeList<T>(keyFor: (uid: string) => QueryKey) {
 export const useFriends = () => useRealtimeList<UserProfile>(queryKeys.friends)
 export const useFriendRequests = () => useRealtimeList<FriendRequest>(queryKeys.friendRequests)
 export const useNotifications = () => useRealtimeList<AppNotification>(queryKeys.notifications)
+/** Settle-up games you host or play in, newest first. */
+export const useChallenges = () => useRealtimeList<Challenge>(queryKeys.challenges)
+
+/** Games waiting for your move — drives the red dot on "Games". */
+export function useGamesYourTurn() {
+  const { user } = useSession()
+  const { data } = useChallenges()
+  return React.useMemo(
+    () =>
+      user
+        ? data.filter((c) => c.status === "OPEN" && c.players.includes(user.uid) && c.moves?.[user.uid] === undefined).length
+        : 0,
+    [data, user]
+  )
+}
 
 /** Every synced group, including ones you're only invited to. */
 const useAllGroups = () => {

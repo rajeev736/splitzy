@@ -4,6 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "nextjs-toploader/app"
 import {
+  Analytics01Icon,
   ArrowRight01Icon,
   ChartIncreaseIcon,
   Copy01Icon,
@@ -12,7 +13,10 @@ import {
   QrCodeIcon,
   Share08Icon,
   Tick02Icon,
+  UserAdd01Icon,
   UserGroupIcon,
+  UserMultipleIcon,
+  Wallet01Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 
@@ -21,6 +25,7 @@ import { GroupListItem } from "../_components/group-list-item"
 import { AppHeader } from "@/components/layout/app-header"
 import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
+import { SettleExpensesDialog } from "@/components/settlement/settle-expenses-dialog"
 import { Amount } from "@/components/shared/amount"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
@@ -51,13 +56,17 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
 import {
-  useBalances,
   useExpenses,
   useFriends,
   useGroups,
 } from "@/hooks/queries"
 import { useUnreadTracking } from "@/hooks/use-unread-tracking"
 import { PayPersonButton } from "@/components/shared/pay-person-button"
+import { ChallengeButton } from "@/components/games/challenge-button"
+import { HomeGamesCard } from "@/components/games/home-games-card"
+import { GameDiscountAmount, GameDiscountNote } from "@/components/games/game-discount-amount"
+import { useDiscountedBalances, useLiveGameDiscounts } from "@/hooks/use-game-discounts"
+import { expensesInPeriod, mySpendPaise } from "@/lib/analytics"
 import { calculatePersonBalances, formatPaise } from "@/lib/money"
 import type { UserProfile } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -69,14 +78,16 @@ export default function HomePage() {
   const groupsQuery = useGroups()
   const expensesQuery = useExpenses()
   const { isExpenseUnread, hasGroupUnreadExpenses, markSeen } = useUnreadTracking()
-  const { netBalancePaise, totalOwedToYouPaise, totalYouOwePaise } =
-    useBalances()
+  // Overall balances — with any live game discount applied for its 10 minutes
+  const { netBalancePaise, totalOwedToYouPaise, totalYouOwePaise, gameDiscountPaise, gameDiscountEndsAt, now } =
+    useDiscountedBalances()
 
   const friends = friendsQuery.data
   const groups = groupsQuery.data
   const expenses = expensesQuery.data
 
   const [showIdModal, setShowIdModal] = React.useState(false)
+  const [selectedPersonId, setSelectedPersonId] = React.useState<string | null>(null)
 
   // Everyone you share an unsettled expense with (friends and group members),
   // from the same debt model as the net balance, so the rows add up to it.
@@ -101,6 +112,15 @@ export default function HomePage() {
   const whoOwesYou = personBalances.filter((b) => b.netBalancePaise > 0)
   const youOweTo = personBalances.filter((b) => b.netBalancePaise < 0)
   const recentExpenses = expenses.slice(0, 4)
+
+  // Your own share this month — same definition as the Insights page
+  const { monthSpentPaise, monthCount } = React.useMemo(() => {
+    if (!user) return { monthSpentPaise: 0, monthCount: 0 }
+    const mine = expensesInPeriod(expenses, user.uid, "month")
+      .map((e) => mySpendPaise(e, user.uid))
+      .filter((p) => p > 0)
+    return { monthSpentPaise: mine.reduce((a, b) => a + b, 0), monthCount: mine.length }
+  }, [expenses, user])
 
   return (
     <>
@@ -140,6 +160,12 @@ export default function HomePage() {
                       ? "You need to pay overall"
                       : "All settled up!"}
                 </div>
+                <GameDiscountNote
+                  className="mt-2 bg-primary-foreground/20 text-primary-foreground"
+                  discountPaise={gameDiscountPaise}
+                  endsAt={gameDiscountEndsAt}
+                  now={now}
+                />
                 <div className="mt-4 grid grid-cols-2 gap-3 border-t border-primary-foreground/20 pt-3 text-xs">
                   <div>
                     <div className="opacity-80">You are owed</div>
@@ -168,25 +194,45 @@ export default function HomePage() {
               </div>
             </Card>
 
-            <div className="grid grid-cols-3 gap-3">
-              <QuickAction
-                icon={PlusSignIcon}
-                label="Add Expense"
-                tone="bg-secondary text-primary"
-                onClick={() => router.push("/expenses/new")}
-              />
+            {/* PhonePe-style entry points: one tap per kind of split */}
+            <div className="grid grid-cols-4 gap-2 sm:gap-3">
               <QuickAction
                 icon={UserGroupIcon}
-                label="Create Group"
+                label="Group split"
+                tone="bg-secondary text-primary"
+                onClick={() => router.push("/expenses/new?tab=group")}
+              />
+              <QuickAction
+                icon={UserMultipleIcon}
+                label="Friend split"
+                tone="bg-success/10 text-success"
+                onClick={() => router.push("/expenses/new?tab=friend")}
+              />
+              <QuickAction
+                icon={Wallet01Icon}
+                label="Personal"
                 tone="bg-warning/10 text-warning"
-                onClick={() => router.push("/groups/new")}
+                onClick={() => router.push("/expenses/new?tab=personal")}
               />
               <QuickAction
                 icon={QrCodeIcon}
-                label="My JoySplit ID"
+                label="My ID"
                 tone="bg-info/10 text-info"
                 onClick={() => setShowIdModal(true)}
               />
+            </div>
+
+            <HomeGamesCard />
+            <MonthSnapshot spentPaise={monthSpentPaise} count={monthCount} />
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1 rounded-2xl" onClick={() => router.push("/groups/new")}>
+                <HugeiconsIcon icon={PlusSignIcon} data-icon="inline-start" />
+                New group
+              </Button>
+              <Button variant="outline" className="flex-1 rounded-2xl" onClick={() => router.push("/friends/add")}>
+                <HugeiconsIcon icon={UserAdd01Icon} data-icon="inline-start" />
+                Add friend
+              </Button>
             </div>
 
             <Card className="rounded-3xl">
@@ -214,12 +260,14 @@ export default function HomePage() {
                       title="People you need to pay"
                       emptyText="You do not owe anyone right now."
                       rows={youOweTo}
+                      onSelectPerson={setSelectedPersonId}
                     />
                     <Separator />
                     <FriendBalanceSection
                       title="People who need to pay you"
                       emptyText="No one owes you right now."
                       rows={whoOwesYou}
+                      onSelectPerson={setSelectedPersonId}
                     />
                   </>
                 )}
@@ -332,7 +380,41 @@ export default function HomePage() {
           onOpenChange={setShowIdModal}
         />
       )}
+
+      {selectedPersonId && (
+        <SettleExpensesDialog
+          open={Boolean(selectedPersonId)}
+          onOpenChange={(open) => !open && setSelectedPersonId(null)}
+          personId={selectedPersonId}
+          onSettled={() => {
+            setSelectedPersonId(null)
+            expensesQuery.refetch()
+          }}
+        />
+      )}
     </>
+  )
+}
+
+function MonthSnapshot({ spentPaise, count }: { spentPaise: number; count: number }) {
+  const month = new Date().toLocaleString("en-IN", { month: "long" })
+  return (
+    <Link
+      href="/insights"
+      className="flex items-center gap-3 rounded-3xl border bg-card p-4 transition-colors hover:border-primary/40"
+    >
+      <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-secondary text-primary">
+        <HugeiconsIcon icon={Analytics01Icon} className="size-5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs text-muted-foreground">Your spend in {month}</span>
+        <span className="block text-lg font-extrabold tabular-nums">{formatPaise(spentPaise)}</span>
+      </span>
+      <span className="flex items-center gap-1 text-xs font-bold text-primary">
+        {count} {count === 1 ? "expense" : "expenses"}
+        <HugeiconsIcon icon={ArrowRight01Icon} className="size-3.5" />
+      </span>
+    </Link>
   )
 }
 
@@ -379,17 +461,17 @@ function QuickAction({
     <Button
       variant="outline"
       onClick={onClick}
-      className="h-auto flex-col gap-2 rounded-2xl bg-card p-3.5 whitespace-normal shadow-xs hover:border-primary/40 hover:shadow-md"
+      className="h-auto flex-col gap-1.5 rounded-2xl bg-card px-1 py-3 whitespace-normal shadow-xs hover:border-primary/40 hover:shadow-md sm:gap-2 sm:p-3.5"
     >
       <span
         className={cn(
-          "flex size-11 items-center justify-center rounded-2xl",
+          "flex size-10 items-center justify-center rounded-2xl sm:size-11",
           tone
         )}
       >
         <HugeiconsIcon icon={icon} className="size-5" strokeWidth={2.2} />
       </span>
-      <span className="text-center text-xs font-bold">{label}</span>
+      <span className="text-center text-[11px] leading-tight font-bold sm:text-xs">{label}</span>
     </Button>
   )
 }
@@ -407,11 +489,14 @@ function FriendBalanceSection({
   title,
   emptyText,
   rows,
+  onSelectPerson,
 }: {
   title: string
   emptyText: string
   rows: BalanceRow[]
+  onSelectPerson?: (userId: string) => void
 }) {
+  const gameDiscounts = useLiveGameDiscounts()
   return (
     <div className="flex flex-col gap-2">
       <div className="text-xs font-bold tracking-wider text-muted-foreground uppercase">
@@ -423,7 +508,8 @@ function FriendBalanceSection({
             <Item
               key={userId}
               size="sm"
-              className="flex-nowrap hover:bg-muted/50"
+              onClick={() => onSelectPerson?.(userId)}
+              className="flex-nowrap cursor-pointer transition-colors hover:bg-muted/60"
             >
               <ItemMedia>
                 <UserAvatar src={photoURL} name={name} size="sm" />
@@ -435,26 +521,32 @@ function FriendBalanceSection({
                 </ItemDescription>
               </ItemContent>
               <ItemActions className="gap-2">
-                <span
+                <GameDiscountAmount
+                  amountPaise={Math.abs(netBalancePaise)}
+                  discount={gameDiscounts.byPerson.get(userId)}
+                  now={gameDiscounts.now}
+                  prefix={netBalancePaise > 0 ? "+" : "-"}
                   className={cn(
-                    "rounded-full px-2.5 py-1 text-xs font-bold",
+                    "text-sm font-black leading-tight sm:text-base",
                     netBalancePaise > 0
-                      ? "bg-success/10 text-success"
-                      : "bg-destructive/10 text-destructive"
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-destructive"
                   )}
-                >
-                  {netBalancePaise > 0
-                    ? `+ ${formatPaise(netBalancePaise)}`
-                    : `- ${formatPaise(Math.abs(netBalancePaise))}`}
-                </span>
+                />
+                {/* Someone owes you: challenge them to a game */}
+                {netBalancePaise > 0 && (
+                  <ChallengeButton person={{ uid: userId, name, photoURL }} owedPaise={netBalancePaise} />
+                )}
                 {/* Where you owe someone, settle right here instead of hunting for the expense */}
                 {netBalancePaise < 0 && (
-                  <PayPersonButton
-                    personId={userId}
-                    personName={name}
-                    personPhoto={photoURL}
-                    personUpiId={upiId}
-                  />
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <PayPersonButton
+                      personId={userId}
+                      personName={name}
+                      personPhoto={photoURL}
+                      personUpiId={upiId}
+                    />
+                  </div>
                 )}
               </ItemActions>
             </Item>

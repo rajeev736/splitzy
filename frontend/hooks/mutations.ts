@@ -4,9 +4,14 @@ import { useMutation, useQueryClient, type QueryClient, type QueryKey } from "@t
 
 import { useSession } from "@/components/providers/session-provider"
 import { AppError } from "@/lib/errors"
+import type { RpsMove } from "@/lib/games"
+import { isFirebaseConfigured } from "@/lib/firebase/config"
 import { queryKeys } from "@/lib/query/keys"
-import type { AppNotification, Expense, FriendRequest, Group, UserProfile } from "@/lib/types"
+import { awaitRealtime } from "@/lib/query/realtime"
+import type { AppNotification, Challenge, Expense, FriendRequest, Group, UserProfile } from "@/lib/types"
+import * as accountService from "@/services/account"
 import * as authService from "@/services/auth"
+import * as challengeService from "@/services/challenges"
 import * as expenseService from "@/services/expenses"
 import * as friendService from "@/services/friends"
 import * as groupService from "@/services/groups"
@@ -40,12 +45,22 @@ function cacheFor(qc: QueryClient, uid: string) {
     friendRequests: list<FriendRequest>(queryKeys.friendRequests(uid)),
     groups: list<Group>(queryKeys.groups(uid)),
     expenses: list<Expense>(queryKeys.expenses(uid)),
+    /**
+     * Expenses once the realtime sync has delivered them. Money checks and
+     * settlements must use this: right after load the cache is still empty,
+     * and an empty list would wrongly mean "nothing owed / nothing to confirm".
+     */
+    loadExpenses: () =>
+      isFirebaseConfigured
+        ? awaitRealtime<Expense[]>(qc, queryKeys.expenses(uid))
+        : Promise.resolve(qc.getQueryData<Expense[]>(queryKeys.expenses(uid)) ?? []),
     notifications: list<AppNotification>(queryKeys.notifications(uid)),
     setFriends: patch<UserProfile>(queryKeys.friends(uid)),
     setFriendRequests: patch<FriendRequest>(queryKeys.friendRequests(uid)),
     setGroups: patch<Group>(queryKeys.groups(uid)),
     setExpenses: patch<Expense>(queryKeys.expenses(uid)),
     setNotifications: patch<AppNotification>(queryKeys.notifications(uid)),
+    setChallenges: patch<Challenge>(queryKeys.challenges(uid)),
   }
 }
 
@@ -124,6 +139,16 @@ export function useSendVerificationEmail(options: MutationToastOptions = {}) {
   return useMutation({ mutationFn: () => sendVerificationEmail(), meta: options })
 }
 
+/** Permanently deletes the account (see `services/account.ts`), then wipes this device and leaves. */
+export const useDeleteAccount = createUserMutation({
+  run: async ({ user, cache }, v: { password?: string }) => {
+    await accountService.deleteAccount(user, { expenses: await cache.loadExpenses(), groups: cache.groups() }, v)
+    await authService.logoutFirebase()
+    // Navigate here, not in onSuccess: the session is already gone by then
+    window.location.replace("/login?deleted=1")
+  },
+})
+
 export function useUpdateProfile(options: MutationToastOptions = {}) {
   const qc = useQueryClient()
   const { user, setProfile } = useSession()
@@ -168,14 +193,14 @@ export const useUpdateGroup = createUserMutation({
 })
 
 export const useLeaveGroup = createUserMutation({
-  run: ({ user, cache }, groupId: string) =>
-    groupService.leaveGroup(user, cache.groups().find((g) => g.id === groupId), cache.expenses()),
+  run: async ({ user, cache }, groupId: string) =>
+    groupService.leaveGroup(user, cache.groups().find((g) => g.id === groupId), await cache.loadExpenses()),
   apply: ({ cache }, _data, groupId) => cache.setGroups((list) => list.filter((g) => g.id !== groupId)),
 })
 
 export const useDeleteGroup = createUserMutation({
-  run: ({ user, cache }, groupId: string) =>
-    groupService.deleteGroup(user, cache.groups().find((g) => g.id === groupId), cache.expenses()),
+  run: async ({ user, cache }, groupId: string) =>
+    groupService.deleteGroup(user, cache.groups().find((g) => g.id === groupId), await cache.loadExpenses()),
   apply: ({ cache }, _data, groupId) => cache.setGroups((list) => list.filter((g) => g.id !== groupId)),
 })
 
@@ -253,21 +278,21 @@ export const useCreateExpense = createUserMutation({
 })
 
 export const useDeleteExpense = createUserMutation({
-  run: ({ user, cache }, expenseId: string) => expenseService.deleteExpense(user, cache.expenses(), expenseId),
+  run: async ({ user, cache }, expenseId: string) => expenseService.deleteExpense(user, await cache.loadExpenses(), expenseId),
   // Soft delete: keep the record (for history), flagged as deleted
   apply: ({ cache }, patch, expenseId) =>
     cache.setExpenses(patchById<Expense>(expenseId, patch ?? { deletedAt: new Date().toISOString() })),
 })
 
 export const useReportPayment = createUserMutation({
-  run: ({ user, cache }, v: { expenseId: string; note?: string }) =>
-    expenseService.reportPayment(user, cache.expenses(), v.expenseId, v.note),
+  run: async ({ user, cache }, v: { expenseId: string; note?: string }) =>
+    expenseService.reportPayment(user, await cache.loadExpenses(), v.expenseId, v.note),
   apply: ({ cache }, shares, { expenseId }) => cache.setExpenses(patchById<Expense>(expenseId, { shares })),
 })
 
 export const useConfirmPayment = createUserMutation({
-  run: ({ user, cache }, v: { expenseId: string; memberUserId: string; notifId?: string }) =>
-    expenseService.confirmPaymentReceipt(user, cache.expenses(), v.expenseId, v.memberUserId, v.notifId),
+  run: async ({ user, cache }, v: { expenseId: string; memberUserId: string; notifId?: string }) =>
+    expenseService.confirmPaymentReceipt(user, await cache.loadExpenses(), v.expenseId, v.memberUserId, v.notifId),
   apply: ({ cache }, shares, { expenseId, notifId }) => {
     cache.setExpenses(patchById<Expense>(expenseId, { shares }))
     if (notifId) {
@@ -277,8 +302,8 @@ export const useConfirmPayment = createUserMutation({
 })
 
 export const useDisputePayment = createUserMutation({
-  run: ({ user, cache }, v: { expenseId: string; memberUserId: string; notifId?: string }) =>
-    expenseService.disputePaymentReceipt(user, cache.expenses(), v.expenseId, v.memberUserId, v.notifId),
+  run: async ({ user, cache }, v: { expenseId: string; memberUserId: string; notifId?: string }) =>
+    expenseService.disputePaymentReceipt(user, await cache.loadExpenses(), v.expenseId, v.memberUserId, v.notifId),
   apply: ({ cache }, shares, { expenseId, notifId }) => {
     cache.setExpenses(patchById<Expense>(expenseId, { shares }))
     if (notifId) {
@@ -288,8 +313,8 @@ export const useDisputePayment = createUserMutation({
 })
 
 export const useReportPersonSettlement = createUserMutation({
-  run: ({ user, cache }, input: settlementService.ReportSettlementInput) =>
-    settlementService.reportPersonSettlement(user, cache.expenses(), input),
+  run: async ({ user, cache }, input: settlementService.ReportSettlementInput) =>
+    settlementService.reportPersonSettlement(user, await cache.loadExpenses(), input),
   apply: ({ cache }, result) => {
     const updatedMap = new Map(result.updatedExpenses.map((e) => [e.id, e]))
     cache.setExpenses((list) => list.map((e) => updatedMap.get(e.id) || e))
@@ -297,8 +322,8 @@ export const useReportPersonSettlement = createUserMutation({
 })
 
 export const useConfirmPersonSettlement = createUserMutation({
-  run: ({ user, cache }, input: settlementService.ConfirmSettlementInput) =>
-    settlementService.confirmPersonSettlement(user, cache.expenses(), input),
+  run: async ({ user, cache }, input: settlementService.ConfirmSettlementInput) =>
+    settlementService.confirmPersonSettlement(user, await cache.loadExpenses(), input),
   apply: ({ cache }, result, { notifId }) => {
     const updatedMap = new Map(result.updatedExpenses.map((e) => [e.id, e]))
     cache.setExpenses((list) => list.map((e) => updatedMap.get(e.id) || e))
@@ -309,8 +334,8 @@ export const useConfirmPersonSettlement = createUserMutation({
 })
 
 export const useDisputePersonSettlement = createUserMutation({
-  run: ({ user, cache }, input: settlementService.DisputeSettlementInput) =>
-    settlementService.disputePersonSettlement(user, cache.expenses(), input),
+  run: async ({ user, cache }, input: settlementService.DisputeSettlementInput) =>
+    settlementService.disputePersonSettlement(user, await cache.loadExpenses(), input),
   apply: ({ cache }, result, { notifId }) => {
     const updatedMap = new Map(result.updatedExpenses.map((e) => [e.id, e]))
     cache.setExpenses((list) => list.map((e) => updatedMap.get(e.id) || e))
@@ -321,8 +346,36 @@ export const useDisputePersonSettlement = createUserMutation({
 })
 
 export const useSendPaymentReminder = createUserMutation({
-  run: ({ user, cache }, v: { expenseId: string; targetUserId: string }) =>
-    expenseService.sendPaymentReminder(user, cache.expenses(), v.expenseId, v.targetUserId),
+  run: async ({ user, cache }, v: { expenseId: string; targetUserId: string }) =>
+    expenseService.sendPaymentReminder(user, await cache.loadExpenses(), v.expenseId, v.targetUserId),
+})
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Settle-up games
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+const upsertChallenge = (c: Challenge) => (list: Challenge[]) => [c, ...list.filter((x) => x.id !== c.id)]
+
+export const useCreateChallenge = createUserMutation({
+  run: ({ user }, input: challengeService.CreateChallengeInput) => challengeService.createChallenge(user, input),
+  apply: ({ cache }, challenge) => cache.setChallenges(upsertChallenge(challenge)),
+})
+
+export const useSubmitMove = createUserMutation({
+  run: ({ user }, v: { challenge: Challenge; move: RpsMove[] | number }) =>
+    challengeService.submitMove(user, v.challenge, v.move),
+  apply: ({ cache }, challenge) => cache.setChallenges(upsertChallenge(challenge)),
+})
+
+export const useResolveChallenge = createUserMutation({
+  run: ({ user }, challenge: Challenge) => challengeService.resolveChallenge(user, challenge),
+  apply: ({ cache }, challenge) => cache.setChallenges(upsertChallenge(challenge)),
+})
+
+export const useCancelChallenge = createUserMutation({
+  run: ({ user }, challenge: Challenge) => challengeService.cancelChallenge(user, challenge),
+  apply: ({ cache }, _data, challenge) => cache.setChallenges(patchById<Challenge>(challenge.id, { status: "CANCELLED" })),
+  defaults: { successMessage: "Game cancelled" },
 })
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -379,7 +432,7 @@ export const useCancelFriendRequest = createUserMutation({
 })
 
 export const useRemoveFriend = createUserMutation({
-  run: ({ user, cache }, friendUid: string) => friendService.removeFriend(user, friendUid, cache.expenses()),
+  run: async ({ user, cache }, friendUid: string) => friendService.removeFriend(user, friendUid, await cache.loadExpenses()),
   apply: ({ cache }, _data, friendUid) => cache.setFriends((list) => list.filter((f) => f.uid !== friendUid)),
 })
 

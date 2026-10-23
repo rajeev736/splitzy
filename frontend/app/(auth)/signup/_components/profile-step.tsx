@@ -1,24 +1,34 @@
 "use client"
 
+import * as React from "react"
 import { useRouter } from "nextjs-toploader/app"
 import { ArrowRight01Icon, AtIcon, Camera01Icon, Copy01Icon, Tick02Icon, UserIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
 
 import { useSession } from "@/components/providers/session-provider"
+import { AvatarPicker } from "@/components/shared/avatar-picker"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Item, ItemActions, ItemContent, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { Spinner } from "@/components/ui/spinner"
 import { useUpdateProfile } from "@/hooks/mutations"
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
+import { BOY_AVATARS, DEFAULT_AVATAR, GIRL_AVATARS } from "@/lib/avatars"
 import { cn } from "@/lib/utils"
 import { AuthHeading } from "../../_components/auth-card"
 import { AuthInput } from "../../_components/auth-input"
 
-const AVATAR_OPTIONS = ["/assets/avatar_boy.jpg", "/assets/avatar_girl.jpg", "/assets/avatar_glasses.jpg"]
-export const DEFAULT_AVATAR = AVATAR_OPTIONS[0]
+export { DEFAULT_AVATAR }
+
+const FEATURED_AVATARS = [
+  BOY_AVATARS[0].src,
+  GIRL_AVATARS[0].src,
+  BOY_AVATARS[1].src,
+  GIRL_AVATARS[1].src,
+]
 
 /** Signup step 3: avatar, name, JoySplit ID and UPI ID → completes onboarding. */
 export function ProfileStep({
@@ -41,6 +51,7 @@ export function ProfileStep({
   const router = useRouter()
   const { user } = useSession()
   const { copied, copy } = useCopyToClipboard()
+  const [isPickerOpen, setIsPickerOpen] = React.useState(false)
   const updateProfile = useUpdateProfile({ successMessage: "Profile configured successfully!", errorMessage: false })
 
   const handleComplete = () => {
@@ -77,15 +88,31 @@ export function ProfileStep({
 
       {/* Avatar selector */}
       <div className="flex flex-col items-center gap-3">
-        <div className="relative">
+        <button
+          type="button"
+          onClick={() => setIsPickerOpen(true)}
+          className="group relative cursor-pointer outline-none transition-transform hover:scale-105 active:scale-95"
+          title="Change profile avatar"
+        >
           <UserAvatar src={selectedAvatar} name={fullName} size="xl" className="size-24 ring-4 ring-card shadow-lg" />
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-foreground/10">
+          <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
             <HugeiconsIcon icon={Camera01Icon} className="size-6 text-white drop-shadow-md" />
           </div>
+        </button>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-muted-foreground">Choose your avatar</span>
+          <button
+            type="button"
+            onClick={() => setIsPickerOpen(true)}
+            className="text-xs font-bold text-primary hover:underline"
+          >
+            Browse all (23)
+          </button>
         </div>
-        <span className="text-xs font-semibold text-muted-foreground">Choose your avatar</span>
-        <div className="flex items-center gap-3">
-          {AVATAR_OPTIONS.map((img) => {
+
+        <div className="flex items-center gap-2.5">
+          {FEATURED_AVATARS.map((img) => {
             const selected = selectedAvatar === img
             return (
               <button
@@ -103,8 +130,33 @@ export function ProfileStep({
               </button>
             )
           })}
+
+          <button
+            type="button"
+            onClick={() => setIsPickerOpen(true)}
+            className="flex size-11 items-center justify-center rounded-full border-2 border-dashed border-primary/40 bg-primary/5 text-primary transition-all hover:bg-primary/10 hover:border-primary active:scale-95"
+            title="Browse all 23 avatars"
+            aria-label="Browse all avatars"
+          >
+            <span className="text-[11px] font-bold">+19</span>
+          </button>
         </div>
       </div>
+
+      <Dialog open={isPickerOpen} onOpenChange={setIsPickerOpen}>
+        <DialogContent className="max-w-md rounded-3xl p-5">
+          <DialogHeader>
+            <DialogTitle>Choose Your Avatar</DialogTitle>
+          </DialogHeader>
+          <AvatarPicker
+            selectedAvatar={selectedAvatar}
+            onSelectAvatar={(src) => {
+              onAvatarChange(src)
+              setIsPickerOpen(false)
+            }}
+          />
+        </DialogContent>
+      </Dialog>
 
       <FieldGroup className="gap-4">
         <AuthInput

@@ -2,132 +2,448 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
-    function isAuthenticated() {
+    // ───────────────────────── Helpers ─────────────────────────
+
+    function signedIn() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    function uid() {
+      return request.auth.uid;
     }
 
     function isValidJoySplitId(id) {
       return id.matches('^(JOY|SPL)-[A-Z0-9]{6}$');
     }
 
-    // JoySplit / Splitzy IDs collection for unique reservation
+    /** Only these top-level fields differ between the stored and the written doc. */
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    function changes(key) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny([key]);
+    }
+
+    function groupDoc(groupId) {
+      return get(/databases/$(database)/documents/groups/$(groupId)).data;
+    }
+
+    function isGroupMember(groupId) {
+      return uid() in groupDoc(groupId).members;
+    }
+
+    function isGroupMemberOrFormer(groupId) {
+      let g = groupDoc(groupId);
+      return uid() in g.members || uid() in g.get('formerMembers', []);
+    }
+
+    // ───────────────────────── JoySplit IDs ─────────────────────────
+    // Unique ID reservations. Immutable once claimed; freed only by the owner
+    // (account deletion).
     match /splitzyIds/{splitzyId} {
-      allow read: if isAuthenticated();
-      // Allow create only if doc doesn't exist yet and caller claims it for their own uid
-      allow create: if isAuthenticated() &&
-                    request.resource.data.uid == request.auth.uid &&
-                    isValidJoySplitId(splitzyId);
-      // Immutable once claimed to prevent impersonation
-      allow update, delete: if false;
+      allow read: if signedIn();
+      allow create: if signedIn() &&
+                    isValidJoySplitId(splitzyId) &&
+                    request.resource.data.uid == uid() &&
+                    request.resource.data.keys().hasOnly(['uid', 'createdAt', 'displayName']);
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.uid == uid();
     }
 
-    // Users Collection
+    // ───────────────────────── Users ─────────────────────────
+    // Public profile (name, JoySplit ID, photo, UPI) — needed for friend
+    // discovery and payments. Email is never stored here.
     match /users/{userId} {
-      // Authenticated users can read public profile (name, splitzyId, photo) for friend discovery
-      allow read: if isAuthenticated();
-      // Can only create their own document
-      allow create: if isOwner(userId) &&
-                    (!('uid' in request.resource.data) || request.resource.data.uid == userId);
-      // Can only update their own document; cannot change their uid or reassign another user's splitzyId
-      allow update: if isOwner(userId) &&
-                    (!('uid' in request.resource.data) || request.resource.data.uid == userId) &&
-                    (!('splitzyId' in resource.data) || !('splitzyId' in request.resource.data) || request.resource.data.splitzyId == resource.data.splitzyId);
-      allow delete: if false;
+      allow read: if signedIn();
+      allow create: if signedIn() && uid() == userId &&
+                    request.resource.data.uid == userId &&
+                    !('email' in request.resource.data) &&
+                    request.resource.data.get('photoURL', '').size() < 500000 &&
+                    // The JoySplit ID must be reserved by this user
+                    get(/databases/$(database)/documents/splitzyIds/$(request.resource.data.splitzyId)).data.uid == userId;
+      allow update: if signedIn() && uid() == userId &&
+                    request.resource.data.get('uid', userId) == userId &&
+                    request.resource.data.get('splitzyId', '') == resource.data.get('splitzyId', '') &&
+                    request.resource.data.get('photoURL', '').size() < 500000;
+      allow delete: if signedIn() && uid() == userId;
     }
 
-    // Canonical Friendships Collection
+    // ───────────────────────── Friendships ─────────────────────────
+    // Becoming ACTIVE requires a friend request the *other* person sent and
+    // this user accepted, so nobody can befriend someone unilaterally.
+    function isAcceptedRequestActivation(friendshipId) {
+      let data = request.resource.data;
+      let req = get(/databases/$(database)/documents/friendRequests/$(data.requestId)).data;
+      return req.status == 'ACCEPTED' &&
+             req.receiverId == uid() &&
+             data.users.size() == 2 &&
+             data.users.hasAll([req.senderId, req.receiverId]) &&
+             (friendshipId == req.senderId + '_' + req.receiverId ||
+              friendshipId == req.receiverId + '_' + req.senderId);
+    }
+
     match /friendships/{friendshipId} {
-      // Any signed-in user can read friendship links (uid pairs + status only):
-      // "People you may know" needs to read your friends' friendships.
-      allow read: if isAuthenticated();
-      // Allow creation when accepting request or initializing relationship
-      allow create: if isAuthenticated() &&
-                    request.auth.uid in request.resource.data.users &&
-                    request.resource.data.status in ['ACTIVE', 'REMOVED'];
-      // Either friend can update status (e.g. mark REMOVED or ACTIVE)
-      allow update: if isAuthenticated() &&
-                    request.auth.uid in resource.data.users;
-      allow delete: if isAuthenticated() &&
-                    request.auth.uid in resource.data.users;
+      // "People you may know" reads friends' friendships (uid pairs + status only)
+      allow read: if signedIn();
+      allow create: if signedIn() &&
+                    uid() in request.resource.data.users &&
+                    (request.resource.data.status == 'REMOVED' ||
+                     (request.resource.data.status == 'ACTIVE' && isAcceptedRequestActivation(friendshipId)));
+      allow update: if signedIn() &&
+                    uid() in resource.data.users &&
+                    request.resource.data.users.hasAll(resource.data.users) &&
+                    (request.resource.data.status == 'REMOVED' ||
+                     (request.resource.data.status == 'ACTIVE' &&
+                      (resource.data.status == 'ACTIVE' || isAcceptedRequestActivation(friendshipId))));
+      allow delete: if signedIn() && uid() in resource.data.users;
     }
 
-    // Friend Requests Collection
+    // ───────────────────────── Friend requests ─────────────────────────
     match /friendRequests/{requestId} {
-      allow read: if isAuthenticated() &&
-                  (resource.data.senderId == request.auth.uid || resource.data.receiverId == request.auth.uid);
-      allow create: if isAuthenticated() &&
-                    request.resource.data.senderId == request.auth.uid &&
-                    request.resource.data.receiverId != request.auth.uid &&
+      allow read: if signedIn() &&
+                  (resource.data.senderId == uid() || resource.data.receiverId == uid());
+      allow create: if signedIn() &&
+                    request.resource.data.senderId == uid() &&
+                    request.resource.data.receiverId != uid() &&
                     request.resource.data.status == 'PENDING';
-      // Sender can cancel, receiver can accept or reject
-      allow update: if isAuthenticated() &&
-                    ((resource.data.receiverId == request.auth.uid &&
-                      (request.resource.data.status in ['ACCEPTED', 'REJECTED'])) ||
-                     (resource.data.senderId == request.auth.uid &&
+      // Receiver accepts/rejects, sender cancels — status only
+      allow update: if signedIn() &&
+                    onlyChanges(['status', 'updatedAt']) &&
+                    ((resource.data.receiverId == uid() &&
+                      request.resource.data.status in ['ACCEPTED', 'REJECTED']) ||
+                     (resource.data.senderId == uid() &&
                       request.resource.data.status == 'CANCELLED'));
-      allow delete: if isAuthenticated() &&
-                    (resource.data.senderId == request.auth.uid || resource.data.receiverId == request.auth.uid);
+      allow delete: if signedIn() &&
+                    (resource.data.senderId == uid() || resource.data.receiverId == uid());
     }
 
-    // Groups Collection
+    // ───────────────────────── Groups ─────────────────────────
+    function membersRemoved() {
+      return resource.data.members.toSet().difference(request.resource.data.members.toSet());
+    }
+
+    function membersAdded() {
+      return request.resource.data.members.toSet().difference(resource.data.members.toSet());
+    }
+
+    function validOwnership() {
+      // Ownership only moves when the creator leaves, and only to a remaining member
+      return request.resource.data.createdBy == resource.data.createdBy ||
+             (resource.data.createdBy == uid() &&
+              request.resource.data.createdBy in request.resource.data.members);
+    }
+
+    function validStatus() {
+      let next = request.resource.data.get('status', 'ACTIVE');
+      return next == resource.data.get('status', 'ACTIVE') ||
+             (next == 'ARCHIVED' &&
+              (resource.data.createdBy == uid() || request.resource.data.members.size() == 0));
+    }
+
     match /groups/{groupId} {
-      // Members, invited non-friend invitees, and former members (for historical audit trail) can read
-      allow read: if isAuthenticated() &&
-                  (request.auth.uid in resource.data.members ||
-                   (resource.data.formerMembers != null && request.auth.uid in resource.data.formerMembers) ||
-                   (resource.data.invitedMembers != null && request.auth.uid in resource.data.invitedMembers));
-      // Creator must be in member list upon creation
-      allow create: if isAuthenticated() &&
-                    request.resource.data.createdBy == request.auth.uid &&
-                    request.auth.uid in request.resource.data.members;
-      // Existing members or invited users can update (e.g. accept invite, leave group)
-      allow update: if isAuthenticated() &&
-                    (request.auth.uid in resource.data.members ||
-                     (resource.data.invitedMembers != null && request.auth.uid in resource.data.invitedMembers));
-      // ONLY creator can delete or archive the group
-      allow delete: if isAuthenticated() &&
-                    resource.data.createdBy == request.auth.uid;
+      // Members, pending invitees and former members (history) can read
+      allow read: if signedIn() &&
+                  (uid() in resource.data.members ||
+                   uid() in resource.data.get('formerMembers', []) ||
+                   uid() in resource.data.get('invitedMembers', []));
+      allow create: if signedIn() &&
+                    request.resource.data.createdBy == uid() &&
+                    uid() in request.resource.data.members &&
+                    request.resource.data.get('status', 'ACTIVE') == 'ACTIVE';
+      // Members add people directly (PhonePe style), edit details and leave.
+      // Removing others is limited to the creator archiving the group.
+      allow update: if signedIn() &&
+                    request.resource.data.get('createdAt', '') == resource.data.get('createdAt', '') &&
+                    validOwnership() &&
+                    validStatus() &&
+                    (
+                      (uid() in resource.data.members &&
+                       (membersRemoved().hasOnly([uid()]) ||
+                        (resource.data.createdBy == uid() && request.resource.data.get('status', '') == 'ARCHIVED')))
+                      ||
+                      // Legacy pending invitation: the invitee may join or decline, nothing else
+                      (uid() in resource.data.get('invitedMembers', []) &&
+                       onlyChanges(['members', 'invitedMembers', 'invitedMemberDetails', 'memberDetails',
+                                    'formerMembers', 'formerMemberDetails']) &&
+                       membersRemoved().size() == 0 &&
+                       membersAdded().hasOnly([uid()]))
+                    );
+      allow delete: if signedIn() && resource.data.createdBy == uid() &&
+                    resource.data.members.hasOnly([uid()]);
     }
 
-    // Expenses Collection
+    // ───────────────────────── Expenses ─────────────────────────
+    // Direct field access on purpose: a missing field errors only its own branch,
+    // and Firestore can prove these against the app's array-contains / == queries.
+    function isInvolved(d) {
+      return uid() in d.participantUids ||
+             d.createdBy == uid() ||
+             d.payerId == uid() ||
+             d.recipientId == uid();
+    }
+
+    function inGroupOf(d) {
+      return d.groupId is string && d.groupId != '' && isGroupMemberOrFormer(d.groupId);
+    }
+
+    /** Who a share is owed to — mirrors `payeeOf` in lib/money. */
+    function payeeOf(d, shareUserId) {
+      let creditor = d.get('recipientId', '') != '' ? d.recipientId : d.payerId;
+      return shareUserId == creditor ? d.payerId : creditor;
+    }
+
+    /**
+     * One share may change only by the person it is owed to (confirm,
+     * dispute, forgive, approve a cancel-out) or by its owner reporting /
+     * reopening their own payment. A debtor can mark their own share PAID only
+     * when the person it is owed to approved cancelling it out
+     * (`offsetApprovedBy`) — which only that person can set.
+     */
+    function shareOk(i) {
+      // Index check first, so unused slots never touch out-of-range elements
+      return i >= resource.data.shares.size() ||
+             shareChangeOk(resource.data.shares[i], request.resource.data.shares[i]);
+    }
+
+    function shareChangeOk(before, after) {
+      let payee = payeeOf(resource.data, before.userId);
+      let approval = before.get('offsetApprovedBy', '');
+      return after == before ||
+             (after.userId == before.userId &&
+              after.amountPaise == before.amountPaise &&
+              (payee == uid() ||
+               (before.userId == uid() &&
+                after.get('offsetApprovedBy', '') in [approval, ''] &&
+                (after.status == before.status ||
+                 after.status in ['PAYMENT_REPORTED', 'PENDING'] ||
+                 (after.status == 'PAID' && approval != '' && approval == payee)))));
+    }
+
+    function sharesOk() {
+      return request.resource.data.shares.size() == resource.data.shares.size() &&
+             shareOk(0) && shareOk(1) && shareOk(2) && shareOk(3) && shareOk(4) &&
+             shareOk(5) && shareOk(6) && shareOk(7) && shareOk(8) && shareOk(9) &&
+             shareOk(10) && shareOk(11) && shareOk(12) && shareOk(13) && shareOk(14) &&
+             shareOk(15) && shareOk(16) && shareOk(17) && shareOk(18) && shareOk(19) &&
+             shareOk(20) && shareOk(21) && shareOk(22) && shareOk(23) && shareOk(24) &&
+             shareOk(25) && shareOk(26) && shareOk(27) && shareOk(28) && shareOk(29) &&
+             shareOk(30) && shareOk(31) && shareOk(32) && shareOk(33) && shareOk(34) &&
+             shareOk(35) && shareOk(36) && shareOk(37) && shareOk(38) && shareOk(39) &&
+             shareOk(40) && shareOk(41) && shareOk(42) && shareOk(43) && shareOk(44) &&
+             shareOk(45) && shareOk(46) && shareOk(47) && shareOk(48) && shareOk(49);
+    }
+
     match /expenses/{expenseId} {
-      // Authenticated users can read expenses (filtered by client query for user groups and participation)
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() &&
+      allow read: if signedIn() &&
+                  (isInvolved(resource.data) || inGroupOf(resource.data));
+
+      allow create: if signedIn() &&
+                    request.resource.data.createdBy == uid() &&
                     request.resource.data.amountPaise is int &&
                     request.resource.data.amountPaise > 0 &&
-                    request.resource.data.createdBy == request.auth.uid;
-      // Authorized participants or group members can report/confirm payments or update shares
-      allow update: if isAuthenticated() &&
-                    (resource.data.createdBy == request.auth.uid ||
-                     resource.data.payerId == request.auth.uid ||
-                     resource.data.recipientId == request.auth.uid ||
-                     (resource.data.participantUids != null && request.auth.uid in resource.data.participantUids) ||
-                     (resource.data.groupId != null &&
-                      exists(/databases/$(database)/documents/groups/$(resource.data.groupId)) &&
-                      request.auth.uid in get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.members));
-      // Payer or creator can delete expense (when no confirmed payments exist)
-      allow delete: if isAuthenticated() &&
-                    (resource.data.createdBy == request.auth.uid ||
-                     resource.data.payerId == request.auth.uid);
+                    request.resource.data.shares is list &&
+                    request.resource.data.shares.size() >= 1 &&
+                    request.resource.data.shares.size() <= 50 &&
+                    !('deletedAt' in request.resource.data) &&
+                    (request.resource.data.get('groupId', '') != ''
+                      ? isGroupMember(request.resource.data.groupId)
+                      : (uid() in request.resource.data.get('participantUids', []) ||
+                         request.resource.data.payerId == uid()));
+
+      allow update: if signedIn() &&
+                    (isInvolved(resource.data) ||
+                     (resource.data.get('groupId', '') != '' && isGroupMember(resource.data.groupId))) &&
+                    onlyChanges(['shares', 'updatedAt', 'deletedAt', 'deletedBy',
+                                 'groupName', 'groupIcon', 'payerName', 'recipientName']) &&
+                    (!changes('shares') || sharesOk()) &&
+                    // Soft delete: creator or payer, recorded as themselves
+                    (!changes('deletedAt') ||
+                     ((resource.data.createdBy == uid() || resource.data.payerId == uid()) &&
+                      request.resource.data.deletedBy == uid())) &&
+                    (!changes('payerName') || resource.data.payerId == uid()) &&
+                    (!changes('recipientName') || resource.data.get('recipientId', '') == uid());
+
+      // Hard delete only for expenses that involve nobody else (account
+      // deletion); shared expenses are soft-deleted so everyone keeps history.
+      allow delete: if signedIn() &&
+                    resource.data.createdBy == uid() &&
+                    (resource.data.get('expenseType', '') == 'personal' ||
+                     resource.data.get('isPersonal', false) == true ||
+                     resource.data.get('participantUids', ['_']).hasOnly([uid()]));
     }
 
-    // Notifications Collection
+    // ───────────────────────── Challenges (settle-up games) ─────────────────────────
+    // The host (who is owed money) hides a secret in challenges/{id}/secret/value:
+    // their 3 Stone-Paper-Scissors moves, or the lucky number. A player can read
+    // it only after locking in their own move, and a result is accepted only if
+    // it matches the secret — so nobody can peek or fake a win. Mirrors lib/games.
+
+    function challengeDoc(id) {
+      return get(/databases/$(database)/documents/challenges/$(id)).data;
+    }
+
+    function secretDoc(id) {
+      return get(/databases/$(database)/documents/challenges/$(id)/secret/value).data;
+    }
+
+    function everyonePlayed(c) {
+      return c.moves.keys().hasAll(c.players);
+    }
+
+    function validMove(game, move) {
+      return game == 'rps'
+        ? move is list && move.size() == 3 &&
+          move[0] in ['rock', 'paper', 'scissors'] &&
+          move[1] in ['rock', 'paper', 'scissors'] &&
+          move[2] in ['rock', 'paper', 'scissors']
+        : move is int && move >= 1 && move <= 100;
+    }
+
+    function rpsBeats(a, b) {
+      return (a == 'rock' && b == 'scissors') || (a == 'paper' && b == 'rock') || (a == 'scissors' && b == 'paper');
+    }
+
+    function roundWin(a, b) {
+      return rpsBeats(a, b) ? 1 : 0;
+    }
+
+    function validRpsResult(c, secret, result) {
+      let p = c.players[0];
+      let m = c.moves[p];
+      let h = secret.moves;
+      let playerWins = roundWin(m[0], h[0]) + roundWin(m[1], h[1]) + roundWin(m[2], h[2]);
+      let hostWins = roundWin(h[0], m[0]) + roundWin(h[1], m[1]) + roundWin(h[2], m[2]);
+      return result.hostMoves == h &&
+             result.winners == (playerWins > hostWins ? [p] : []);
+    }
+
+    /** Player i either didn't play, or is a winner exactly when at the winning distance. */
+    function luckyPlayerOk(c, secret, result, i) {
+      return i >= c.players.size() ||
+             !(c.players[i] in c.moves) ||
+             luckyDistanceOk(math.abs(c.moves[c.players[i]] - secret.number), c.players[i], result);
+    }
+
+    function luckyDistanceOk(dist, player, result) {
+      return dist >= result.winningDistance && ((player in result.winners) == (dist == result.winningDistance));
+    }
+
+    function validLuckyResult(c, secret, result) {
+      return result.number == secret.number &&
+             result.winningDistance is int &&
+             result.winners.size() >= 1 &&
+             result.winners.toSet().difference(c.moves.keys().toSet()).size() == 0 &&
+             luckyPlayerOk(c, secret, result, 0) && luckyPlayerOk(c, secret, result, 1) &&
+             luckyPlayerOk(c, secret, result, 2) && luckyPlayerOk(c, secret, result, 3) &&
+             luckyPlayerOk(c, secret, result, 4) && luckyPlayerOk(c, secret, result, 5) &&
+             luckyPlayerOk(c, secret, result, 6) && luckyPlayerOk(c, secret, result, 7) &&
+             luckyPlayerOk(c, secret, result, 8) && luckyPlayerOk(c, secret, result, 9) &&
+             luckyPlayerOk(c, secret, result, 10) && luckyPlayerOk(c, secret, result, 11) &&
+             luckyPlayerOk(c, secret, result, 12) && luckyPlayerOk(c, secret, result, 13) &&
+             luckyPlayerOk(c, secret, result, 14);
+    }
+
+    match /challenges/{challengeId} {
+      allow read: if signedIn() && uid() in resource.data.participants;
+
+      allow create: if signedIn() &&
+                    request.resource.data.hostId == uid() &&
+                    request.resource.data.status == 'OPEN' &&
+                    request.resource.data.moves == {} &&
+                    !('result' in request.resource.data) &&
+                    request.resource.data.discountPercent is int &&
+                    request.resource.data.discountPercent >= 1 &&
+                    request.resource.data.discountPercent <= 100 &&
+                    request.resource.data.players.size() >= 1 &&
+                    !(uid() in request.resource.data.players) &&
+                    request.resource.data.participants.size() == request.resource.data.players.size() + 1 &&
+                    request.resource.data.participants.hasAll(request.resource.data.players) &&
+                    uid() in request.resource.data.participants &&
+                    ((request.resource.data.kind == 'friend' && request.resource.data.game == 'rps' &&
+                      request.resource.data.players.size() == 1) ||
+                     (request.resource.data.kind == 'group' && request.resource.data.game == 'lucky_number' &&
+                      request.resource.data.players.size() <= 15)) &&
+                    existsAfter(/databases/$(database)/documents/challenges/$(challengeId)/secret/value);
+
+      allow update: if signedIn() && (
+                      // A winner records using their discount, once, within 10 minutes
+                      // of the result by server time (so an expired discount can't be used)
+                      (resource.data.status == 'DONE' &&
+                       uid() in resource.data.result.winners &&
+                       onlyChanges(['redeemed']) &&
+                       !(uid() in resource.data.get('redeemed', {})) &&
+                       request.resource.data.redeemed.diff(resource.data.get('redeemed', {})).affectedKeys().hasOnly([uid()]) &&
+                       request.resource.data.redeemed[uid()] is int &&
+                       request.resource.data.redeemed[uid()] > 0 &&
+                       request.resource.data.redeemed[uid()] <=
+                         resource.data.bases[uid()] * resource.data.discountPercent / 100 &&
+                       request.time < resource.data.resolvedAt + duration.value(10, 'm'))
+                      ||
+                      (resource.data.status == 'OPEN' && validOpenUpdate(challengeId))
+                    );
+
+      /** Moves, the result, or cancelling — while the game is still open. */
+      function validOpenUpdate(challengeId) {
+        return (
+                      // A player locks in their own move, once
+                      (uid() in resource.data.players &&
+                       onlyChanges(['moves']) &&
+                       !(uid() in resource.data.moves) &&
+                       request.resource.data.moves.diff(resource.data.moves).affectedKeys().hasOnly([uid()]) &&
+                       validMove(resource.data.game, request.resource.data.moves[uid()]))
+                      ||
+                      // Anyone in the game records the result once everyone played;
+                      // the host may also end a group game early
+                      (uid() in resource.data.participants &&
+                       (everyonePlayed(resource.data) ||
+                        (resource.data.hostId == uid() && resource.data.kind == 'group' &&
+                         resource.data.moves.size() >= 1)) &&
+                       onlyChanges(['status', 'result', 'resolvedAt']) &&
+                       request.resource.data.status == 'DONE' &&
+                       request.resource.data.resolvedAt == request.time &&
+                       (resource.data.game == 'rps'
+                         ? validRpsResult(resource.data, secretDoc(challengeId), request.resource.data.result)
+                         : validLuckyResult(resource.data, secretDoc(challengeId), request.resource.data.result)))
+                      ||
+                      // The host withdraws an unfinished game
+                      (resource.data.hostId == uid() &&
+                       onlyChanges(['status']) &&
+                       request.resource.data.status == 'CANCELLED')
+        );
+      }
+
+      allow delete: if signedIn() && resource.data.hostId == uid();
+
+      match /secret/{docId} {
+        allow read: if signedIn() &&
+                    (challengeDoc(challengeId).hostId == uid() ||
+                     (uid() in challengeDoc(challengeId).players &&
+                      (everyonePlayed(challengeDoc(challengeId)) ||
+                       challengeDoc(challengeId).status == 'DONE')));
+        allow create: if signedIn() && docId == 'value' &&
+                      getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.hostId == uid() &&
+                      (validMove('rps', request.resource.data.get('moves', null)) ||
+                       validMove('lucky_number', request.resource.data.get('number', null)));
+        allow update: if false;
+        allow delete: if signedIn() && challengeDoc(challengeId).hostId == uid();
+      }
+    }
+
+    // ───────────────────────── Notifications ─────────────────────────
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated() &&
-                  resource.data.userId == request.auth.uid;
-      allow create: if isAuthenticated();
-      // Recipient can mark read
-      allow update: if isAuthenticated() &&
-                    resource.data.userId == request.auth.uid &&
-                    request.resource.data.userId == resource.data.userId;
-      allow delete: if isAuthenticated() &&
-                    resource.data.userId == request.auth.uid;
+      allow read: if signedIn() && resource.data.userId == uid();
+      // Senders must identify themselves truthfully
+      allow create: if signedIn() &&
+                    request.resource.data.userId is string &&
+                    request.resource.data.userId != uid() &&
+                    request.resource.data.get('data', {}).get('actorId', '') == uid() &&
+                    request.resource.data.read == false;
+      // Recipient marks read / records the action taken
+      allow update: if signedIn() &&
+                    resource.data.userId == uid() &&
+                    onlyChanges(['read', 'actionTaken']);
+      allow delete: if signedIn() && resource.data.userId == uid();
     }
   }
 }

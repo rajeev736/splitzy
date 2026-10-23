@@ -7,13 +7,35 @@ import { useExpenses, useFriendRequests, useGroupInvites } from "@/hooks/queries
 
 const SEEN_EVENT = "splitzy_expense_seen_change"
 
-function getSeenSet(uid: string): Set<string> {
-  if (typeof window === "undefined" || !uid) return new Set()
+const seenKey = (uid: string) => `splitzy_seen_expenses_${uid}`
+
+function readSeenRaw(uid: string | undefined): string | null {
+  if (typeof window === "undefined" || !uid) return null
   try {
-    const raw = localStorage.getItem(`splitzy_seen_expenses_${uid}`)
+    return localStorage.getItem(seenKey(uid))
+  } catch {
+    return null
+  }
+}
+
+function parseSeenSet(raw: string | null): Set<string> {
+  try {
     return raw ? new Set(JSON.parse(raw)) : new Set()
   } catch {
     return new Set()
+  }
+}
+
+function getSeenSet(uid: string): Set<string> {
+  return parseSeenSet(readSeenRaw(uid))
+}
+
+function subscribeToSeen(onChange: () => void) {
+  window.addEventListener(SEEN_EVENT, onChange)
+  window.addEventListener("storage", onChange)
+  return () => {
+    window.removeEventListener(SEEN_EVENT, onChange)
+    window.removeEventListener("storage", onChange)
   }
 }
 
@@ -23,7 +45,7 @@ export function markExpenseAsSeen(uid: string | undefined, expenseId: string) {
     const set = getSeenSet(uid)
     if (!set.has(expenseId)) {
       set.add(expenseId)
-      localStorage.setItem(`splitzy_seen_expenses_${uid}`, JSON.stringify(Array.from(set)))
+      localStorage.setItem(seenKey(uid), JSON.stringify(Array.from(set)))
       window.dispatchEvent(new Event(SEEN_EVENT))
     }
   } catch {
@@ -38,20 +60,13 @@ export function useUnreadTracking() {
   const { data: friendRequests } = useFriendRequests()
   const { data: groupInvites } = useGroupInvites()
 
-  const [seenSet, setSeenSet] = React.useState<Set<string>>(() => (uid ? getSeenSet(uid) : new Set()))
-
-  React.useEffect(() => {
-    if (!uid) return
-    setSeenSet(getSeenSet(uid))
-
-    const handleUpdate = () => setSeenSet(getSeenSet(uid))
-    window.addEventListener(SEEN_EVENT, handleUpdate)
-    window.addEventListener("storage", handleUpdate)
-    return () => {
-      window.removeEventListener(SEEN_EVENT, handleUpdate)
-      window.removeEventListener("storage", handleUpdate)
-    }
-  }, [uid])
+  // Subscribe to the localStorage-backed seen list; the raw string is a stable snapshot
+  const seenRaw = React.useSyncExternalStore(
+    subscribeToSeen,
+    () => readSeenRaw(uid),
+    () => null
+  )
+  const seenSet = React.useMemo(() => parseSeenSet(seenRaw), [seenRaw])
 
   // Check if an expense in a group was created by someone else and not yet seen by the user
   const isExpenseUnread = React.useCallback(

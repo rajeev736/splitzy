@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
-import { getAuth, Auth } from "firebase/auth";
+import { connectAuthEmulator, getAuth, Auth } from "firebase/auth";
 import {
+  connectFirestoreEmulator,
   getFirestore,
   initializeFirestore,
   persistentLocalCache,
@@ -41,6 +42,7 @@ export const isFirebaseConfigured = Boolean(
 );
 
 let app: FirebaseApp | undefined;
+const emulatorState = { done: false };
 let auth: Auth | undefined;
 let db: Firestore | undefined;
 
@@ -50,6 +52,12 @@ if (typeof window !== "undefined" || isFirebaseConfigured) {
       app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
       auth = getAuth(app);
       db = createFirestore(app);
+      // Local development against the Firebase emulators (never set in production)
+      if (process.env.NEXT_PUBLIC_FIREBASE_EMULATOR === "1" && !emulatorState.done) {
+        emulatorState.done = true;
+        connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+        connectFirestoreEmulator(db, "127.0.0.1", 8080);
+      }
     }
   } catch (error) {
     console.warn("Firebase initialization warning:", error);

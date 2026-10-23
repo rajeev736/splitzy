@@ -3,8 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "nextjs-toploader/app"
-import { useSearchParams } from "next/navigation"
-import { ArrowLeft01Icon, UserGroupIcon } from "@hugeicons/core-free-icons"
+import { UserGroupIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { GroupInviteCard } from "../../_components/group-invite-card"
@@ -19,21 +18,22 @@ import { Spinner } from "@/components/ui/spinner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useCancelGroupInvite } from "@/hooks/mutations"
 import { useGroupInvites, useSentGroupInvites } from "@/hooks/queries"
+import { useQueryTab } from "@/hooks/use-query-tab"
 
 type Tab = "received" | "sent"
 
-const toTab = (param: string | null): Tab | null => (param === "sent" || param === "received" ? param : null)
+const TABS: Tab[] = ["received", "sent"]
 
-export default function GroupInvitationsPage() {
+function GroupInvitationsContent() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const tabParam = searchParams.get("tab")
-
   const { data: received } = useGroupInvites()
   const { data: sent } = useSentGroupInvites()
   const cancel = useCancelGroupInvite()
 
-  const [activeTab, setActiveTab] = React.useState<Tab>(toTab(tabParam) ?? "received")
+  const [activeTab, setActiveTab] = useQueryTab<Tab>({
+    defaultValue: "received",
+    validValues: TABS,
+  })
 
   return (
     <>
@@ -140,5 +140,19 @@ export default function GroupInvitationsPage() {
         </Tabs>
       </PageContainer>
     </>
+  )
+}
+
+export default function GroupInvitationsPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="flex min-h-svh items-center justify-center">
+          <Spinner className="size-8 text-primary" />
+        </div>
+      }
+    >
+      <GroupInvitationsContent />
+    </React.Suspense>
   )
 }

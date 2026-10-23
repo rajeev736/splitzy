@@ -1,5 +1,5 @@
 import { db } from "./config";
-import { doc, getDoc, runTransaction } from "firebase/firestore";
+import { doc, runTransaction } from "firebase/firestore";
 
 /**
  * Generates a random JoySplit ID matching format JOY-XXXXXX

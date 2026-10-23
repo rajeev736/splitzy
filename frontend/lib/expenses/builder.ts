@@ -92,8 +92,8 @@ export function validateExpenseInput(input: BuildExpenseInput): ValidationResult
 /**
  * Cleanly strips any undefined properties from an object so Firestore setDoc never encounters undefined.
  */
-export function sanitizeForFirestore<T extends object>(obj: T): Record<string, any> {
-  const sanitized: Record<string, any> = {};
+export function sanitizeForFirestore<T extends object>(obj: T): T {
+  const sanitized: Record<string, unknown> = {};
 
   for (const [key, val] of Object.entries(obj)) {
     if (val === undefined) continue;
@@ -111,8 +111,12 @@ export function sanitizeForFirestore<T extends object>(obj: T): Record<string, a
     }
   }
 
-  return sanitized;
+  // Only undefined-valued keys are dropped, so the result still satisfies T
+  return sanitized as T;
 }
+
+/** An Expense as written by the builder: participantUids is always populated. */
+export type BuiltExpense = Expense & { participantUids: string[] };
 
 /**
  * Builds a validated, clean Firestore Expense document with no undefined fields.
@@ -120,7 +124,7 @@ export function sanitizeForFirestore<T extends object>(obj: T): Record<string, a
 export function buildFirestoreExpense(
   expenseId: string,
   input: BuildExpenseInput
-): { expenseDoc: Expense; firestorePayload: Record<string, any> } {
+): { expenseDoc: Expense; firestorePayload: BuiltExpense } {
   const validation = validateExpenseInput(input);
   if (!validation.isValid) {
     throw new Error(validation.error);
@@ -132,7 +136,7 @@ export function buildFirestoreExpense(
 
   if (input.expenseType === "personal") {
     // Mode C: Personal Expense
-    const personalDoc: Expense = {
+    const personalDoc: BuiltExpense = {
       id: expenseId,
       expenseType: "personal",
       isPersonal: true,
@@ -179,7 +183,7 @@ export function buildFirestoreExpense(
     status: s.userId === input.payerId ? "PAID" : "PENDING",
   }));
 
-  const sharedDoc: Expense = {
+  const sharedDoc: BuiltExpense = {
     id: expenseId,
     expenseType: isDirect ? "friend" : "group",
     isPersonal: false,

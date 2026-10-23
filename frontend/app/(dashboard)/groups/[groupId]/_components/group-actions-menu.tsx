@@ -54,15 +54,15 @@ export function GroupActionsMenu({
           Edit Group
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {isCreator ? (
+        {/* Everyone can leave; a leaving creator hands the group to the next member */}
+        <DropdownMenuItem variant="destructive" onClick={onLeave}>
+          <HugeiconsIcon icon={Logout01Icon} />
+          Leave Group
+        </DropdownMenuItem>
+        {isCreator && (
           <DropdownMenuItem variant="destructive" onClick={onDelete}>
             <HugeiconsIcon icon={Delete02Icon} />
             Delete Group
-          </DropdownMenuItem>
-        ) : (
-          <DropdownMenuItem variant="destructive" onClick={onLeave}>
-            <HugeiconsIcon icon={Logout01Icon} />
-            Leave Group
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>

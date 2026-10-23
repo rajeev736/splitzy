@@ -34,7 +34,6 @@ export function InviteFriendsList({
     <div className={cn("max-h-52 overflow-y-auto", className)}>
       <ItemGroup className="gap-0">
         {nonMemberFriends.map((f, i) => {
-          const isInvited = group.invitedMembers?.includes(f.uid) ?? false
           return (
             <Fragment key={f.uid}>
               {i > 0 && <ItemSeparator className="my-0" />}
@@ -49,12 +48,12 @@ export function InviteFriendsList({
                 <ItemActions>
                   <Button
                     size="sm"
-                    variant={isInvited ? "secondary" : "outline"}
-                    disabled={isInvited || pendingUid === f.uid}
+                    variant="outline"
+                    disabled={pendingUid === f.uid}
                     onClick={() => onInvite(f.uid)}
                   >
                     {pendingUid === f.uid && <Spinner />}
-                    {isInvited ? "Invited" : "Invite"}
+                    Add
                   </Button>
                 </ItemActions>
               </Item>

@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/item"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useExpenseHistory } from "@/hooks/queries"
+import { useQueryTab } from "@/hooks/use-query-tab"
 import { formatPaise } from "@/lib/money"
 import type { Expense, UserProfile } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -149,12 +150,17 @@ function derivePayments(user: UserProfile | null, expenses: Expense[]) {
   return { records, totalSentPaise, totalReceivedPaise }
 }
 
-export default function HistoryPage() {
+const MAIN_VIEWS: MainView[] = ["expenses", "payments"]
+
+function HistoryContent() {
   const { user } = useSession()
   const { data: expenses, isPending, isError, error, refetch } =
     useExpenseHistory()
 
-  const [mainView, setMainView] = React.useState<MainView>("expenses")
+  const [mainView, setMainView] = useQueryTab<MainView>({
+    defaultValue: "expenses",
+    validValues: MAIN_VIEWS,
+  })
   const [expenseFilter, setExpenseFilter] = React.useState<ExpenseFilter>("all")
   const [paymentFilter, setPaymentFilter] = React.useState<PaymentFilter>("all")
 
@@ -440,5 +446,13 @@ function PaymentRow({ payment: p }: { payment: PaymentRecord }) {
         </span>
       </ItemActions>
     </Item>
+  )
+}
+
+export default function HistoryPage() {
+  return (
+    <React.Suspense fallback={<ListSkeleton />}>
+      <HistoryContent />
+    </React.Suspense>
   )
 }

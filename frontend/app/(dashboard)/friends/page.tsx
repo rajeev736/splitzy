@@ -28,6 +28,9 @@ import { useSession } from "@/components/providers/session-provider"
 import { ButtonLink } from "@/components/shared/button-link"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { PayPersonButton } from "@/components/shared/pay-person-button"
+import { ChallengeButton } from "@/components/games/challenge-button"
+import { GameDiscountAmount } from "@/components/games/game-discount-amount"
+import { useLiveGameDiscounts } from "@/hooks/use-game-discounts"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -49,12 +52,12 @@ import { useRemoveFriend, useSendFriendBalanceReminder } from "@/hooks/mutations
 import { useExpenses, useFriendRequests, useFriends, useGroups } from "@/hooks/queries"
 import {
   calculateDirectBalance,
-  calculateMemberGroupBalance,
   canRemoveFriend,
   filterExpensesByScope,
   formatPaise,
 } from "@/lib/money"
 import type { UserProfile } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 import { IdLookupResult, JOYSPLIT_ID_PATTERN } from "./_components/id-lookup-result"
 
@@ -69,23 +72,25 @@ export default function FriendsPage() {
   const { data: groups } = useGroups()
   const removeFriend = useRemoveFriend()
   const sendReminder = useSendFriendBalanceReminder()
+  const gameDiscounts = useLiveGameDiscounts()
 
   const [searchQuery, setSearchQuery] = React.useState("")
   const [profileFriend, setProfileFriend] = React.useState<UserProfile | null>(null)
   const [removeTarget, setRemoveTarget] = React.useState<UserProfile | null>(null)
 
+  const userId = user?.uid
   const pendingReceivedCount = React.useMemo(() => {
-    if (!user?.uid) return 0
+    if (!userId) return 0
     const seen = new Set<string>()
     return friendRequests
-      .filter((r) => r.status === "PENDING" && r.receiverId === user.uid)
+      .filter((r) => r.status === "PENDING" && r.receiverId === userId)
       .filter((r) => {
         const key = r.senderId || r.senderSplitzyId?.toUpperCase() || r.id
         if (seen.has(key)) return false
         seen.add(key)
         return true
       }).length
-  }, [friendRequests, user?.uid])
+  }, [friendRequests, userId])
 
   // Full JoySplit IDs are looked up as you type; anything else on Enter
   const [submittedId, setSubmittedId] = React.useState("")
@@ -119,7 +124,6 @@ export default function FriendsPage() {
       .filter((g) => g.members.includes(user.uid) && g.members.includes(profileFriend.uid))
       .map((g) => {
         const groupExpenses = expenses.filter((e) => !e.deletedAt && e.groupId === g.id)
-        const balance = calculateMemberGroupBalance(user.uid, g.id, groupExpenses)
         // Only return groups where this pair have an open balance
         const friendBalance = calculateDirectBalance(user.uid, profileFriend.uid, groupExpenses)
         return { group: g, netPaise: friendBalance.netBalancePaise }
@@ -251,57 +255,61 @@ export default function FriendsPage() {
                           >
                             <UserAvatar src={friend.photoURL} name={friend.displayName} size="md" />
                             <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="truncate text-sm font-bold">{friend.displayName}</span>
-                                {netBalance > 0 ? (
-                                  <Badge
-                                    variant="outline"
-                                    className="border-success/30 bg-success/10 text-success text-[10px] font-bold"
-                                  >
-                                    +{formatPaise(netBalance)}
-                                  </Badge>
-                                ) : netBalance < 0 ? (
-                                  <Badge
-                                    variant="outline"
-                                    className="border-destructive/30 bg-destructive/10 text-destructive text-[10px] font-bold"
-                                  >
-                                    -{formatPaise(Math.abs(netBalance))}
-                                  </Badge>
-                                ) : (
-                                  <span className="text-[10px] text-muted-foreground font-medium">Settled</span>
-                                )}
+                              <div className="truncate text-sm font-bold text-foreground">
+                                {friend.displayName}
                               </div>
                               <div className="mt-0.5 flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
                                 <span>{friend.splitzyId}</span>
                                 {friend.upiId && (
                                   <>
                                     <span>•</span>
-                                    <Badge className="h-4 bg-success/10 px-1.5 font-sans text-[10px] text-success">
+                                    <span className="font-sans text-xs text-muted-foreground">
                                       {friend.upiId}
-                                    </Badge>
+                                    </span>
                                   </>
                                 )}
                               </div>
                             </div>
                           </button>
 
-                          <ItemActions className="gap-2">
+                          <ItemActions className="gap-2.5 items-center">
+                            {netBalance !== 0 && (
+                              <GameDiscountAmount
+                                amountPaise={Math.abs(netBalance)}
+                                discount={gameDiscounts.byPerson.get(friend.uid)}
+                                now={gameDiscounts.now}
+                                prefix={netBalance > 0 ? "+" : "-"}
+                                className={cn(
+                                  "text-base sm:text-lg font-black shrink-0",
+                                  netBalance > 0
+                                    ? "text-emerald-600 dark:text-emerald-400"
+                                    : "text-destructive"
+                                )}
+                              />
+                            )}
+
                             {netBalance > 0 ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 gap-1.5 border-success/40 px-2.5 text-xs font-bold text-success hover:bg-success/10"
-                                disabled={sendReminder.isPending}
-                                onClick={() =>
-                                  sendReminder.mutate({
-                                    targetUserId: friend.uid,
-                                    amountPaise: netBalance,
-                                  })
-                                }
-                              >
-                                <HugeiconsIcon icon={Notification01Icon} className="size-3.5" />
-                                Remind
-                              </Button>
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 gap-1.5 border-success/40 px-2.5 text-xs font-bold text-success hover:bg-success/10"
+                                  disabled={sendReminder.isPending}
+                                  onClick={() =>
+                                    sendReminder.mutate({
+                                      targetUserId: friend.uid,
+                                      amountPaise: netBalance,
+                                    })
+                                  }
+                                >
+                                  <HugeiconsIcon icon={Notification01Icon} className="size-3.5" />
+                                  Remind
+                                </Button>
+                                <ChallengeButton
+                                  person={{ uid: friend.uid, name: friend.displayName, photoURL: friend.photoURL }}
+                                  owedPaise={netBalance}
+                                />
+                              </>
                             ) : netBalance < 0 ? (
                               <PayPersonButton
                                 personId={friend.uid}
@@ -516,6 +524,22 @@ export default function FriendsPage() {
                   </div>
                 )
               })()}
+
+              {/* They owe you overall: challenge them to a game */}
+              {getFriendNetBalance(profileFriend) > 0 && (
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-warning/40 bg-warning/5 p-3">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold tracking-wider text-warning uppercase">Settle-up game</div>
+                    <div className="text-xs text-muted-foreground">
+                      Play {profileFriend.displayName} for a discount on the {formatPaise(getFriendNetBalance(profileFriend))} they owe
+                    </div>
+                  </div>
+                  <ChallengeButton
+                    person={{ uid: profileFriend.uid, name: profileFriend.displayName, photoURL: profileFriend.photoURL }}
+                    owedPaise={getFriendNetBalance(profileFriend)}
+                  />
+                </div>
+              )}
 
               {/* Shared Expenses (Group & Personal) */}
               <Separator />

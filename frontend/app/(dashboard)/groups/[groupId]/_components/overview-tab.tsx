@@ -7,6 +7,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { Amount } from "@/components/shared/amount"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useExpenses } from "@/hooks/queries"
 import { calculateMemberGroupBalance } from "@/lib/money"
 import type { Expense, Group } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -79,7 +80,17 @@ export function OverviewTab({
     (acc, e) => acc + (e.shares?.find((s) => s.userId === userId)?.amountPaise ?? 0),
     0
   )
-  const netPaise = userId ? calculateMemberGroupBalance(userId, group.id, expenses).netPaise : 0
+  // Balances net against your other splits with the same people, so they need
+  // every expense you're in — not just this group's
+  const { data: myExpenses } = useExpenses()
+  const balanceExpenses = React.useMemo(() => {
+    const byId = new Map(myExpenses.map((e) => [e.id, e]))
+    expenses.forEach((e) => byId.set(e.id, e))
+    return Array.from(byId.values())
+  }, [myExpenses, expenses])
+  const balance = userId ? calculateMemberGroupBalance(userId, group.id, balanceExpenses) : null
+  const netPaise = balance?.netPaise ?? 0
+  const offsetPaise = balance?.offsetPaise ?? 0
 
   return (
     <div className="flex flex-col gap-6">
@@ -93,7 +104,9 @@ export function OverviewTab({
               ? "You get back · tap for details"
               : netPaise < 0
                 ? "You need to pay · tap to pay"
-                : "All settled"
+                : offsetPaise > 0
+                  ? `Nothing to pay · ₹${(offsetPaise / 100).toFixed(0)} cancelled out with other splits`
+                  : "All settled"
           }
           onClick={userId ? () => setBreakdownOpen(true) : undefined}
           className="col-span-2 sm:col-span-1"
@@ -126,7 +139,7 @@ export function OverviewTab({
           onOpenChange={setBreakdownOpen}
           userId={userId}
           group={group}
-          expenses={expenses}
+          expenses={balanceExpenses}
           netPaise={netPaise}
         />
       )}

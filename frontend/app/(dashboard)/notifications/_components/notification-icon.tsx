@@ -1,4 +1,4 @@
-import { CreditCardIcon, UserAdd01Icon, UserGroupIcon } from "@hugeicons/core-free-icons"
+import { CreditCardIcon, GameController03Icon, UserAdd01Icon, UserGroupIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import type { NotificationType } from "@/lib/types"
@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 
 /** Category of a notification, matching the filter tabs. */
 export function notificationCategory(type: NotificationType) {
-  if (type.includes("PAYMENT") || type.includes("EXPENSE")) return "payments" as const
+  if (type.includes("PAYMENT") || type.includes("EXPENSE") || type.includes("CHALLENGE")) return "payments" as const
   if (type.includes("FRIEND")) return "friends" as const
   return "groups" as const
 }
@@ -30,7 +30,9 @@ export function NotificationIcon({
   neutral?: boolean
   className?: string
 }) {
-  const visual = VISUALS[notificationCategory(type)]
+  const visual = type.includes("CHALLENGE")
+    ? { icon: GameController03Icon, tone: "bg-warning/10 text-warning" }
+    : VISUALS[notificationCategory(type)]
   return (
     <div
       className={cn(

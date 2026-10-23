@@ -94,7 +94,7 @@ export function InviteDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Invite to Group</DialogTitle>
+          <DialogTitle>Add to Group</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
@@ -106,7 +106,7 @@ export function InviteDialog({
             }}
           >
             <FieldLabel htmlFor="invite-joysplit-id" className="text-xs font-semibold">
-              Invite by JoySplit ID (Non-friends &amp; Friends)
+              Add by JoySplit ID (Non-friends &amp; Friends)
             </FieldLabel>
             <div className="flex gap-2">
               <Input
@@ -142,8 +142,6 @@ export function InviteDialog({
                       <FieldGroup className="gap-2 rounded-lg border bg-card p-3">
                         {isMember ? (
                           <DoneLine>Already a member of this group</DoneLine>
-                        ) : isGroupInvited ? (
-                          <DoneLine>Group invitation already sent — waiting for them to accept</DoneLine>
                         ) : (
                           <Field orientation="horizontal" className="gap-2.5">
                             <Checkbox
@@ -152,7 +150,7 @@ export function InviteDialog({
                               onCheckedChange={(checked) => setWantGroupInvite(checked)}
                             />
                             <FieldLabel htmlFor="invite-send-group" className="text-xs font-semibold">
-                              Send group invitation
+                              Add directly to group (no approval needed)
                             </FieldLabel>
                           </Field>
                         )}
@@ -171,7 +169,7 @@ export function InviteDialog({
                               onCheckedChange={(checked) => setWantFriendRequest(checked)}
                             />
                             <FieldLabel htmlFor="invite-send-friend" className="text-xs font-semibold">
-                              Send friend request
+                              Send friend request (requires their approval)
                             </FieldLabel>
                           </Field>
                         )}
@@ -183,17 +181,16 @@ export function InviteDialog({
                             <AlertDescription className="text-[11px] leading-relaxed text-foreground">
                               {option === "COMBINED" ? (
                                 <span>
-                                  Will send a <strong>group invitation</strong> to &quot;{group.name}&quot; and a{" "}
-                                  <strong>friend request</strong>. Each can be accepted separately.
+                                  Will add directly to <strong>{group.name}</strong> and send a{" "}
+                                  <strong>friend request</strong>.
                                 </span>
                               ) : option === "GROUP_ONLY" ? (
                                 <span>
-                                  Will send a <strong>group invitation</strong> to &quot;{group.name}&quot; only. They
-                                  join once they accept it.
+                                  Will add directly to <strong>{group.name}</strong> immediately without requiring approval.
                                 </span>
                               ) : option === "FRIEND_ONLY" ? (
                                 <span>
-                                  Will send a <strong>friend request</strong> only.
+                                  Will send a <strong>friend request</strong> only (requires approval).
                                 </span>
                               ) : (
                                 <span className="font-semibold text-warning">
@@ -213,7 +210,7 @@ export function InviteDialog({
                             }
                           >
                             {isSending && <Spinner />}
-                            Send
+                            {option === "FRIEND_ONLY" ? "Send Request" : "Add to Group"}
                           </Button>
                         </>
                       ) : (

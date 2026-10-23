@@ -40,7 +40,6 @@ import { Input } from "@/components/ui/input"
 import {
   InputGroup,
   InputGroupAddon,
-  InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group"
 import {
@@ -65,7 +64,7 @@ export default function CreateGroupPage() {
   const friends = friendsQuery.data
   const createGroup = useCreateGroup({
     successMessage: (data) =>
-      `Group "${(data as Group).name}" created! Invitations sent.`,
+      `Group "${(data as Group).name}" created!`,
   })
 
   const [groupName, setGroupName] = React.useState("")

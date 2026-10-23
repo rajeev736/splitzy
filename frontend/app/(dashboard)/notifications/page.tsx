@@ -16,16 +16,16 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   useClearAllNotifications,
-  useConfirmPayment,
-  useDisputePayment,
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
 } from "@/hooks/mutations"
 import { useExpenses, useNotifications } from "@/hooks/queries"
+import { useQueryTab } from "@/hooks/use-query-tab"
 import type { AppNotification } from "@/lib/types"
 import { NotificationDetailDialog } from "./_components/notification-detail-dialog"
 import { notificationCategory } from "./_components/notification-icon"
 import { NotificationRow } from "./_components/notification-row"
+import { usePaymentReportActions } from "./_components/use-payment-report-actions"
 
 const FILTERS = [
   { value: "all", label: "All" },
@@ -35,17 +35,21 @@ const FILTERS = [
 ] as const
 
 type Filter = (typeof FILTERS)[number]["value"]
+const FILTER_VALUES: Filter[] = ["all", "payments", "friends", "groups"]
 
-export default function NotificationsPage() {
+function NotificationsContent() {
   const { data: notifications, isPending, isError, error, refetch } = useNotifications()
   const { data: expenses } = useExpenses()
   const markRead = useMarkNotificationRead()
   const markAllRead = useMarkAllNotificationsRead()
   const clearAll = useClearAllNotifications()
-  const confirmPayment = useConfirmPayment({ successMessage: "Payment confirmed!" })
-  const disputePayment = useDisputePayment()
+  const paymentActions = usePaymentReportActions()
 
-  const [filter, setFilter] = React.useState<Filter>("all")
+  const [filter, setFilter] = useQueryTab<Filter>({
+    defaultValue: "all",
+    validValues: FILTER_VALUES,
+    param: "tab",
+  })
   const [selectedNotif, setSelectedNotif] = React.useState<AppNotification | null>(null)
   const [showClearConfirm, setShowClearConfirm] = React.useState(false)
 
@@ -56,41 +60,19 @@ export default function NotificationsPage() {
     setSelectedNotif(notif)
   }
 
-  const handleConfirm = (notif: AppNotification) => {
-    const expenseId = notif.data?.expenseId
-    const actorId = notif.data?.actorId
-    if (!expenseId || !actorId) return
-    confirmPayment.mutate({ expenseId, memberUserId: actorId, notifId: notif.id })
-  }
-
-  const handleDispute = (notif: AppNotification) => {
-    const expenseId = notif.data?.expenseId
-    const actorId = notif.data?.actorId
-    if (!expenseId || !actorId) return
-    disputePayment.mutate(
-      { expenseId, memberUserId: actorId, notifId: notif.id },
-      {
-        onSuccess: () => {
-          toast.error("Payment marked as not received")
-        },
-      }
-    )
-  }
-
+  /** Live status of what the notification reported, so resolved ones show a badge. */
   const getShareStatus = (notif: AppNotification) => {
     if (notif.type !== "PAYMENT_REPORTED") return undefined
-    const expense = expenses.find((e) => e.id === notif.data?.expenseId)
-    const share = expense?.shares?.find((s) => s.userId === notif.data?.actorId)
-    return share?.status
-  }
-
-  const isRowBusy = (notif: AppNotification) => {
-    const matches = (v?: { expenseId: string; memberUserId: string }) =>
-      v?.expenseId === notif.data?.expenseId && v?.memberUserId === notif.data?.actorId
-    return (
-      (confirmPayment.isPending && matches(confirmPayment.variables)) ||
-      (disputePayment.isPending && matches(disputePayment.variables))
-    )
+    const data = notif.data
+    if (data?.expenseId) {
+      const expense = expenses.find((e) => e.id === data.expenseId)
+      return expense?.shares?.find((s) => s.userId === (data.debtorId || data.actorId))?.status
+    }
+    if (!data?.settlementId) return undefined
+    const shares = expenses.flatMap((e) => e.shares || []).filter((s) => s.settlementId === data.settlementId)
+    if (shares.length === 0) return undefined
+    if (shares.some((s) => s.status === "DISPUTED")) return "DISPUTED"
+    return shares.every((s) => s.status === "PAID") ? "PAID" : undefined
   }
 
   return (
@@ -155,9 +137,9 @@ export default function NotificationsPage() {
                   notif={notif}
                   expenseShareStatus={getShareStatus(notif)}
                   onOpen={() => handleOpenNotif(notif)}
-                  onConfirm={() => handleConfirm(notif)}
-                  onDispute={() => handleDispute(notif)}
-                  isBusy={isRowBusy(notif)}
+                  onConfirm={() => paymentActions.confirm(notif)}
+                  onDispute={() => paymentActions.dispute(notif)}
+                  isBusy={paymentActions.isBusy(notif)}
                 />
               </React.Fragment>
             ))}
@@ -182,5 +164,13 @@ export default function NotificationsPage() {
         }}
       />
     </>
+  )
+}
+
+export default function NotificationsPage() {
+  return (
+    <React.Suspense fallback={<ListSkeleton rows={4} />}>
+      <NotificationsContent />
+    </React.Suspense>
   )
 }

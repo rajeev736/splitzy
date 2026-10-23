@@ -9,17 +9,21 @@ import {
   RotateLeft01Icon,
   Tick02Icon,
   Upload01Icon,
+  UserIcon,
   ZoomInAreaIcon,
   ZoomOutAreaIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
+import { AvatarPicker } from "@/components/shared/avatar-picker"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
+import { ALL_AVATARS, DEFAULT_AVATAR } from "@/lib/avatars"
+import { cn } from "@/lib/utils"
 
 interface PhotoUploadDialogProps {
   open: boolean
@@ -62,6 +66,8 @@ function PhotoUploadBody({
   currentPhotoURL?: string
   onPhotoUpdated: (newPhotoURL: string | null) => Promise<void>
 }) {
+  const [activeMode, setActiveMode] = React.useState<"illustrations" | "custom">("illustrations")
+  const [chosenAvatar, setChosenAvatar] = React.useState<string>(currentPhotoURL || DEFAULT_AVATAR)
   const [imageSrc, setImageSrc] = React.useState<string | null>(null)
   const [zoom, setZoom] = React.useState<number>(1)
   const [pan, setPan] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 })
@@ -330,6 +336,19 @@ function PhotoUploadBody({
     }
   }
 
+  const handleSaveAvatar = async () => {
+    setErrorMsg(null)
+    setIsSaving(true)
+    try {
+      await onPhotoUpdated(chosenAvatar)
+      onClose()
+    } catch (err) {
+      setErrorMsg(errorMessage(err, "Failed to save profile avatar."))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   const handleRemovePhoto = async () => {
     setErrorMsg(null)
     setIsSaving(true)
@@ -344,7 +363,7 @@ function PhotoUploadBody({
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       {errorMsg && (
         <Alert variant="destructive" className="bg-destructive/10">
           <HugeiconsIcon icon={AlertCircleIcon} />
@@ -352,136 +371,207 @@ function PhotoUploadBody({
         </Alert>
       )}
 
-      {/* Hidden file inputs */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileSelect}
-        accept="image/png,image/jpeg,image/webp,image/gif"
-        className="hidden"
-      />
-      <input
-        type="file"
-        ref={cameraFallbackInputRef}
-        onChange={handleFileSelect}
-        accept="image/*"
-        capture="user"
-        className="hidden"
-      />
+      {/* Mode Switcher Tabs */}
+      <div className="flex items-center justify-center gap-1.5 rounded-2xl bg-muted/60 p-1">
+        <button
+          type="button"
+          onClick={() => {
+            stopCameraStream()
+            setImageSrc(null)
+            setActiveMode("illustrations")
+          }}
+          className={cn(
+            "flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition-all select-none",
+            activeMode === "illustrations"
+              ? "bg-card text-foreground shadow-xs"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <HugeiconsIcon icon={UserIcon} className="size-4" />
+          Avatars ({ALL_AVATARS.length})
+        </button>
 
-      {isCameraActive ? (
-        /* Live camera view */
-        <div className="flex animate-in flex-col gap-4 py-2 text-center duration-200 fade-in">
-          <div className="relative mx-auto size-60 overflow-hidden rounded-full border-4 border-primary bg-black shadow-md">
-            <video ref={videoRef} autoPlay playsInline muted className="size-full object-cover" />
-          </div>
-          <p className="text-xs text-muted-foreground">Center your face in the circle and tap Capture.</p>
+        <button
+          type="button"
+          onClick={() => setActiveMode("custom")}
+          className={cn(
+            "flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition-all select-none",
+            activeMode === "custom"
+              ? "bg-card text-foreground shadow-xs"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <HugeiconsIcon icon={Camera01Icon} className="size-4" />
+          Camera & Upload
+        </button>
+      </div>
 
-          <div className="grid grid-cols-2 gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={stopCameraStream}>
-              Cancel Camera
-            </Button>
-            <Button type="button" onClick={capturePhotoFromCamera}>
-              <HugeiconsIcon icon={Camera01Icon} data-icon="inline-start" />
-              Capture Photo
-            </Button>
-          </div>
-        </div>
-      ) : !imageSrc ? (
-        /* Source picker */
-        <div className="flex flex-col gap-4 py-2">
-          <Empty className="rounded-3xl border-2 border-dashed bg-muted/40 p-8">
-            <EmptyHeader>
-              <EmptyMedia className="size-16 rounded-full bg-secondary text-primary">
-                <HugeiconsIcon icon={Image01Icon} className="size-8" />
-              </EmptyMedia>
-              <EmptyTitle className="text-sm font-bold">Update Profile Photo</EmptyTitle>
-              <EmptyDescription className="text-xs">
-                Take a photo using your camera or upload an image from your device.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
+      {activeMode === "illustrations" ? (
+        <div className="flex flex-col gap-4">
+          <AvatarPicker
+            selectedAvatar={chosenAvatar}
+            onSelectAvatar={(src) => setChosenAvatar(src)}
+          />
 
-          <div className="grid grid-cols-2 gap-3">
-            <Button type="button" className="w-full" onClick={startCamera}>
-              <HugeiconsIcon icon={Camera01Icon} data-icon="inline-start" />
-              Take Photo
+          <div className="flex flex-col gap-2 pt-1">
+            <Button
+              type="button"
+              className="h-11 w-full rounded-2xl text-xs font-bold"
+              onClick={handleSaveAvatar}
+              disabled={isSaving}
+            >
+              {isSaving ? <Spinner /> : <HugeiconsIcon icon={Tick02Icon} data-icon="inline-start" />}
+              {isSaving ? "Saving..." : "Use Selected Avatar"}
             </Button>
-            <Button type="button" variant="outline" className="w-full" onClick={() => fileInputRef.current?.click()}>
-              <HugeiconsIcon icon={Upload01Icon} data-icon="inline-start" />
-              Upload Image
-            </Button>
-          </div>
 
-          {currentPhotoURL && (
-            <>
-              <Separator />
+            {currentPhotoURL && (
               <Button
                 type="button"
                 variant="ghost"
-                className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+                className="w-full text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={handleRemovePhoto}
                 disabled={isSaving}
               >
                 <HugeiconsIcon icon={Delete02Icon} data-icon="inline-start" />
                 Remove Photo
               </Button>
-            </>
-          )}
+            )}
+          </div>
         </div>
       ) : (
-        /* Crop editor */
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col items-center justify-center py-2">
-            <div
-              className="relative size-60 cursor-grab touch-none overflow-hidden rounded-full border-4 border-card shadow-md select-none active:cursor-grabbing"
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerLeave={handlePointerUp}
-            >
-              <canvas ref={previewCanvasRef} width={240} height={240} className="block size-full" />
+        <>
+          {/* Hidden file inputs */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileSelect}
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+          />
+          <input
+            type="file"
+            ref={cameraFallbackInputRef}
+            onChange={handleFileSelect}
+            accept="image/*"
+            capture="user"
+            className="hidden"
+          />
+
+          {isCameraActive ? (
+            /* Live camera view */
+            <div className="flex animate-in flex-col gap-4 py-2 text-center duration-200 fade-in">
+              <div className="relative mx-auto size-60 overflow-hidden rounded-full border-4 border-primary bg-black shadow-md">
+                <video ref={videoRef} autoPlay playsInline muted className="size-full object-cover" />
+              </div>
+              <p className="text-xs text-muted-foreground">Center your face in the circle and tap Capture.</p>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <Button type="button" variant="outline" onClick={stopCameraStream}>
+                  Cancel Camera
+                </Button>
+                <Button type="button" onClick={capturePhotoFromCamera}>
+                  <HugeiconsIcon icon={Camera01Icon} data-icon="inline-start" />
+                  Capture Photo
+                </Button>
+              </div>
             </div>
-            <span className="mt-2 text-[11px] text-muted-foreground">Drag to reposition • Use slider to zoom</span>
-          </div>
+          ) : !imageSrc ? (
+            /* Source picker */
+            <div className="flex flex-col gap-4 py-2">
+              <Empty className="rounded-3xl border-2 border-dashed bg-muted/40 p-8">
+                <EmptyHeader>
+                  <EmptyMedia className="size-16 rounded-full bg-secondary text-primary">
+                    <HugeiconsIcon icon={Image01Icon} className="size-8" />
+                  </EmptyMedia>
+                  <EmptyTitle className="text-sm font-bold">Upload Custom Photo</EmptyTitle>
+                  <EmptyDescription className="text-xs">
+                    Take a live photo using your camera or upload a picture from your device.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
 
-          {/* Zoom slider */}
-          <div className="flex items-center gap-3 rounded-2xl bg-muted/50 px-4 py-2">
-            <HugeiconsIcon icon={ZoomOutAreaIcon} className="size-4 shrink-0 text-muted-foreground" />
-            <input
-              type="range"
-              min="1"
-              max="3"
-              step="0.05"
-              value={zoom}
-              onChange={(e) => setZoom(parseFloat(e.target.value))}
-              className="flex-1 cursor-pointer accent-primary"
-              aria-label="Zoom photo"
-            />
-            <HugeiconsIcon icon={ZoomInAreaIcon} className="size-4 shrink-0 text-muted-foreground" />
-          </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Button type="button" className="w-full" onClick={startCamera}>
+                  <HugeiconsIcon icon={Camera01Icon} data-icon="inline-start" />
+                  Take Photo
+                </Button>
+                <Button type="button" variant="outline" className="w-full" onClick={() => fileInputRef.current?.click()}>
+                  <HugeiconsIcon icon={Upload01Icon} data-icon="inline-start" />
+                  Upload Image
+                </Button>
+              </div>
 
-          <div className="flex items-center gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setImageSrc(null)
-                setZoom(1)
-                setPan({ x: 0, y: 0 })
-              }}
-              disabled={isSaving}
-            >
-              <HugeiconsIcon icon={RotateLeft01Icon} data-icon="inline-start" />
-              Cancel
-            </Button>
+              {currentPhotoURL && (
+                <>
+                  <Separator />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={handleRemovePhoto}
+                    disabled={isSaving}
+                  >
+                    <HugeiconsIcon icon={Delete02Icon} data-icon="inline-start" />
+                    Remove Photo
+                  </Button>
+                </>
+              )}
+            </div>
+          ) : (
+            /* Crop editor */
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col items-center justify-center py-2">
+                <div
+                  className="relative size-60 cursor-grab touch-none overflow-hidden rounded-full border-4 border-card shadow-md select-none active:cursor-grabbing"
+                  onPointerDown={handlePointerDown}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onPointerLeave={handlePointerUp}
+                >
+                  <canvas ref={previewCanvasRef} width={240} height={240} className="block size-full" />
+                </div>
+                <span className="mt-2 text-[11px] text-muted-foreground">Drag to reposition • Use slider to zoom</span>
+              </div>
 
-            <Button type="button" className="flex-1" onClick={handleSave} disabled={isSaving}>
-              {isSaving ? <Spinner /> : <HugeiconsIcon icon={Tick02Icon} data-icon="inline-start" />}
-              {isSaving ? "Saving..." : "Save Photo"}
-            </Button>
-          </div>
-        </div>
+              {/* Zoom slider */}
+              <div className="flex items-center gap-3 rounded-2xl bg-muted/50 px-4 py-2">
+                <HugeiconsIcon icon={ZoomOutAreaIcon} className="size-4 shrink-0 text-muted-foreground" />
+                <input
+                  type="range"
+                  min="1"
+                  max="3"
+                  step="0.05"
+                  value={zoom}
+                  onChange={(e) => setZoom(parseFloat(e.target.value))}
+                  className="flex-1 cursor-pointer accent-primary"
+                  aria-label="Zoom photo"
+                />
+                <HugeiconsIcon icon={ZoomInAreaIcon} className="size-4 shrink-0 text-muted-foreground" />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setImageSrc(null)
+                    setZoom(1)
+                    setPan({ x: 0, y: 0 })
+                  }}
+                  disabled={isSaving}
+                >
+                  <HugeiconsIcon icon={RotateLeft01Icon} data-icon="inline-start" />
+                  Cancel
+                </Button>
+
+                <Button type="button" className="flex-1" onClick={handleSave} disabled={isSaving}>
+                  {isSaving ? <Spinner /> : <HugeiconsIcon icon={Tick02Icon} data-icon="inline-start" />}
+                  {isSaving ? "Saving..." : "Save Photo"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

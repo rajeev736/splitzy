@@ -3,10 +3,17 @@
 import * as React from "react"
 import { useSearchParams } from "next/navigation"
 import type { Options as ConfettiOptions } from "canvas-confetti"
-import { ArrowDown01Icon, ReceiptIndianRupeeIcon } from "@hugeicons/core-free-icons"
-import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  ArrowDown01Icon,
+  ReceiptIndianRupeeIcon,
+  UserGroupIcon,
+  UserIcon,
+  UserMultipleIcon,
+} from "@hugeicons/core-free-icons"
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 import { toast } from "sonner"
 
+import { ExpenseGameOption } from "@/components/games/expense-game-option"
 import { AppHeader } from "@/components/layout/app-header"
 import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
@@ -19,7 +26,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { useCreateExpense } from "@/hooks/mutations"
+import { useCreateChallenge, useCreateExpense } from "@/hooks/mutations"
 import { useFriends, useGroups } from "@/hooks/queries"
 import { getErrorMessage } from "@/lib/errors"
 import type { Group, UserProfile } from "@/lib/types"
@@ -27,9 +34,20 @@ import { PaidBySection } from "./_components/paid-by-section"
 import { SplitSection } from "./_components/split-section"
 import { SplitWithSheet } from "./_components/split-with-sheet"
 import { SuccessScreen } from "./_components/success-screen"
-import { PERSONAL_CATEGORIES, useExpenseDraft, type ExpenseDraft } from "./_components/use-expense-draft"
+import {
+  PERSONAL_CATEGORIES,
+  useExpenseDraft,
+  type ExpenseDraft,
+  type ExpenseMode,
+} from "./_components/use-expense-draft"
 
 const CONTAINER = "max-w-xl gap-4"
+
+const EXPENSE_MODES: { value: ExpenseMode; label: string; icon: IconSvgElement }[] = [
+  { value: "group", label: "Group", icon: UserGroupIcon },
+  { value: "friend", label: "Friend", icon: UserMultipleIcon },
+  { value: "personal", label: "Personal", icon: UserIcon },
+]
 
 /** Confetti is only needed after a save — load it on demand, off the critical bundle. */
 const celebrate = (options: ConfettiOptions) =>
@@ -88,8 +106,15 @@ function NewExpenseFlow({
 }) {
   const draft = useExpenseDraft({ user, groups, friends, preselectedGroupId, preselectedFriendId })
   const createExpense = useCreateExpense({ errorMessage: false })
+  const createChallenge = useCreateChallenge({ errorMessage: "Expense saved, but the game couldn't be started" })
   const [splitWithOpen, setSplitWithOpen] = React.useState(false)
   const isShared = draft.expenseMode !== "personal"
+
+  // Optional game: only on group expenses you paid, so you're the one owed
+  const [gameEnabled, setGameEnabled] = React.useState(false)
+  const [gameDiscount, setGameDiscount] = React.useState(20)
+  const canAddGame = draft.expenseMode === "group" && !!user && draft.payerId === user.uid
+  const gamePlayers = draft.splitShares.filter((s) => s.amountPaise > 0 && s.userId !== user?.uid)
 
   // `isPending` only flips after a re-render, so a fast double tap (or header +
   // bottom Save) could submit twice. A ref blocks the second tap synchronously.
@@ -115,6 +140,17 @@ function NewExpenseFlow({
     createExpense.mutate(input, {
       onSuccess: (expense) => {
         draft.markCreated(expense.id)
+        if (canAddGame && gameEnabled) {
+          createChallenge.mutate({
+            kind: "group",
+            game: "lucky_number",
+            discountPercent: gameDiscount,
+            players: expense.shares
+              .filter((s) => s.userId !== user?.uid && s.amountPaise > 0)
+              .map((s) => ({ uid: s.userId, name: s.userName, basePaise: s.amountPaise })),
+            expense: { id: expense.id, title: expense.title, groupId: expense.groupId, groupName: expense.groupName },
+          })
+        }
         if (isShared) {
           void celebrate({ particleCount: 90, spread: 75, origin: { y: 0.6 }, colors: ["#2563EB", "#FBBF24", "#10B981"] })
           toast.success("Expense created successfully!")
@@ -165,18 +201,41 @@ function NewExpenseFlow({
             save()
           }}
         >
-          {/* 1 — who it's shared with */}
-          <button
-            type="button"
-            onClick={() => setSplitWithOpen(true)}
-            className="flex w-full min-w-0 items-center gap-3 rounded-xl border bg-card px-4 py-3 text-left transition-colors hover:border-primary/40"
+          {/* 1 — what kind of expense */}
+          <ToggleGroup
+            variant="outline"
+            className="grid w-full grid-cols-3"
+            value={[draft.expenseMode]}
+            onValueChange={(v) => v[0] && draft.setExpenseMode(v[0] as ExpenseMode)}
           >
-            <span className="shrink-0 text-sm text-muted-foreground">With you and:</span>
-            <span className="min-w-0 flex-1">
-              <SplitWithSummary draft={draft} friends={friends} />
-            </span>
-            <HugeiconsIcon icon={ArrowDown01Icon} className="size-4 shrink-0 text-muted-foreground" />
-          </button>
+            {EXPENSE_MODES.map((m) => (
+              <ToggleGroupItem
+                key={m.value}
+                value={m.value}
+                className="h-auto flex-col gap-1 rounded-xl py-2.5 text-xs font-bold data-pressed:border-primary data-pressed:bg-primary data-pressed:text-primary-foreground"
+              >
+                <HugeiconsIcon icon={m.icon} className="size-5" />
+                {m.label}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+
+          {/* 2 — who it's shared with */}
+          {isShared && (
+            <button
+              type="button"
+              onClick={() => setSplitWithOpen(true)}
+              className="flex w-full min-w-0 items-center gap-3 rounded-xl border bg-card px-4 py-3 text-left transition-colors hover:border-primary/40"
+            >
+              <span className="shrink-0 text-sm text-muted-foreground">
+                {draft.expenseMode === "group" ? "Group:" : "With you and:"}
+              </span>
+              <span className="min-w-0 flex-1">
+                <SplitWithSummary draft={draft} friends={friends} />
+              </span>
+              <HugeiconsIcon icon={ArrowDown01Icon} className="size-4 shrink-0 text-muted-foreground" />
+            </button>
+          )}
 
           {/* 2 — what & how much */}
           <Card>
@@ -214,6 +273,15 @@ function NewExpenseFlow({
             <>
               <PaidBySection draft={draft} />
               <SplitSection draft={draft} />
+              {canAddGame && (
+                <ExpenseGameOption
+                  enabled={gameEnabled}
+                  onEnabledChange={setGameEnabled}
+                  discount={gameDiscount}
+                  onDiscountChange={setGameDiscount}
+                  playerCount={gamePlayers.length}
+                />
+              )}
             </>
           ) : (
             <ToggleGroup
