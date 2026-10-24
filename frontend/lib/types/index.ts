@@ -8,6 +8,8 @@ export interface UserProfile {
   onboardingCompleted?: boolean;
   createdAt: string;
   updatedAt?: string;
+  /** Friends list only: last activity between you two (or when you became friends). */
+  friendActivityAt?: string;
 }
 
 export type FriendRequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED";

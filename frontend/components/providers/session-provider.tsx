@@ -6,6 +6,7 @@ import { doc, onSnapshot } from "firebase/firestore"
 import { useQueryClient } from "@tanstack/react-query"
 
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/config"
+import { markOnboardingSeen } from "@/lib/onboarding"
 import type { UserProfile } from "@/lib/types"
 import * as authService from "@/services/auth"
 
@@ -139,6 +140,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       },
       (err) => console.warn("Profile sync notice:", err?.message || err)
     )
+  }, [user?.uid])
+
+  // Anyone who has signed in on this device skips the walkthrough from now on
+  React.useEffect(() => {
+    if (user?.uid) markOnboardingSeen()
   }, [user?.uid])
 
   const authState: AuthState = (() => {

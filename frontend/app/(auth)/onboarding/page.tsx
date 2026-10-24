@@ -5,9 +5,13 @@ import { useRouter } from "nextjs-toploader/app"
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
+import { FullScreenLoader } from "@/components/layout/app-shell"
+import { useSession } from "@/components/providers/session-provider"
 import { Button } from "@/components/ui/button"
+import { markOnboardingSeen } from "@/lib/onboarding"
 import { cn } from "@/lib/utils"
 import { AuthHeading, AuthLayout } from "../_components/auth-card"
+import { useRedirectIfSignedIn } from "../_components/use-redirect-if-signed-in"
 import { SplitBillsVisual, SyncVisual, TrackVisual, UpiVisual } from "./_components/onboarding-visuals"
 
 const STEPS = [
@@ -39,10 +43,22 @@ const STEPS = [
 
 export default function OnboardingPage() {
   const router = useRouter()
+  const { user, isLoading } = useSession()
+  // Onboarding is for first-time visitors only — signed-in users never see it
+  const isRedirecting = useRedirectIfSignedIn()
+  const needsProfile = !isLoading && !!user && !user.onboardingCompleted
   const [currentStep, setCurrentStep] = React.useState(0)
+
+  React.useEffect(() => {
+    if (needsProfile) router.replace("/signup?step=profile")
+  }, [needsProfile, router])
+
+  React.useEffect(() => markOnboardingSeen(), [])
 
   const isLast = currentStep === STEPS.length - 1
   const current = STEPS[currentStep]
+
+  if (isLoading || isRedirecting || needsProfile) return <FullScreenLoader />
 
   const handleNext = () => {
     if (!isLast) setCurrentStep(currentStep + 1)

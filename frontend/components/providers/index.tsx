@@ -71,7 +71,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <TooltipProvider>
             <NextTopLoader color="var(--primary)" height={3} showSpinner={false} shadow={false} />
             <RealtimeSync />
-            {children}
+            {/* One clock + list of live game discounts for every balance, pay button and countdown */}
+            <GameDiscountProvider>{children}</GameDiscountProvider>
             <Toaster position="top-right" richColors closeButton />
           </TooltipProvider>
         </SessionProvider>

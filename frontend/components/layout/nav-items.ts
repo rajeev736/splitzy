@@ -35,5 +35,14 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Settings", href: "/settings", icon: Settings01Icon },
 ]
 
+/** The pages the mobile bottom nav switches between. */
+export const MOBILE_NAV_ITEMS = NAV_ITEMS.filter((i) => i.mobile)
+
+/**
+ * The bottom nav belongs to the top-level tabs only: on anything deeper (a
+ * group, add expense, history, settings…) it hides and the page's back button leads.
+ */
+export const isBottomNavPage = (pathname: string) => MOBILE_NAV_ITEMS.some((i) => i.href === pathname)
+
 export const isNavActive = (pathname: string, href: string) =>
   pathname === href || (href !== "/home" && pathname.startsWith(href))

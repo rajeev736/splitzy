@@ -696,16 +696,109 @@ export function isAwaitingConfirmation(
 }
 
 /**
+ * A payment `debtorId` reported to you that you haven't confirmed or disputed
+ * yet (the oldest one, if several). `paidPaise` is the reported shares minus
+ * your own shares they cancelled out under the same settlement.
+ */
+export function reportedPaymentFrom(
+  creditorId: string,
+  debtorId: string,
+  expenses: Expense[]
+): { settlementId?: string; paidPaise: number } | null {
+  let settlementId: string | undefined;
+  let found = false;
+  let reported = 0;
+  let offset = 0;
+  for (const exp of expenses) {
+    if (exp.deletedAt) continue;
+    for (const s of exp.shares || []) {
+      if (s.userId !== debtorId || s.status !== "PAYMENT_REPORTED" || payeeOf(exp, s.userId) !== creditorId) continue;
+      if (!found) {
+        found = true;
+        settlementId = s.settlementId;
+      }
+      if (s.settlementId === settlementId) reported += s.amountPaise;
+    }
+  }
+  if (!found) return null;
+  if (settlementId) {
+    for (const exp of expenses) {
+      if (exp.deletedAt) continue;
+      for (const s of exp.shares || []) {
+        if (s.userId === creditorId && s.settlementId === settlementId && s.offsetApprovedBy === debtorId && s.status !== "PAID") {
+          offset += s.amountPaise;
+        }
+      }
+    }
+  }
+  return { settlementId, paidPaise: Math.max(0, reported - offset) };
+}
+
+/**
+ * A payment from `debtorId` to `creditorId` that the creditor marked "not
+ * received" (the oldest, if several). `offsetPaise` is the creditor's own
+ * shares still approved for cancelling out under it; `paidPaise` what that
+ * leaves (before any game discount).
+ */
+export function disputedPaymentBetween(
+  debtorId: string,
+  creditorId: string,
+  expenses: Expense[]
+): { settlementId?: string; paidPaise: number; offsetPaise: number } | null {
+  let settlementId: string | undefined;
+  let found = false;
+  let disputed = 0;
+  let offset = 0;
+  for (const exp of expenses) {
+    if (exp.deletedAt) continue;
+    for (const s of exp.shares || []) {
+      if (s.userId !== debtorId || s.status !== "DISPUTED" || payeeOf(exp, s.userId) !== creditorId) continue;
+      if (!found) {
+        found = true;
+        settlementId = s.settlementId;
+      }
+      if (s.settlementId === settlementId) disputed += s.amountPaise;
+    }
+  }
+  if (!found) return null;
+  if (settlementId) {
+    for (const exp of expenses) {
+      if (exp.deletedAt) continue;
+      for (const s of exp.shares || []) {
+        if (s.userId === creditorId && s.settlementId === settlementId && s.offsetApprovedBy === debtorId && s.status !== "PAID") {
+          offset += s.amountPaise;
+        }
+      }
+    }
+  }
+  return { settlementId, paidPaise: Math.max(0, disputed - offset), offsetPaise: offset };
+}
+
+/** Settlements the creditor said they never received (any of their shares is DISPUTED). */
+function disputedSettlementIds(expenses: Expense[]): Set<string> {
+  const ids = new Set<string>();
+  for (const e of expenses) {
+    if (e.deletedAt) continue;
+    for (const s of e.shares || []) if (s.status === "DISPUTED" && s.settlementId) ids.add(s.settlementId);
+  }
+  return ids;
+}
+
+/**
  * True while a cancel-out between the two is waiting for confirmation: a share
- * is reported or approved for cancelling out under a settlement.
+ * is reported or approved for cancelling out under a settlement. A disputed
+ * settlement isn't waiting on anyone (its approvals stay only so a late
+ * confirmation can still close it).
  */
 export function isCancelOutPending(userId: string, otherId: string, expenses: Expense[]): boolean {
+  const disputed = disputedSettlementIds(expenses);
   return expenses.some(
     (e) =>
       !e.deletedAt &&
       e.shares?.some(
         (s) =>
           !!s.settlementId &&
+          !disputed.has(s.settlementId) &&
           s.status !== "PAID" &&
           (s.status === "PAYMENT_REPORTED" || !!s.offsetApprovedBy) &&
           ((s.userId === userId && payeeOf(e, s.userId) === otherId) ||

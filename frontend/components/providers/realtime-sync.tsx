@@ -3,10 +3,13 @@
 import * as React from "react"
 import { collection, onSnapshot, query, where, type Query } from "firebase/firestore"
 import { useQueryClient, type QueryKey } from "@tanstack/react-query"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 import { db, isFirebaseConfigured } from "@/lib/firebase/config"
 import { queryKeys } from "@/lib/query/keys"
 import { publish, publishError } from "@/lib/query/realtime"
+import { notificationHref, registerServiceWorker, showSystemNotification } from "@/lib/system-notifications"
 import type { AppNotification, Challenge, Expense, FriendRequest, Group, UserProfile } from "@/lib/types"
 import { toChallenge } from "@/services/challenges"
 import { fetchUserProfile } from "@/services/shared"
@@ -17,6 +20,9 @@ const byNewest = (a: { createdAt: string }, b: { createdAt: string }) =>
 
 const isActiveGroup = (g: Group) => g.status !== "ARCHIVED" && g.status !== "DELETED"
 
+/** Only notifications this fresh are announced (not old ones arriving after being offline). */
+const ANNOUNCE_WITHIN_MS = 5 * 60 * 1000
+
 /**
  * Opens one Firestore listener per collection for the signed-in user and
  * streams every snapshot into the TanStack Query cache. Mounted once in the
@@ -26,10 +32,47 @@ export function RealtimeSync() {
   const queryClient = useQueryClient()
   const { user } = useSession()
   const uid = user?.uid
+  // Read inside the listener without re-subscribing when the router object changes
+  const router = useRouter()
+  const routerRef = React.useRef(router)
+  React.useEffect(() => {
+    routerRef.current = router
+  }, [router])
+
+  // The notification bar needs the service worker (it shows and opens notifications)
+  React.useEffect(() => registerServiceWorker(), [])
 
   React.useEffect(() => {
     if (!isFirebaseConfigured || !db || !uid) return
     const firestore = db
+
+    /**
+     * New notifications, like a phone app: in the notification bar while the
+     * app is in the background, a toast while you're looking at it. The first
+     * snapshot is what you already had, so it's never announced.
+     */
+    let notificationsLoaded = false
+    const announced = new Set<string>()
+    const announceNew = (added: AppNotification[]) => {
+      if (!notificationsLoaded) {
+        notificationsLoaded = true
+        added.forEach((n) => announced.add(n.id))
+        return
+      }
+      for (const n of added) {
+        if (announced.has(n.id) || n.read) continue
+        announced.add(n.id)
+        if (Date.now() - new Date(n.createdAt).getTime() > ANNOUNCE_WITHIN_MS) continue
+        if (document.visibilityState === "hidden") {
+          void showSystemNotification(n).catch(() => undefined)
+        } else {
+          toast(n.title, {
+            description: n.message,
+            action: { label: "View", onClick: () => routerRef.current.push(notificationHref(n)) },
+          })
+        }
+      }
+    }
 
     const onError = (key: QueryKey) => (err: unknown) => {
       console.warn("Firestore sync notice:", (err as Error)?.message || err)
@@ -196,6 +239,7 @@ export function RealtimeSync() {
         (snap) => {
           const list = snap.docs.map((d) => d.data() as AppNotification).sort(byNewest)
           publish(queryClient, notificationsKey, list)
+          announceNew(snap.docChanges().filter((c) => c.type === "added").map((c) => c.doc.data() as AppNotification))
         },
         onError(notificationsKey)
       ),
@@ -203,7 +247,11 @@ export function RealtimeSync() {
       onSnapshot(
         query(collection(firestore, "challenges"), where("participants", "array-contains", uid)),
         (snap) => {
-          const list: Challenge[] = snap.docs.map((d) => toChallenge(d.data())).sort(byNewest)
+          // A just-resolved game's resolvedAt is a pending server timestamp: without
+          // "estimate" it reads as null and the fresh discount looks already expired
+          const list: Challenge[] = snap.docs
+            .map((d) => toChallenge(d.data({ serverTimestamps: "estimate" })))
+            .sort(byNewest)
           publish(queryClient, challengesKey, list)
         },
         onError(challengesKey)
@@ -212,19 +260,23 @@ export function RealtimeSync() {
       onSnapshot(
         query(collection(firestore, "friendships"), where("users", "array-contains", uid)),
         (snap) => {
-          const activeUids: string[] = []
+          const active: { uid: string; activityAt?: string }[] = []
           snap.forEach((d) => {
             const data = d.data()
             const other = (data.users as string[] | undefined)?.find((u) => u !== uid)
-            if (other && data.status === "ACTIVE") activeUids.push(other)
+            if (other && data.status === "ACTIVE") {
+              active.push({ uid: other, activityAt: (data.lastActivityAt as string) || (data.createdAt as string) })
+            }
           })
 
           Promise.all(
-            activeUids.map((fUid) =>
-              fetchUserProfile(fUid).catch((e) => {
-                console.warn(`Failed to fetch friend profile ${fUid}:`, e)
-                return null
-              })
+            active.map(({ uid: fUid, activityAt }) =>
+              fetchUserProfile(fUid)
+                .then((p): UserProfile | null => (p ? { ...p, friendActivityAt: activityAt } : null))
+                .catch((e) => {
+                  console.warn(`Failed to fetch friend profile ${fUid}:`, e)
+                  return null
+                })
             )
           ).then((list) => {
             publish(queryClient, friendsKey, list.filter((f): f is UserProfile => f !== null))

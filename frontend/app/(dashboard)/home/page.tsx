@@ -63,7 +63,9 @@ import {
 import { useUnreadTracking } from "@/hooks/use-unread-tracking"
 import { PayPersonButton } from "@/components/shared/pay-person-button"
 import { ChallengeButton } from "@/components/games/challenge-button"
+import { PaymentDisputeLine, PaymentReceivedOr } from "@/components/shared/payment-received-prompt"
 import { HomeGamesCard } from "@/components/games/home-games-card"
+import { EnableNotificationsBanner } from "@/components/shared/enable-notifications"
 import { GameDiscountAmount, GameDiscountNote } from "@/components/games/game-discount-amount"
 import { useDiscountedBalances, useLiveGameDiscounts } from "@/hooks/use-game-discounts"
 import { expensesInPeriod, mySpendPaise } from "@/lib/analytics"
@@ -222,6 +224,7 @@ export default function HomePage() {
               />
             </div>
 
+            <EnableNotificationsBanner />
             <HomeGamesCard />
             <MonthSnapshot spentPaise={monthSpentPaise} count={monthCount} />
             <div className="flex gap-2">
@@ -521,19 +524,23 @@ function FriendBalanceSection({
                 </ItemDescription>
               </ItemContent>
               <ItemActions className="gap-2">
-                <GameDiscountAmount
-                  amountPaise={Math.abs(netBalancePaise)}
-                  discount={gameDiscounts.byPerson.get(userId)}
-                  now={gameDiscounts.now}
-                  prefix={netBalancePaise > 0 ? "+" : "-"}
-                  className={cn(
-                    "text-sm font-black leading-tight sm:text-base",
-                    netBalancePaise > 0
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-destructive"
-                  )}
-                />
+                <span className="flex flex-col items-end gap-0.5">
+                  <GameDiscountAmount
+                    amountPaise={Math.abs(netBalancePaise)}
+                    discount={gameDiscounts.byPerson.get(userId)}
+                    now={gameDiscounts.now}
+                    prefix={netBalancePaise > 0 ? "+" : "-"}
+                    className={cn(
+                      "text-sm font-black leading-tight sm:text-base",
+                      netBalancePaise > 0
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-destructive"
+                    )}
+                  />
+                  <PaymentDisputeLine personId={userId} personName={name} />
+                </span>
                 {/* Someone owes you: challenge them to a game */}
+                <PaymentReceivedOr personId={userId} personName={name}>
                 {netBalancePaise > 0 && (
                   <ChallengeButton person={{ uid: userId, name, photoURL }} owedPaise={netBalancePaise} />
                 )}
@@ -548,6 +555,7 @@ function FriendBalanceSection({
                     />
                   </div>
                 )}
+                </PaymentReceivedOr>
               </ItemActions>
             </Item>
           ))}

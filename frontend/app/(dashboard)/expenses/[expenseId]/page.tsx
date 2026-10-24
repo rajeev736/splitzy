@@ -18,7 +18,9 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 import { AppHeader } from "@/components/layout/app-header"
 import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
+import { GameDiscountTag } from "@/components/games/game-discount-amount"
 import { Amount } from "@/components/shared/amount"
+import { PayPersonButton } from "@/components/shared/pay-person-button"
 import { DEFAULT_GROUP_ICON } from "@/components/shared/group-icon"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -26,6 +28,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Separator } from "@/components/ui/separator"
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
 import { useDeleteExpense } from "@/hooks/mutations"
+import { useLiveGameDiscounts } from "@/hooks/use-game-discounts"
 import type { Expense } from "@/lib/types"
 import { DeleteExpenseDialog } from "./_components/delete-expense-dialog"
 import { ExpenseActionsMenu } from "./_components/expense-actions-menu"
@@ -76,6 +79,14 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
   const canDelete = (isPayer || isCreator) && !isDeleted
 
   const myShare = expense.shares.find((s) => s.userId === user?.uid)
+
+  // A game played on this bill whose discount is still live (gone once paid)
+  const { byPerson, now } = useLiveGameDiscounts()
+  const game = [...byPerson.values()].find((d) => d.expenseId === expense.id && !d.pending)
+  const gameOtherName = game
+    ? expense.shares.find((s) => s.userId === game.otherId)?.userName ||
+      (game.otherId === expense.payerId ? expense.payerName : "They")
+    : ""
 
   const handleConfirmDelete = () =>
     deleteExpense.mutate(expense.id, {
@@ -162,6 +173,24 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
             </CardDescription>
           </CardHeader>
         </Card>
+
+        {game && !isDeleted && (
+          <Card className="rounded-3xl">
+            <CardContent className="flex items-center gap-3">
+              <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
+                <p className="text-sm font-bold">
+                  {game.role === "winner"
+                    ? `You won a game on this bill — pay ${gameOtherName} less`
+                    : `${gameOtherName} won your game on this bill`}
+                </p>
+                <GameDiscountTag discountPaise={game.discountPaise} endsAt={game.expiresAt} now={now} />
+              </div>
+              {game.role === "winner" && (
+                <PayPersonButton personId={game.otherId} personName={gameOtherName} label="Pay now" />
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Participants & shares */}
         <Card className="rounded-3xl">

@@ -4,10 +4,12 @@ import * as React from "react"
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
+import { GameDiscountTag } from "@/components/games/game-discount-amount"
 import { Amount } from "@/components/shared/amount"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useExpenses } from "@/hooks/queries"
+import { useScopedGameDiscount } from "@/hooks/use-game-discounts"
 import { calculateMemberGroupBalance } from "@/lib/money"
 import type { Expense, Group } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -19,6 +21,7 @@ function StatCard({
   paise,
   signed = false,
   hint,
+  badge,
   onClick,
   className,
 }: {
@@ -27,15 +30,17 @@ function StatCard({
   /** Green "+" when positive, red when negative — same convention as every balance. */
   signed?: boolean
   hint?: string
+  badge?: React.ReactNode
   /** Makes the whole card a button (shows a chevron). */
   onClick?: () => void
   className?: string
 }) {
   const body = (
     <CardContent className="flex items-center gap-3">
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
+      <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
         <span className="text-[11px] font-semibold text-muted-foreground">{label}</span>
         <Amount paise={paise} signed={signed} className="text-lg font-extrabold" />
+        {badge}
         {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
       </div>
       {onClick && <HugeiconsIcon icon={ArrowRight01Icon} className="size-5 shrink-0 text-muted-foreground" />}
@@ -89,7 +94,9 @@ export function OverviewTab({
     return Array.from(byId.values())
   }, [myExpenses, expenses])
   const balance = userId ? calculateMemberGroupBalance(userId, group.id, balanceExpenses) : null
-  const netPaise = balance?.netPaise ?? 0
+  // A live game on this group's expenses lowers what you pay / get back
+  const game = useScopedGameDiscount({ groupId: group.id })
+  const netPaise = (balance?.netPaise ?? 0) + game.netAdjustPaise
   const offsetPaise = balance?.offsetPaise ?? 0
 
   return (
@@ -108,6 +115,7 @@ export function OverviewTab({
                   ? `Nothing to pay · ₹${(offsetPaise / 100).toFixed(0)} cancelled out with other splits`
                   : "All settled"
           }
+          badge={<GameDiscountTag discountPaise={game.discountPaise} endsAt={game.endsAt} now={game.now} />}
           onClick={userId ? () => setBreakdownOpen(true) : undefined}
           className="col-span-2 sm:col-span-1"
         />

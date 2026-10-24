@@ -24,7 +24,9 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group"
 import { ItemGroup } from "@/components/ui/item"
+import { GameDiscountTag } from "@/components/games/game-discount-amount"
 import { useExpenses, useGroups } from "@/hooks/queries"
+import { scopedGameDiscount, useLiveGameDiscounts } from "@/hooks/use-game-discounts"
 import { useQueryTab } from "@/hooks/use-query-tab"
 import { useUnreadTracking } from "@/hooks/use-unread-tracking"
 import { calculateMemberGroupBalance, formatPaise } from "@/lib/money"
@@ -46,6 +48,8 @@ const SETTLED = {
   allSettled: true,
 }
 
+const NO_GAME = { discountPaise: 0, endsAt: 0 }
+
 function GroupsContent() {
   const { user } = useSession()
   const groupsQuery = useGroups()
@@ -61,15 +65,18 @@ function GroupsContent() {
     param: "tab",
   })
 
+  const { byPerson, now } = useLiveGameDiscounts()
+
   const rows = React.useMemo(
     () =>
       groups
-        .map((group) => ({
-          group,
-          balance: user
-            ? calculateMemberGroupBalance(user.uid, group.id, expenses)
-            : SETTLED,
-        }))
+        .map((group) => {
+          if (!user) return { group, balance: SETTLED, game: NO_GAME }
+          const balance = calculateMemberGroupBalance(user.uid, group.id, expenses)
+          // Live game discounts on this group's expenses lower what you pay / get back
+          const game = scopedGameDiscount(user.uid, byPerson, expenses, { groupId: group.id })
+          return { group, balance: { ...balance, netPaise: balance.netPaise + game.netAdjustPaise }, game }
+        })
         .filter(({ group, balance }) => {
           if (!group.name.toLowerCase().includes(search.toLowerCase()))
             return false
@@ -77,7 +84,7 @@ function GroupsContent() {
           if (filter === "active") return !balance.allSettled
           return true
         }),
-    [groups, expenses, user, search, filter]
+    [groups, expenses, user, search, filter, byPerson]
   )
 
   const isPending = groupsQuery.isPending || expensesQuery.isPending
@@ -134,7 +141,7 @@ function GroupsContent() {
           />
         ) : rows.length > 0 ? (
           <ItemGroup className="gap-3">
-            {rows.map(({ group, balance }) => (
+            {rows.map(({ group, balance, game }) => (
               <GroupListItem
                 key={group.id}
                 group={group}
@@ -146,13 +153,18 @@ function GroupsContent() {
                       <StatusBadge status="all_settled" />
                     ) : balance.netPaise === 0 ? (
                       <StatusBadge status="settled" />
-                    ) : balance.netPaise > 0 ? (
-                      <span className="text-sm font-black tabular-nums text-emerald-600 dark:text-emerald-400 sm:text-base">
-                        +{formatPaise(balance.netPaise)}
-                      </span>
                     ) : (
-                      <span className="text-sm font-black tabular-nums text-destructive sm:text-base">
-                        -{formatPaise(Math.abs(balance.netPaise))}
+                      <span className="flex flex-col items-end gap-0.5">
+                        {balance.netPaise > 0 ? (
+                          <span className="text-sm font-black tabular-nums text-emerald-600 dark:text-emerald-400 sm:text-base">
+                            +{formatPaise(balance.netPaise)}
+                          </span>
+                        ) : (
+                          <span className="text-sm font-black tabular-nums text-destructive sm:text-base">
+                            -{formatPaise(Math.abs(balance.netPaise))}
+                          </span>
+                        )}
+                        <GameDiscountTag discountPaise={game.discountPaise} endsAt={game.endsAt} now={now} />
                       </span>
                     )}
                     <HugeiconsIcon

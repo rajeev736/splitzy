@@ -72,7 +72,17 @@ const nextConfig: NextConfig = {
     ],
   },
   async headers() {
-    return [{ source: "/(.*)", headers: securityHeaders }]
+    return [
+      { source: "/(.*)", headers: securityHeaders },
+      // The service worker must never be cached, so phones always pick up the latest one
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+        ],
+      },
+    ]
   },
 }
 

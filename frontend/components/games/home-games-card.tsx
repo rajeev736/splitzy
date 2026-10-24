@@ -8,8 +8,8 @@ import { useSession } from "@/components/providers/session-provider"
 import { Badge } from "@/components/ui/badge"
 import { useChallenges } from "@/hooks/queries"
 import { useLiveGameDiscounts } from "@/hooks/use-game-discounts"
-import { formatCountdown, useNow } from "@/hooks/use-now"
-import { activeDiscountPaise, discountExpiresAt, GAMES } from "@/lib/games"
+import { formatCountdown } from "@/hooks/use-now"
+import { GAMES } from "@/lib/games"
 import { formatPaise } from "@/lib/money"
 import type { Challenge } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -23,19 +23,21 @@ export function HomeGamesCard() {
   const { data: challenges } = useChallenges()
   const uid = user?.uid ?? ""
 
-  const wonLive = challenges.filter(
-    (c) => c.status === "DONE" && c.result?.winners.includes(uid) && !c.redeemed?.[uid]
-  )
-  const now = useNow(Math.max(0, ...wonLive.map(discountExpiresAt)))
-
+  // Live discounts drop the moment the winner pays or the timer ends
   const liveDiscounts = useLiveGameDiscounts()
-  const hostLive = [...liveDiscounts.byPerson.values()].filter((d) => d.role === "host")
+  // Offers still running (not ones already used on a payment awaiting confirmation)
+  const live = [...liveDiscounts.byPerson.values()].filter((d) => !d.pending)
+  const wonLive = live.filter((d) => d.role === "winner")
+  const hostLive = live.filter((d) => d.role === "host")
 
   const rows: { c: Challenge; kind: "play" | "pay" | "sent" | "lost"; who?: string }[] = [
     ...challenges
       .filter((c) => c.status === "OPEN" && c.players.includes(uid) && c.moves?.[uid] === undefined)
       .map((c) => ({ c, kind: "play" as const })),
-    ...wonLive.filter((c) => activeDiscountPaise(c, uid, now) > 0).map((c) => ({ c, kind: "pay" as const })),
+    ...wonLive.flatMap((d) => {
+      const c = challenges.find((x) => x.id === d.challengeId)
+      return c ? [{ c, kind: "pay" as const, who: d.otherId }] : []
+    }),
     // Someone beat you: their discount is live until the timer ends
     ...hostLive.flatMap((d) => {
       const c = challenges.find((x) => x.id === d.challengeId)
@@ -56,8 +58,7 @@ export function HomeGamesCard() {
       <ul className="flex flex-col gap-1.5">
         {rows.slice(0, 3).map(({ c, kind, who }) => {
           const game = GAMES[c.game]
-          const discount = activeDiscountPaise(c, uid, now)
-          const lostDiscount = who ? liveDiscounts.byPerson.get(who) : undefined
+          const liveDiscount = who ? liveDiscounts.byPerson.get(who) : undefined
           const waitingOn = c.players.filter((p) => c.moves?.[p] === undefined).map((p) => c.playerNames[p])
           return (
             <li key={`${c.id}-${kind}-${who ?? ""}`}>
@@ -80,9 +81,9 @@ export function HomeGamesCard() {
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">
                     {kind === "pay"
-                      ? `Save ${formatPaise(discount)} · ends in ${formatCountdown(discountExpiresAt(c) - now)}`
-                      : kind === "lost" && lostDiscount
-                        ? `They pay ${formatPaise(lostDiscount.discountPaise)} less if paid in ${formatCountdown(lostDiscount.expiresAt - liveDiscounts.now)}`
+                      ? `Save ${formatPaise(liveDiscount?.discountPaise ?? 0)} · ends in ${formatCountdown((liveDiscount?.expiresAt ?? 0) - liveDiscounts.now)}`
+                      : kind === "lost" && liveDiscount
+                        ? `They pay ${formatPaise(liveDiscount.discountPaise)} less if paid in ${formatCountdown(liveDiscount.expiresAt - liveDiscounts.now)}`
                       : `${game.name} · ${c.discountPercent}% off${c.expenseTitle ? ` · ${c.expenseTitle}` : ""}`}
                   </span>
                 </span>

@@ -14,13 +14,13 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { EmptyState } from "@/components/shared/empty-state"
 import { PersonSettlementDialog } from "@/components/shared/person-settlement-dialog"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
 import { useCancelChallenge, useResolveChallenge, useSubmitMove } from "@/hooks/mutations"
 import { useChallenges, useExpenses } from "@/hooks/queries"
-import { formatCountdown, useNow } from "@/hooks/use-now"
+import { useLiveGameDiscounts } from "@/hooks/use-game-discounts"
+import { formatCountdown } from "@/hooks/use-now"
 import { activeDiscountPaise, allPlayed, DISCOUNT_WINDOW_MS, discountExpiresAt, GAMES } from "@/lib/games"
 import { calculatePersonNetBreakdown, formatPaise } from "@/lib/money"
 import type { Challenge } from "@/lib/types"
@@ -79,7 +79,7 @@ function ChallengeBody({ challenge, uid }: { challenge: Challenge; uid: string }
               {challenge.expenseTitle && ` · for "${challenge.expenseTitle}"`}
             </p>
           </div>
-          <Badge className="shrink-0 bg-success/15 font-bold text-success">{challenge.discountPercent}% off</Badge>
+          <span className="shrink-0 text-sm font-bold text-success">{challenge.discountPercent}% off</span>
         </CardContent>
       </Card>
 
@@ -148,7 +148,10 @@ function PlaySection({ challenge }: { challenge: Challenge }) {
           {submit.isPending && <Spinner />}
           Lock in {isRps ? "my moves" : `${guess}`}
         </Button>
-        <p className="text-center text-[11px] text-muted-foreground">You can&apos;t change it after locking in.</p>
+        <p className="text-center text-[11px] text-muted-foreground">
+          You can&apos;t change it after locking in. Take your time: the {DISCOUNT_WINDOW_MS / 60000}-minute discount
+          timer only starts once the result is out.
+        </p>
       </CardContent>
     </Card>
   )
@@ -214,12 +217,17 @@ function ResultSection({ challenge, uid }: { challenge: Challenge; uid: string }
   const isHost = challenge.hostId === uid
   const won = challenge.result?.winners.includes(uid) ?? false
   const expiresAt = discountExpiresAt(challenge)
-  const now = useNow(won ? expiresAt : 0)
-  const owedNow = React.useMemo(
-    () => (isHost ? 0 : calculatePersonNetBreakdown(uid, challenge.hostId, expenses).netPayablePaise),
+  const breakdown = React.useMemo(
+    () => (isHost ? null : calculatePersonNetBreakdown(uid, challenge.hostId, expenses)),
     [isHost, uid, challenge.hostId, expenses]
   )
-  const discount = Math.min(activeDiscountPaise(challenge, uid, now), owedNow)
+  const owedNow = breakdown?.netPayablePaise ?? 0
+  // Everything owed is reported: the payment is done, waiting on the host to confirm
+  const paymentReported =
+    !!breakdown?.aOwesBLines.length && breakdown.aOwesBLines.every((l) => l.status === "PAYMENT_REPORTED")
+  // This game's own discount (another game with the same host can't hide it); gone once you pay
+  const { now } = useLiveGameDiscounts()
+  const discount = paymentReported ? 0 : Math.min(activeDiscountPaise(challenge, uid, now), owedNow)
   const winnerNames = (challenge.result?.winners ?? []).map((w) => challenge.playerNames[w])
 
   const headline = isHost
@@ -252,6 +260,11 @@ function ResultSection({ challenge, uid }: { challenge: Challenge; uid: string }
               <p className="text-sm font-bold text-success">
                 ✓ Discount used — you saved {formatPaise(challenge.redeemed[uid])} on this game
               </p>
+            ) : !challenge.resolvedAt ? (
+              // Result saved locally, server time not in yet: the timer hasn't started
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Spinner /> Starting your {DISCOUNT_WINDOW_MS / 60000}-minute discount…
+              </p>
             ) : discount > 0 ? (
               <>
                 <p className="text-sm font-bold">
@@ -265,6 +278,10 @@ function ResultSection({ challenge, uid }: { challenge: Challenge; uid: string }
                   Pay {formatPaise(owedNow - discount)} now
                 </Button>
               </>
+            ) : paymentReported ? (
+              <p className="text-xs text-muted-foreground">
+                ✓ Payment reported — waiting for {challenge.hostName} to confirm.
+              </p>
             ) : owedNow === 0 ? (
               <p className="text-xs text-muted-foreground">You don&apos;t owe {challenge.hostName} anything right now.</p>
             ) : (

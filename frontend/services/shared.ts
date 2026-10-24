@@ -5,6 +5,7 @@ import {
   getDocs,
   query,
   setDoc,
+  updateDoc,
   where,
   type Firestore,
 } from "firebase/firestore"
@@ -51,6 +52,20 @@ export async function sendNotification(input: NotificationInput) {
     read: false,
     createdAt: input.createdAt ?? nowIso(),
   })
+  const actorId = input.data?.actorId
+  if (typeof actorId === "string") await touchFriendship(actorId, input.userId)
+}
+
+/**
+ * Stamps the latest activity between two friends (payments, reminders,
+ * confirmations, new splits — anything one sends the other) so the friends
+ * list can show the most recent first. Best effort: non-friends have no
+ * friendship to stamp.
+ */
+async function touchFriendship(a: string, b: string) {
+  const firestore = getDb()
+  if (!firestore || a === b) return
+  await updateDoc(doc(firestore, "friendships", friendshipId(a, b)), { lastActivityAt: nowIso() }).catch(() => {})
 }
 
 export async function fetchUserProfile(uid: string): Promise<UserProfile | null> {

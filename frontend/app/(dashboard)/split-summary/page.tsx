@@ -30,6 +30,8 @@ import {
 } from "@/lib/money"
 import { AwaitingConfirmationBadge } from "@/components/shared/awaiting-confirmation-badge"
 import { ChallengeButton } from "@/components/games/challenge-button"
+import { ChallengeInviteStrip } from "@/components/games/challenge-invite"
+import { PaymentDisputeLine, PaymentReceivedOr } from "@/components/shared/payment-received-prompt"
 import { GameDiscountAmount, GameDiscountNote } from "@/components/games/game-discount-amount"
 import { useDiscountedBalances, useLiveGameDiscounts } from "@/hooks/use-game-discounts"
 import { cn } from "@/lib/utils"
@@ -394,13 +396,17 @@ function SplitSummaryContent() {
                                 ) : (
                                   <div className="text-xs text-muted-foreground mt-0.5">Direct & Groups</div>
                                 )}
-                                {!person.youOwe && (
-                                  <ChallengeButton
-                                    className="mt-1.5"
-                                    person={{ uid: person.userId, name: person.name, photoURL: person.photoURL }}
-                                    owedPaise={person.amountPaise}
-                                  />
-                                )}
+                                {/* They reported a payment: just ask if it arrived; otherwise challenge */}
+                                <PaymentReceivedOr className="mt-2" personId={person.userId} personName={person.name}>
+                                  {!person.youOwe && (
+                                    <ChallengeButton
+                                      className="mt-1.5"
+                                      person={{ uid: person.userId, name: person.name, photoURL: person.photoURL }}
+                                      owedPaise={person.amountPaise}
+                                    />
+                                  )}
+                                </PaymentReceivedOr>
+                                <ChallengeInviteStrip className="mt-2" personId={person.userId} />
                               </div>
                             </div>
 
@@ -423,6 +429,7 @@ function SplitSummaryContent() {
                                   )}
                                 />
                                 {person.awaitingConfirmation && <AwaitingConfirmationBadge className="mt-1" />}
+                                <PaymentDisputeLine className="mt-1" personId={person.userId} personName={person.name} />
                               </div>
 
                               <HugeiconsIcon

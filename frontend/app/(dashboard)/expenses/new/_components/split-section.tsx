@@ -1,5 +1,8 @@
 "use client"
 
+import { AtSignIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
+
 import { Amount } from "@/components/shared/amount"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,6 +17,8 @@ import type { ExpenseDraft } from "./use-expense-draft"
  * By default everyone in the group is included.
  * Unchecking a person removes them from the split (0).
  * Typing a manual amount re-splits the rest equally among the remaining unlocked participants.
+ * You paid (whoever adds an expense paid it); repayments go to your UPI ID,
+ * asked for under the list.
  */
 export function SplitSection({ draft }: { draft: ExpenseDraft }) {
   const remaining = draft.remainingPaise
@@ -25,7 +30,7 @@ export function SplitSection({ draft }: { draft: ExpenseDraft }) {
         <CardTitle className="text-sm font-bold">Split</CardTitle>
         <CardDescription className="text-xs">
           {draft.isCustomSplit ? "Custom amounts · rest split equally" : "Equally"} · {people}{" "}
-          {people === 1 ? "person" : "people"}
+          {people === 1 ? "person" : "people"} · paid by you
         </CardDescription>
         {draft.isCustomSplit && (
           <CardAction>
@@ -61,7 +66,7 @@ export function SplitSection({ draft }: { draft: ExpenseDraft }) {
                 }
                 className={cn("px-0 flex-1 min-w-0 transition-opacity", !included && "opacity-50")}
               >
-                <InputGroup className={cn("w-32", locked && "border-primary/50", !included && "opacity-60")}>
+                <InputGroup className={cn("w-28", locked && "border-primary/50", !included && "opacity-60")}>
                   <InputGroupAddon className="font-semibold">₹</InputGroupAddon>
                   <InputGroupInput
                     type="number"
@@ -86,6 +91,8 @@ export function SplitSection({ draft }: { draft: ExpenseDraft }) {
           )
         })}
 
+        <RepayTo draft={draft} />
+
         {remaining !== 0 ? (
           <p className="pt-2 text-center text-xs font-semibold text-destructive">
             {remaining > 0 ? (
@@ -103,6 +110,28 @@ export function SplitSection({ draft }: { draft: ExpenseDraft }) {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/** Where repayments go: your UPI ID, filled in from your profile and editable. */
+function RepayTo({ draft }: { draft: ExpenseDraft }) {
+  return (
+    <div className="mt-1 flex flex-col gap-1.5 border-t pt-3">
+      <label htmlFor="repay-upi" className="text-xs text-muted-foreground">
+        Your UPI ID for repayments
+      </label>
+      <InputGroup>
+        <InputGroupAddon>
+          <HugeiconsIcon icon={AtSignIcon} />
+        </InputGroupAddon>
+        <InputGroupInput
+          id="repay-upi"
+          value={draft.recipientUpiId}
+          onChange={(e) => draft.setRecipientUpiId(e.target.value)}
+          placeholder="name@upi"
+        />
+      </InputGroup>
+    </div>
   )
 }
 

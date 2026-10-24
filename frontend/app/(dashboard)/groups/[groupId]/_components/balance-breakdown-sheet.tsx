@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
 import { PayPersonButton } from "@/components/shared/pay-person-button"
+import { GameDiscountAmount } from "@/components/games/game-discount-amount"
 import { useSendPaymentReminder } from "@/hooks/mutations"
+import { useScopedGameDiscount, type LiveGameDiscount } from "@/hooks/use-game-discounts"
 import { allocatePersonNetAcrossContexts, calculatePersonNetBreakdown, getExpenseDebts } from "@/lib/money"
 import type { Expense, Group } from "@/lib/types"
 
@@ -156,6 +158,7 @@ export function BalanceBreakdownSheet({
     () => buildBreakdown(userId, group, expenses),
     [userId, group, expenses]
   )
+  const game = useScopedGameDiscount({ groupId: group.id })
 
   return (
     <BottomSheet
@@ -187,6 +190,8 @@ export function BalanceBreakdownSheet({
               key={p.uid}
               person={p}
               tone="owe"
+              discount={game.perPerson.get(p.uid)}
+              now={game.now}
               action={
                 <PayPersonButton
                   personId={p.uid}
@@ -218,7 +223,7 @@ export function BalanceBreakdownSheet({
       {owedToMe.length > 0 && (
         <Section title="You get back">
           {owedToMe.map((p) => (
-            <PersonBlock key={p.uid} person={p} tone="owed">
+            <PersonBlock key={p.uid} person={p} tone="owed" discount={game.perPerson.get(p.uid)} now={game.now}>
               {p.lines.map(({ expense, amountPaise, isOffset, label }) => (
                 <LineRow
                   key={`${expense.id}_${isOffset ? "offset" : "direct"}`}
@@ -266,11 +271,16 @@ function PersonBlock({
   person,
   tone,
   action,
+  discount,
+  now,
   children,
 }: {
   person: Counterparty
   tone: "owe" | "owed"
   action?: React.ReactNode
+  /** Live game discount with this person: shown struck through with its timer. */
+  discount?: LiveGameDiscount
+  now: number
   children: React.ReactNode
 }) {
   return (
@@ -284,11 +294,21 @@ function PersonBlock({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Amount
-            paise={tone === "owe" ? -person.totalPaise : person.totalPaise}
-            signed
-            className="text-base font-extrabold"
-          />
+          {discount ? (
+            <GameDiscountAmount
+              amountPaise={person.totalPaise}
+              discount={discount}
+              now={now}
+              prefix={tone === "owe" ? "-" : "+"}
+              className={tone === "owe" ? "text-base font-extrabold text-destructive" : "text-base font-extrabold text-success"}
+            />
+          ) : (
+            <Amount
+              paise={tone === "owe" ? -person.totalPaise : person.totalPaise}
+              signed
+              className="text-base font-extrabold"
+            />
+          )}
           {action}
         </div>
       </div>

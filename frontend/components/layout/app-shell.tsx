@@ -10,6 +10,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { AppSidebar } from "./app-sidebar"
 import { BottomNav } from "./bottom-nav"
+import { isBottomNavPage } from "./nav-items"
 
 const REDIRECT_KEY = "joysplit_redirect_to"
 
@@ -48,11 +49,15 @@ export function AppShell({ children, hideNav = false }: { children: React.ReactN
   if (isLoading) return <FullScreenLoader />
   if (!user) return null
 
+  const showBottomNav = !hideNav && isBottomNavPage(pathname)
+
   return (
     <div className="flex min-h-svh flex-col md:flex-row">
       {!hideNav && <AppSidebar />}
-      <main className={cn("flex min-w-0 flex-1 flex-col", !hideNav && "pb-20 md:pb-8")}>{children}</main>
-      {!hideNav && <BottomNav />}
+      <main className={cn("flex min-w-0 flex-1 flex-col", showBottomNav ? "pb-20 md:pb-8" : "md:pb-8")}>
+        {children}
+      </main>
+      {showBottomNav && <BottomNav />}
     </div>
   )
 }

@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { useRouter } from "nextjs-toploader/app"
 import {
   Alert02Icon,
@@ -29,7 +30,9 @@ import { ButtonLink } from "@/components/shared/button-link"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { PayPersonButton } from "@/components/shared/pay-person-button"
 import { ChallengeButton } from "@/components/games/challenge-button"
-import { GameDiscountAmount } from "@/components/games/game-discount-amount"
+import { ChallengeInviteStrip } from "@/components/games/challenge-invite"
+import { HideWhilePaymentPending, PaymentDisputeLine, PaymentReceivedOr, PaymentStatusStrip, usePendingPaymentFrom } from "@/components/shared/payment-received-prompt"
+import { GameDiscountAmount, GameDiscountTag } from "@/components/games/game-discount-amount"
 import { useLiveGameDiscounts } from "@/hooks/use-game-discounts"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
 import { UserAvatar } from "@/components/shared/user-avatar"
@@ -46,10 +49,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemSeparator, ItemTitle } from "@/components/ui/item"
+import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemSeparator, ItemTitle } from "@/components/ui/item"
 import { Separator } from "@/components/ui/separator"
 import { useRemoveFriend, useSendFriendBalanceReminder } from "@/hooks/mutations"
-import { useExpenses, useFriendRequests, useFriends, useGroups } from "@/hooks/queries"
+import { useExpenses, useFriendRequests, useFriends, useGroups, useNotifications } from "@/hooks/queries"
 import {
   calculateDirectBalance,
   canRemoveFriend,
@@ -70,12 +73,25 @@ export default function FriendsPage() {
   const { data: friendRequests } = useFriendRequests()
   const { data: expenses } = useExpenses()
   const { data: groups } = useGroups()
+  const { data: notifications } = useNotifications()
+  const searchParams = useSearchParams()
   const removeFriend = useRemoveFriend()
   const sendReminder = useSendFriendBalanceReminder()
   const gameDiscounts = useLiveGameDiscounts()
 
   const [searchQuery, setSearchQuery] = React.useState("")
   const [profileFriend, setProfileFriend] = React.useState<UserProfile | null>(null)
+
+  // ?friend=<uid> (e.g. right after adding a split with them) opens their profile once
+  const friendParam = searchParams.get("friend")
+  const [openedParam, setOpenedParam] = React.useState<string | null>(null)
+  if (friendParam && friendParam !== openedParam) {
+    const target = friendsQuery.data.find((f) => f.uid === friendParam)
+    if (target) {
+      setOpenedParam(friendParam)
+      setProfileFriend(target)
+    }
+  }
   const [removeTarget, setRemoveTarget] = React.useState<UserProfile | null>(null)
 
   const userId = user?.uid
@@ -97,10 +113,37 @@ export default function FriendsPage() {
   const typedId = searchQuery.trim().toUpperCase()
   const lookupId = JOYSPLIT_ID_PATTERN.test(typedId) ? typedId : submittedId
 
+  // Latest activity with each friend: splits, payments, confirmations and reminders either way
+  const lastActivity = React.useMemo(() => {
+    const latest = new Map<string, string>()
+    const bump = (uid: string, at?: string) => {
+      if (at && at > (latest.get(uid) ?? "")) latest.set(uid, at)
+    }
+    for (const f of friendsQuery.data) bump(f.uid, f.friendActivityAt)
+    if (userId) {
+      for (const exp of expenses) {
+        const people = new Set([exp.payerId, ...(exp.shares ?? []).map((s) => s.userId)])
+        if (!people.has(userId)) continue
+        const times = [exp.createdAt, exp.updatedAt, ...(exp.shares ?? []).flatMap((s) => [s.reportedAt, s.confirmedAt])]
+        const at = times.reduce<string>((max, t) => (t && t > max ? t : max), "")
+        for (const p of people) if (p !== userId) bump(p, at)
+      }
+    }
+    for (const n of notifications) {
+      const actor = n.data?.actorId
+      if (typeof actor === "string") bump(actor, n.createdAt)
+    }
+    return latest
+  }, [friendsQuery.data, expenses, notifications, userId])
+
   const q = searchQuery.toLowerCase()
-  const filteredFriends = friendsQuery.data.filter(
-    (f) => f.displayName.toLowerCase().includes(q) || f.splitzyId.toLowerCase().includes(q)
-  )
+  const filteredFriends = friendsQuery.data
+    .filter((f) => f.displayName.toLowerCase().includes(q) || f.splitzyId.toLowerCase().includes(q))
+    .sort(
+      (a, b) =>
+        (lastActivity.get(b.uid) ?? "").localeCompare(lastActivity.get(a.uid) ?? "") ||
+        a.displayName.localeCompare(b.displayName)
+    )
 
   // Removal invariant for the friend in the confirmation dialog
   const removalCheck =
@@ -112,24 +155,53 @@ export default function FriendsPage() {
     [expenses]
   )
 
-  const profileDirect = React.useMemo(() => {
-    if (!user || !profileFriend) return null
-    return calculateDirectBalance(user.uid, profileFriend.uid, directExpenses)
-  }, [user, profileFriend, directExpenses])
+  const profileGame = profileFriend ? gameDiscounts.byPerson.get(profileFriend.uid) : undefined
+  // They reported a payment to you: the modal asks "received?" instead of offering Remind / Challenge
+  const profilePending = usePendingPaymentFrom(profileFriend?.uid ?? "")
 
-  // Per-group balances for the profile friend (groups that BOTH are members of)
-  const profileGroupBalances = React.useMemo(() => {
-    if (!user || !profileFriend) return []
-    return groups
+  // Raw balances with the profile friend: direct splits, and each shared group with an open balance
+  const profileRaw = React.useMemo(() => {
+    if (!user || !profileFriend) return null
+    const direct = calculateDirectBalance(user.uid, profileFriend.uid, directExpenses)
+    const groupRows = groups
       .filter((g) => g.members.includes(user.uid) && g.members.includes(profileFriend.uid))
       .map((g) => {
         const groupExpenses = expenses.filter((e) => !e.deletedAt && e.groupId === g.id)
-        // Only return groups where this pair have an open balance
-        const friendBalance = calculateDirectBalance(user.uid, profileFriend.uid, groupExpenses)
-        return { group: g, netPaise: friendBalance.netBalancePaise }
+        return { group: g, originalPaise: calculateDirectBalance(user.uid, profileFriend.uid, groupExpenses).netBalancePaise }
       })
-      .filter((r) => r.netPaise !== 0)
-  }, [user, profileFriend, groups, expenses])
+      .filter((r) => r.originalPaise !== 0)
+    return { direct, groupRows }
+  }, [user, profileFriend, groups, expenses, directExpenses])
+
+  // The live game discount lands on one balance, the same way the pay dialog applies it:
+  // the game's own split if there's something to discount there, else direct, else the first group
+  const profileGameOff = React.useMemo(() => {
+    const d = profileGame
+    if (!d || !profileRaw) return { key: null as string | null, offPaise: 0 }
+    const offOn = (netPaise: number) => Math.max(0, Math.min(d.discountPaise, d.role === "winner" ? -netPaise : netPaise))
+    const candidates = [
+      ...(d.groupId ? profileRaw.groupRows.filter((r) => r.group.id === d.groupId).map((r) => ({ key: r.group.id, net: r.originalPaise })) : []),
+      { key: "direct", net: profileRaw.direct.netBalancePaise },
+      ...profileRaw.groupRows.map((r) => ({ key: r.group.id, net: r.originalPaise })),
+    ]
+    const hit = candidates.find((c) => offOn(c.net) > 0)
+    return hit ? { key: hit.key, offPaise: offOn(hit.net) } : { key: null, offPaise: 0 }
+  }, [profileGame, profileRaw])
+
+  const applyOff = (key: string, netPaise: number) => {
+    const offPaise = profileGameOff.key === key ? profileGameOff.offPaise : 0
+    return { netPaise: netPaise + (profileGame?.role === "winner" ? offPaise : -offPaise), offPaise }
+  }
+
+  const profileDirect = profileRaw
+    ? (() => {
+        const { netPaise, offPaise } = applyOff("direct", profileRaw.direct.netBalancePaise)
+        return { ...profileRaw.direct, originalPaise: profileRaw.direct.netBalancePaise, netBalancePaise: netPaise, offPaise }
+      })()
+    : null
+
+  // Per-group balances for the profile friend (groups that BOTH are members of)
+  const profileGroupBalances = (profileRaw?.groupRows ?? []).map((r) => ({ ...r, ...applyOff(r.group.id, r.originalPaise) }))
 
   // Mutual expenses for the profile panel
   const mutualExpenses = React.useMemo(() => {
@@ -230,7 +302,7 @@ export default function FriendsPage() {
             {/* Friends count and sort header */}
             <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
               <span>{filteredFriends.length} Friends</span>
-              <span className="text-primary">A-Z ▾</span>
+              <span>Recent activity first</span>
             </div>
 
             <Card className="py-1">
@@ -247,7 +319,8 @@ export default function FriendsPage() {
                     return (
                       <React.Fragment key={friend.uid}>
                         {i > 0 && <ItemSeparator className="my-0" />}
-                        <Item className="px-3 py-3">
+                        <Item className="flex-col items-stretch gap-0 px-3 py-3">
+                          <div className="flex w-full min-w-0 items-center gap-3">
                           <button
                             type="button"
                             className="flex min-w-0 flex-1 cursor-pointer items-center gap-3.5 text-left"
@@ -258,36 +331,35 @@ export default function FriendsPage() {
                               <div className="truncate text-sm font-bold text-foreground">
                                 {friend.displayName}
                               </div>
-                              <div className="mt-0.5 flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
-                                <span>{friend.splitzyId}</span>
+                              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs whitespace-nowrap text-muted-foreground">
+                                <span className="shrink-0 font-mono">{friend.splitzyId}</span>
                                 {friend.upiId && (
-                                  <>
-                                    <span>•</span>
-                                    <span className="font-sans text-xs text-muted-foreground">
-                                      {friend.upiId}
-                                    </span>
-                                  </>
+                                  <span className="hidden min-w-0 truncate sm:inline">• {friend.upiId}</span>
                                 )}
                               </div>
                             </div>
                           </button>
 
-                          <ItemActions className="gap-2.5 items-center">
+                          <div className="flex shrink-0 items-center gap-2">
                             {netBalance !== 0 && (
-                              <GameDiscountAmount
-                                amountPaise={Math.abs(netBalance)}
-                                discount={gameDiscounts.byPerson.get(friend.uid)}
-                                now={gameDiscounts.now}
-                                prefix={netBalance > 0 ? "+" : "-"}
-                                className={cn(
-                                  "text-base sm:text-lg font-black shrink-0",
-                                  netBalance > 0
-                                    ? "text-emerald-600 dark:text-emerald-400"
-                                    : "text-destructive"
-                                )}
-                              />
+                              <span className="flex flex-col items-end">
+                                <GameDiscountAmount
+                                  amountPaise={Math.abs(netBalance)}
+                                  discount={gameDiscounts.byPerson.get(friend.uid)}
+                                  now={gameDiscounts.now}
+                                  prefix={netBalance > 0 ? "+" : "-"}
+                                  className={cn(
+                                    "text-base sm:text-lg font-black shrink-0",
+                                    netBalance > 0
+                                      ? "text-emerald-600 dark:text-emerald-400"
+                                      : "text-destructive"
+                                  )}
+                                />
+                              </span>
                             )}
 
+                            {/* While a payment waits for your answer, the strip below asks; actions step aside */}
+                            <HideWhilePaymentPending personId={friend.uid}>
                             {netBalance > 0 ? (
                               <>
                                 <Button
@@ -303,7 +375,7 @@ export default function FriendsPage() {
                                   }
                                 >
                                   <HugeiconsIcon icon={Notification01Icon} className="size-3.5" />
-                                  Remind
+                                  <span className="hidden sm:inline">Remind</span>
                                 </Button>
                                 <ChallengeButton
                                   person={{ uid: friend.uid, name: friend.displayName, photoURL: friend.photoURL }}
@@ -321,6 +393,7 @@ export default function FriendsPage() {
                                 Split
                               </ButtonLink>
                             )}
+                            </HideWhilePaymentPending>
 
                             <DropdownMenu>
                               <DropdownMenuTrigger
@@ -344,7 +417,17 @@ export default function FriendsPage() {
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
-                          </ItemActions>
+                          </div>
+                          </div>
+
+                          {/* Payment waiting for your answer, or disputed: one thin line under the row */}
+                          <PaymentStatusStrip
+                            className="mt-2.5 ml-[3.25rem]"
+                            personId={friend.uid}
+                            personName={friend.displayName}
+                          />
+                          {/* A game they sent you: see the deal and play */}
+                          <ChallengeInviteStrip className="mt-2.5 ml-[3.25rem]" personId={friend.uid} />
                         </Item>
                       </React.Fragment>
                     )
@@ -392,6 +475,17 @@ export default function FriendsPage() {
                 </div>
               </div>
 
+              {/* They reported paying you: only ask whether it arrived (Remind / Challenge come back on "No") */}
+              <PaymentReceivedOr
+                className="rounded-2xl border p-4"
+                personId={profileFriend.uid}
+                personName={profileFriend.displayName}
+              >
+                {null}
+              </PaymentReceivedOr>
+              <PaymentDisputeLine personId={profileFriend.uid} personName={profileFriend.displayName} />
+              <ChallengeInviteStrip personId={profileFriend.uid} />
+
               {/* Direct Splits Balance */}
               {profileDirect && (
                 <div className="flex flex-col gap-2">
@@ -404,6 +498,11 @@ export default function FriendsPage() {
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                         Direct Balance
                       </div>
+                      {profileDirect.offPaise > 0 && (
+                        <div className="text-xs font-semibold text-muted-foreground line-through">
+                          {formatPaise(Math.abs(profileDirect.originalPaise))}
+                        </div>
+                      )}
                       {profileDirect.netBalancePaise > 0 ? (
                         <div className="text-base font-extrabold text-success">
                           +{formatPaise(profileDirect.netBalancePaise)}
@@ -417,9 +516,17 @@ export default function FriendsPage() {
                       ) : (
                         <div className="text-sm font-bold text-muted-foreground">Settled</div>
                       )}
+                      {profileGame && (
+                        <GameDiscountTag
+                          className="mt-1"
+                          discountPaise={profileDirect.offPaise}
+                          endsAt={profileGame.expiresAt}
+                          now={gameDiscounts.now}
+                        />
+                      )}
                     </div>
                     <div>
-                      {profileDirect.netBalancePaise > 0 ? (
+                      {profilePending ? null : profileDirect.netBalancePaise > 0 ? (
                         <Button
                           variant="outline"
                           size="sm"
@@ -455,13 +562,18 @@ export default function FriendsPage() {
                     <span className="text-xs font-bold tracking-tight">Group Balances</span>
                   </div>
                   <div className="flex flex-col gap-2">
-                    {profileGroupBalances.map(({ group, netPaise }) => (
+                    {profileGroupBalances.map(({ group, netPaise, offPaise, originalPaise }) => (
                       <div
                         key={group.id}
                         className="flex items-center justify-between rounded-xl border p-3 bg-muted/30"
                       >
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-xs font-bold">{group.name}</div>
+                          {offPaise > 0 && (
+                            <div className="text-[11px] font-semibold text-muted-foreground line-through">
+                              {formatPaise(Math.abs(originalPaise))}
+                            </div>
+                          )}
                           {netPaise > 0 ? (
                             <div className="text-xs font-semibold text-success">
                               +{formatPaise(netPaise)} — they owe you
@@ -471,10 +583,18 @@ export default function FriendsPage() {
                               -{formatPaise(Math.abs(netPaise))} — you owe
                             </div>
                           )}
+                          {profileGame && (
+                            <GameDiscountTag
+                              className="mt-1"
+                              discountPaise={offPaise}
+                              endsAt={profileGame.expiresAt}
+                              now={gameDiscounts.now}
+                            />
+                          )}
                         </div>
                         <div className="ml-3 flex shrink-0 gap-2">
                           {netPaise > 0 ? (
-                            <Button
+                            profilePending ? null : <Button
                               variant="outline"
                               size="sm"
                               className="h-7 gap-1 border-success/40 px-2 text-[11px] font-bold text-success hover:bg-success/10"
@@ -526,7 +646,7 @@ export default function FriendsPage() {
               })()}
 
               {/* They owe you overall: challenge them to a game */}
-              {getFriendNetBalance(profileFriend) > 0 && (
+              {getFriendNetBalance(profileFriend) > 0 && !profilePending && (
                 <div className="flex items-center justify-between gap-3 rounded-2xl border border-warning/40 bg-warning/5 p-3">
                   <div className="min-w-0">
                     <div className="text-[11px] font-semibold tracking-wider text-warning uppercase">Settle-up game</div>

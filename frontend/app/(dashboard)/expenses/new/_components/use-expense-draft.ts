@@ -32,6 +32,9 @@ export const PERSONAL_CATEGORIES = [
 
 const todayIso = () => new Date().toISOString().split("T")[0]
 
+/** The most one expense can be, in rupees (₹10,00,000). */
+export const MAX_EXPENSE_RUPEES = 1_000_000
+
 /** Paise → editable rupee string: 300 → "3", 333 → "3.33". */
 const paiseToInput = (paise: number) => (paise % 100 === 0 ? String(paise / 100) : (paise / 100).toFixed(2))
 
@@ -66,8 +69,6 @@ interface DraftOptions {
 const VALID_EXPENSE_MODES: ExpenseMode[] = ["group", "friend", "personal"]
 
 export function useExpenseDraft({ user, groups, friends, preselectedGroupId, preselectedFriendId }: DraftOptions) {
-  const [isDone, setIsDone] = React.useState(false)
-
   const initialMode: ExpenseMode = preselectedFriendId ? "friend" : "group"
 
   // 3 distinct modes: "group" | "friend" | "personal", synced with URL query param `?tab=...`
@@ -94,14 +95,13 @@ export function useExpenseDraft({ user, groups, friends, preselectedGroupId, pre
   // Mode C (personal)
   const [personalCategory, setPersonalCategory] = React.useState<string>("Food & Dining")
 
-  // Shared expense specific (modes A & B)
-  const [payerId, setPayerId] = React.useState(user?.uid || "")
-  const [recipientId, setRecipientId] = React.useState(user?.uid || "")
+  // Shared expenses: whoever creates the expense paid it, and is repaid on their UPI ID
+  const payerId = user?.uid || ""
+  const recipientId = payerId
   const [recipientUpiId, setRecipientUpiId] = React.useState(user?.upiId || "")
   /** Amounts the user typed, as rupee strings keyed by uid. Everyone else shares the rest equally. */
   const [lockedShares, setLockedShares] = React.useState<Record<string, string>>({})
 
-  const [createdExpenseId, setCreatedExpenseId] = React.useState("")
   /** One id per form: a repeated submit rewrites the same expense instead of duplicating it. */
   const [draftId, setDraftId] = React.useState(newExpenseId)
 
@@ -173,26 +173,6 @@ export function useExpenseDraft({ user, groups, friends, preselectedGroupId, pre
     if (expenseMode === "friend") return friendEligibleMembers
     return []
   }, [expenseMode, groupEligibleMembers, friendEligibleMembers])
-
-  // Keep payer/recipient valid when the group or friend selection changes
-  React.useEffect(() => {
-    if (expenseMode === "personal") return
-    const uids = activeEligibleParticipants.map((m) => m.uid)
-    const fallback = user?.uid && uids.includes(user.uid) ? user.uid : uids[0] || ""
-    /* eslint-disable react-hooks/set-state-in-effect -- reconciles with an external selection change */
-    if (!uids.includes(payerId)) setPayerId(fallback)
-    if (!uids.includes(recipientId)) setRecipientId(fallback)
-    /* eslint-enable react-hooks/set-state-in-effect */
-  }, [expenseMode, activeEligibleParticipants, payerId, recipientId, user?.uid])
-
-  // Auto-sync recipient UPI ID
-  React.useEffect(() => {
-    if (expenseMode === "personal") return
-    const found = activeEligibleParticipants.find((p) => p.uid === recipientId)
-    const targetUpi = found?.upiId || (recipientId === user?.uid ? user?.upiId || "" : "")
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- mirrors the original sync semantics
-    if (targetUpi) setRecipientUpiId((prev) => (prev !== targetUpi ? targetUpi : prev))
-  }, [recipientId, activeEligibleParticipants, user?.uid, user?.upiId, expenseMode])
 
   // Included participants in the split (defaults to everyone in the group)
   const [includedMemberIds, setIncludedMemberIds] = React.useState<string[]>([])
@@ -311,6 +291,27 @@ export function useExpenseDraft({ user, groups, friends, preselectedGroupId, pre
 
   /* ── Toggles ─────────────────────────────────────────────────────────── */
 
+  /** Split with exactly this friend (the quick picker); the sheet allows several. */
+  const selectOnlyFriend = (fId: string) => setSelectedFriendIds([fId])
+
+  /**
+   * Amount input: digits with up to 2 decimals, capped at ₹10,00,000.
+   * Leading zeros collapse ("000" → "0", "007" → "7", ".5" → "0.5").
+   * Returns false if the keystroke was rejected.
+   */
+  const changeAmount = (raw: string) => {
+    let next = raw.replace(/,/g, "").trim()
+    if (!/^\d*(\.\d{0,2})?$/.test(next)) return false
+    next = next.replace(/^0+(?=\d)/, "")
+    if (next.startsWith(".")) next = `0${next}`
+    if (Number(next) > MAX_EXPENSE_RUPEES) {
+      toast.error("An expense can be at most ₹10,00,000", { id: "amount-max" })
+      return false
+    }
+    setAmountRupees(next)
+    return true
+  }
+
   const toggleFriendSelection = (fId: string) => {
     if (selectedFriendIds.includes(fId)) {
       if (selectedFriendIds.length <= 1) {
@@ -323,21 +324,37 @@ export function useExpenseDraft({ user, groups, friends, preselectedGroupId, pre
     }
   }
 
-  const changePayer = (memberUid: string) => {
-    setPayerId(memberUid)
-    setRecipientId(memberUid)
+  /**
+   * Clears the form after a save. The page can stay mounted across visits, so
+   * without this the next expense would open pre-filled — and reuse this id,
+   * overwriting the expense just saved.
+   */
+  const reset = () => {
+    setTitle("")
+    setAmountRupees("")
+    setLockedShares({})
+    setDraftId(newExpenseId())
   }
 
   /* ── Validation (all at save time) ──────────────────────────────────── */
 
-  /** Shared title/amount validation used by every mode. */
+  /** The description is optional: fall back to where the money went. */
+  const resolvedTitle = () => {
+    if (title.trim()) return title.trim()
+    if (expenseMode === "personal") return personalCategory
+    if (expenseMode === "group") return `${currentGroup.name} expense`
+    const picked = friends.filter((f) => selectedFriendIds.includes(f.uid))
+    return picked.length === 1 ? `Split with ${picked[0].displayName}` : "Split with friends"
+  }
+
+  /** Shared amount validation used by every mode. */
   const validateBasics = () => {
-    if (!title.trim()) {
-      toast.error("Please enter an expense title")
-      return false
-    }
     if (totalPaise <= 0) {
       toast.error("Please enter a valid amount greater than ₹0")
+      return false
+    }
+    if (totalPaise > MAX_EXPENSE_RUPEES * 100) {
+      toast.error("An expense can be at most ₹10,00,000")
       return false
     }
     return true
@@ -374,7 +391,7 @@ export function useExpenseDraft({ user, groups, friends, preselectedGroupId, pre
     expenseType: "personal",
     isPersonal: true,
     category: personalCategory,
-    title: title.trim(),
+    title: resolvedTitle(),
     amountPaise: totalPaise,
     payerId: user?.uid || "",
     payerName: user?.displayName || "You",
@@ -407,7 +424,7 @@ export function useExpenseDraft({ user, groups, friends, preselectedGroupId, pre
       expenseType: isGroup ? "group" : "friend",
       isDirect: expenseMode === "friend",
       isPersonal: false,
-      title: title.trim(),
+      title: resolvedTitle(),
       amountPaise: totalPaise,
       payerId,
       payerName: payerObj?.rawName || payerObj?.displayName || user?.displayName || "Payer",
@@ -426,36 +443,22 @@ export function useExpenseDraft({ user, groups, friends, preselectedGroupId, pre
     }
   }
 
-  const markCreated = (expenseId: string) => {
-    setCreatedExpenseId(expenseId)
-    setIsDone(true)
-  }
-
-  const resetForAnother = () => {
-    setIsDone(false)
-    setTitle("")
-    setAmountRupees("")
-    setLockedShares({})
-    setDraftId(newExpenseId())
-  }
-
   return {
-    isDone,
     expenseMode,
     setExpenseMode,
     title,
     setTitle,
     amountRupees,
-    setAmountRupees,
+    changeAmount,
     date,
     setSelectedGroupId,
     currentGroup,
     selectedFriendIds,
+    selectOnlyFriend,
     toggleFriendSelection,
     personalCategory,
     setPersonalCategory,
     payerId,
-    changePayer,
     recipientUpiId,
     setRecipientUpiId,
     activeEligibleParticipants,
@@ -472,13 +475,11 @@ export function useExpenseDraft({ user, groups, friends, preselectedGroupId, pre
     setShareAmount,
     releaseShareIfEmpty,
     resetSplit,
-    createdExpenseId,
     validateBasics,
     validateShared,
     buildPersonalInput,
     buildSharedInput,
-    markCreated,
-    resetForAnother,
+    reset,
   }
 }
 

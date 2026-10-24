@@ -2,52 +2,31 @@
 
 import * as React from "react"
 import { useSearchParams } from "next/navigation"
+import { useRouter } from "nextjs-toploader/app"
 import type { Options as ConfettiOptions } from "canvas-confetti"
-import {
-  ArrowDown01Icon,
-  ReceiptIndianRupeeIcon,
-  UserGroupIcon,
-  UserIcon,
-  UserMultipleIcon,
-} from "@hugeicons/core-free-icons"
-import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
+import { ReceiptIndianRupeeIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
 
 import { ExpenseGameOption } from "@/components/games/expense-game-option"
 import { AppHeader } from "@/components/layout/app-header"
 import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
-import { GroupIcon } from "@/components/shared/group-icon"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
-import { UserAvatar } from "@/components/shared/user-avatar"
-import { AvatarGroup } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Spinner } from "@/components/ui/spinner"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useCreateChallenge, useCreateExpense } from "@/hooks/mutations"
 import { useFriends, useGroups } from "@/hooks/queries"
 import { getErrorMessage } from "@/lib/errors"
-import type { Group, UserProfile } from "@/lib/types"
-import { PaidBySection } from "./_components/paid-by-section"
+import type { Expense, Group, UserProfile } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import { SplitSection } from "./_components/split-section"
-import { SplitWithSheet } from "./_components/split-with-sheet"
-import { SuccessScreen } from "./_components/success-screen"
-import {
-  PERSONAL_CATEGORIES,
-  useExpenseDraft,
-  type ExpenseDraft,
-  type ExpenseMode,
-} from "./_components/use-expense-draft"
+import { SplitWithPicker } from "./_components/split-with-picker"
+import { useExpenseDraft } from "./_components/use-expense-draft"
 
 const CONTAINER = "max-w-xl gap-4"
-
-const EXPENSE_MODES: { value: ExpenseMode; label: string; icon: IconSvgElement }[] = [
-  { value: "group", label: "Group", icon: UserGroupIcon },
-  { value: "friend", label: "Friend", icon: UserMultipleIcon },
-  { value: "personal", label: "Personal", icon: UserIcon },
-]
 
 /** Confetti is only needed after a save — load it on demand, off the critical bundle. */
 const celebrate = (options: ConfettiOptions) =>
@@ -61,33 +40,33 @@ function LoadingBody() {
   )
 }
 
-
-/** "With you and: …" summary of who the expense is shared with. */
-function SplitWithSummary({ draft, friends }: { draft: ExpenseDraft; friends: UserProfile[] }) {
-  if (draft.expenseMode === "personal") return <span className="truncate text-sm font-semibold">Just me (personal)</span>
-
-  if (draft.expenseMode === "group") {
-    return (
-      <span className="flex min-w-0 items-center gap-2">
-        <GroupIcon src={draft.currentGroup.icon} alt={draft.currentGroup.name} size="sm" className="size-7" />
-        <span className="truncate text-sm font-semibold">{draft.currentGroup.name}</span>
-      </span>
-    )
-  }
-
-  const picked = friends.filter((f) => draft.selectedFriendIds.includes(f.uid))
-  if (picked.length === 0) return <span className="text-sm text-muted-foreground">Choose friends</span>
+/**
+ * The big amount: ₹ sits right before the number as one centred unit, and the
+ * text shrinks smoothly as digits are added so it never gets cut off.
+ */
+function AmountInput({ value, onChange }: { value: string; onChange: (value: string) => boolean }) {
+  const length = Math.max(1, value.length)
+  const size = length <= 5 ? "text-6xl" : length <= 7 ? "text-5xl" : length <= 9 ? "text-4xl" : "text-3xl"
   return (
-    <span className="flex min-w-0 items-center gap-2">
-      <AvatarGroup>
-        {picked.slice(0, 3).map((f) => (
-          <UserAvatar key={f.uid} src={f.photoURL} name={f.displayName} size="xs" />
-        ))}
-      </AvatarGroup>
-      <span className="truncate text-sm font-semibold">
-        {picked.length === 1 ? picked[0].displayName : `${picked.length} friends`}
-      </span>
-    </span>
+    <div className="flex w-full max-w-full items-baseline justify-center overflow-hidden">
+      <span className={cn("mr-1 font-bold text-muted-foreground transition-all duration-200", size)}>₹</span>
+      <input
+        id="expense-amount"
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        autoFocus
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="0"
+        // Width follows the digits so ₹ stays snug against the number
+        style={{ width: `${length + 0.3}ch` }}
+        className={cn(
+          "min-w-0 bg-transparent font-black tracking-tight tabular-nums outline-none transition-all duration-200 placeholder:text-muted-foreground/40",
+          size
+        )}
+      />
+    </div>
   )
 }
 
@@ -104,10 +83,10 @@ function NewExpenseFlow({
   preselectedGroupId: string | null
   preselectedFriendId: string | null
 }) {
+  const router = useRouter()
   const draft = useExpenseDraft({ user, groups, friends, preselectedGroupId, preselectedFriendId })
   const createExpense = useCreateExpense({ errorMessage: false })
   const createChallenge = useCreateChallenge({ errorMessage: "Expense saved, but the game couldn't be started" })
-  const [splitWithOpen, setSplitWithOpen] = React.useState(false)
   const isShared = draft.expenseMode !== "personal"
 
   // Optional game: only on group expenses you paid, so you're the one owed
@@ -139,7 +118,6 @@ function NewExpenseFlow({
     savingRef.current = true
     createExpense.mutate(input, {
       onSuccess: (expense) => {
-        draft.markCreated(expense.id)
         if (canAddGame && gameEnabled) {
           createChallenge.mutate({
             kind: "group",
@@ -153,11 +131,16 @@ function NewExpenseFlow({
         }
         if (isShared) {
           void celebrate({ particleCount: 90, spread: 75, origin: { y: 0.6 }, colors: ["#2563EB", "#FBBF24", "#10B981"] })
-          toast.success("Expense created successfully!")
         } else {
           void celebrate({ particleCount: 70, spread: 60, origin: { y: 0.6 }, colors: ["#2563EB", "#10B981"] })
-          toast.success("Personal expense saved!")
         }
+        // Land where the expense lives, with a one-tap way to add the next one
+        const { href, addAnotherHref } = destinationFor(expense, draft.selectedFriendIds)
+        draft.reset()
+        toast.success(isShared ? "Expense added!" : "Personal expense saved!", {
+          action: { label: "Add another", onClick: () => router.push(addAnotherHref) },
+        })
+        router.replace(href)
       },
       onError: (err) =>
         toast.error(
@@ -167,17 +150,6 @@ function NewExpenseFlow({
         ),
       onSettled: release,
     })
-  }
-
-  if (draft.isDone) {
-    return (
-      <>
-        <AppHeader title="Expense added" />
-        <PageContainer className={CONTAINER}>
-          <SuccessScreen draft={draft} />
-        </PageContainer>
-      </>
-    )
   }
 
   return (
@@ -201,77 +173,36 @@ function NewExpenseFlow({
             save()
           }}
         >
-          {/* 1 — what kind of expense */}
-          <ToggleGroup
-            variant="outline"
-            className="grid w-full grid-cols-3"
-            value={[draft.expenseMode]}
-            onValueChange={(v) => v[0] && draft.setExpenseMode(v[0] as ExpenseMode)}
-          >
-            {EXPENSE_MODES.map((m) => (
-              <ToggleGroupItem
-                key={m.value}
-                value={m.value}
-                className="h-auto flex-col gap-1 rounded-xl py-2.5 text-xs font-bold data-pressed:border-primary data-pressed:bg-primary data-pressed:text-primary-foreground"
-              >
-                <HugeiconsIcon icon={m.icon} className="size-5" />
-                {m.label}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
+          {/* 1 — the amount is the star: big, centred, focused on open */}
+          <Card className="rounded-3xl">
+            <CardContent className="flex flex-col items-center gap-4 py-4">
+              <label htmlFor="expense-amount" className="text-xs font-semibold text-muted-foreground">
+                Amount
+              </label>
+              <AmountInput value={draft.amountRupees} onChange={draft.changeAmount} />
 
-          {/* 2 — who it's shared with */}
-          {isShared && (
-            <button
-              type="button"
-              onClick={() => setSplitWithOpen(true)}
-              className="flex w-full min-w-0 items-center gap-3 rounded-xl border bg-card px-4 py-3 text-left transition-colors hover:border-primary/40"
-            >
-              <span className="shrink-0 text-sm text-muted-foreground">
-                {draft.expenseMode === "group" ? "Group:" : "With you and:"}
-              </span>
-              <span className="min-w-0 flex-1">
-                <SplitWithSummary draft={draft} friends={friends} />
-              </span>
-              <HugeiconsIcon icon={ArrowDown01Icon} className="size-4 shrink-0 text-muted-foreground" />
-            </button>
-          )}
-
-          {/* 2 — what & how much */}
-          <Card>
-            <CardContent className="flex flex-col gap-3">
-              <InputGroup className="h-12">
+              {/* Description: optional, under the amount */}
+              <InputGroup className="h-11 w-full rounded-full bg-muted/40">
                 <InputGroupAddon>
-                  <HugeiconsIcon icon={ReceiptIndianRupeeIcon} className="size-5" />
+                  <HugeiconsIcon icon={ReceiptIndianRupeeIcon} className="size-4" />
                 </InputGroupAddon>
                 <InputGroupInput
-                  aria-label="Description"
+                  aria-label="Description (optional)"
                   value={draft.title}
                   onChange={(e) => draft.setTitle(e.target.value)}
-                  placeholder="Enter a description"
-                  className="text-base font-semibold md:text-base"
-                />
-              </InputGroup>
-              <InputGroup className="h-16">
-                <InputGroupAddon className="text-2xl font-bold text-foreground">₹</InputGroupAddon>
-                <InputGroupInput
-                  aria-label="Amount"
-                  type="number"
-                  step="any"
-                  inputMode="decimal"
-                  value={draft.amountRupees}
-                  onChange={(e) => draft.setAmountRupees(e.target.value)}
-                  placeholder="0.00"
-                  className="text-3xl font-extrabold md:text-3xl"
+                  placeholder="What was it for? (optional)"
+                  className="text-sm"
                 />
               </InputGroup>
             </CardContent>
           </Card>
 
-          {/* 3 — paid by + split, inline (shared) or category (personal) */}
-          {isShared ? (
+          {/* 2 — who it's split with: Group / Friends / Just me, choices right below */}
+          <SplitWithPicker draft={draft} groups={groups} friends={friends} />
+
+          {/* 3 — who owes what (you paid) */}
+          {isShared && (
             <>
-              <PaidBySection draft={draft} />
               <SplitSection draft={draft} />
               {canAddGame && (
                 <ExpenseGameOption
@@ -283,25 +214,6 @@ function NewExpenseFlow({
                 />
               )}
             </>
-          ) : (
-            <ToggleGroup
-              variant="outline"
-              size="sm"
-              className="w-full flex-wrap justify-center"
-              value={[draft.personalCategory]}
-              onValueChange={(v) => v[0] && draft.setPersonalCategory(v[0] as string)}
-            >
-              {PERSONAL_CATEGORIES.map((cat) => (
-                <ToggleGroupItem
-                  key={cat.id}
-                  value={cat.id}
-                  className="rounded-full text-xs data-pressed:border-primary data-pressed:bg-primary data-pressed:text-primary-foreground"
-                >
-                  <span>{cat.icon}</span>
-                  {cat.label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
           )}
 
           <Button type="submit" size="lg" className="mt-2 h-12 w-full text-base" disabled={createExpense.isPending}>
@@ -311,15 +223,27 @@ function NewExpenseFlow({
         </form>
       </PageContainer>
 
-      <SplitWithSheet
-        open={splitWithOpen}
-        onOpenChange={setSplitWithOpen}
-        draft={draft}
-        groups={groups}
-        friends={friends}
-      />
     </>
   )
+}
+
+/** Where a new expense shows up: its group, the friend you split with, or personal history. */
+function destinationFor(expense: Expense, friendIds: string[]) {
+  if (expense.groupId) {
+    return {
+      href: `/groups/${expense.groupId}?tab=expenses`,
+      addAnotherHref: `/expenses/new?groupId=${expense.groupId}`,
+    }
+  }
+  if (expense.isPersonal || expense.expenseType === "personal") {
+    return { href: "/history?filter=personal", addAnotherHref: "/expenses/new?tab=personal" }
+  }
+  // One friend: open their profile on the friends page; several: the friends list
+  const friend = friendIds.length === 1 ? friendIds[0] : null
+  return {
+    href: friend ? `/friends?friend=${friend}` : "/friends",
+    addAnotherHref: friend ? `/expenses/new?friend=${friend}` : "/expenses/new?tab=friend",
+  }
 }
 
 function NewExpenseContent() {

@@ -29,6 +29,11 @@ import {
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { Spinner } from "@/components/ui/spinner"
 import { useReportPersonSettlement, useSendFriendBalanceReminder } from "@/hooks/mutations"
+import {
+  PaymentDisputeLine,
+  PaymentReceivedPrompt,
+  usePendingPaymentFrom,
+} from "@/components/shared/payment-received-prompt"
 import { useExpenses, useFriends, useGroups } from "@/hooks/queries"
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
 import {
@@ -70,6 +75,8 @@ export function SettleExpensesDialog({
   const { copy } = useCopyToClipboard()
 
   const sendReminder = useSendFriendBalanceReminder()
+  // They reported paying you: the only question left is whether it arrived
+  const pendingFromThem = usePendingPaymentFrom(personId)
   const reportSettlement = useReportPersonSettlement({
     successMessage: "Settlement reported! Notified recipient for confirmation.",
   })
@@ -184,8 +191,23 @@ export function SettleExpensesDialog({
   const gameOff = gameDiscount
     ? Math.min(gameDiscount.discountPaise, isUserOwing ? netPayablePaise : netReceivablePaise)
     : 0
+  /** Off a new payment: only a live offer, never one already used on a payment awaiting confirmation. */
+  const payOff = gameDiscount && !gameDiscount.pending ? gameOff : 0
   /** What you actually pay right now. */
-  const payPaise = netPayablePaise - (isUserOwing ? gameOff : 0)
+  const payPaise = netPayablePaise - (isUserOwing ? payOff : 0)
+
+  /** A live discount in the direction of this balance (you owe → won, you get → hosted), capped by it. */
+  const offFor = (netPaise: number) =>
+    live && ((live.role === "winner" && netPaise < 0) || (live.role === "host" && netPaise > 0))
+      ? Math.min(live.discountPaise, Math.abs(netPaise))
+      : 0
+  // The overall balance with them, after the discount
+  const fullOff = fullBreakdown ? offFor(fullBreakdown.netBalancePaise) : 0
+  // The split the game was played on (friend games: direct splits; else the first matching one)
+  const gameCtxKey = live
+    ? (allContexts.find((c) => c.key === (live.groupId ?? "direct") && offFor(c.netPaise) > 0) ??
+        allContexts.find((c) => offFor(c.netPaise) > 0))?.key
+    : undefined
 
   const handleReport = (noteText?: string) => {
     if (!user || selectedKeys.length === 0) return
@@ -209,7 +231,7 @@ export function SettleExpensesDialog({
           contextKeys: selectedKeys,
         },
         note,
-        ...(gameDiscount?.role === "winner" && gameOff > 0 ? { challengeId: gameDiscount.challengeId } : {}),
+        ...(gameDiscount?.role === "winner" && payOff > 0 ? { challengeId: gameDiscount.challengeId } : {}),
       },
       {
         onSuccess: () => {
@@ -319,7 +341,12 @@ export function SettleExpensesDialog({
                         : "text-emerald-600 dark:text-emerald-400"
                     )}
                   >
-                    ₹{(Math.abs(fullBreakdown.netBalancePaise) / 100).toFixed(0)}
+                    {fullOff > 0 && (
+                      <span className="mr-1.5 text-xs font-semibold text-muted-foreground line-through">
+                        ₹{(Math.abs(fullBreakdown.netBalancePaise) / 100).toFixed(0)}
+                      </span>
+                    )}
+                    ₹{((Math.abs(fullBreakdown.netBalancePaise) - fullOff) / 100).toFixed(0)}
                   </span>
                 </div>
               )}
@@ -343,6 +370,7 @@ export function SettleExpensesDialog({
                   const ctxGets = ctx.bOwesAPaise
                   const ctxNet = ctx.netPaise
                   const youOweInCtx = ctxNet < 0
+                  const ctxOff = ctx.key === gameCtxKey ? offFor(ctxNet) : 0
 
                   return (
                     <div
@@ -408,7 +436,12 @@ export function SettleExpensesDialog({
                                 : "text-emerald-600 dark:text-emerald-400"
                             )}
                           >
-                            ₹{(Math.abs(ctxNet) / 100).toFixed(0)}
+                            {ctxOff > 0 && (
+                              <span className="mr-1 text-[11px] font-semibold text-muted-foreground line-through">
+                                ₹{(Math.abs(ctxNet) / 100).toFixed(0)}
+                              </span>
+                            )}
+                            ₹{((Math.abs(ctxNet) - ctxOff) / 100).toFixed(0)}
                           </span>
                         </div>
 
@@ -535,7 +568,9 @@ export function SettleExpensesDialog({
 
           {/* Sticky Bottom Action Bar */}
           <div className="border-t border-border/60 bg-background/95 p-4 backdrop-blur-md sm:px-6">
-            {awaitingConfirmation ? (
+            {pendingFromThem ? (
+              <PaymentReceivedPrompt size="lg" personId={personId} personName={targetName} />
+            ) : awaitingConfirmation ? (
               <div className="flex flex-col items-center gap-1.5 text-center">
                 <AwaitingConfirmationBadge className="py-1.5 text-xs" />
                 <p className="text-xs text-muted-foreground">
@@ -543,6 +578,8 @@ export function SettleExpensesDialog({
                 </p>
               </div>
             ) : isUserOwing ? (
+              <div className="flex flex-col gap-2">
+              <PaymentDisputeLine className="justify-center" personId={personId} personName={targetName} />
               <Button
                 type="button"
                 disabled={reportSettlement.isPending || selectedKeys.length === 0}
@@ -554,21 +591,23 @@ export function SettleExpensesDialog({
                     <Spinner className="size-4" /> Processing...
                   </span>
                 ) : (
-                  gameOff > 0
-                    ? `PAY ₹${(payPaise / 100).toFixed(0)} · SAVE ₹${(gameOff / 100).toFixed(0)}`
+                  payOff > 0
+                    ? `PAY ₹${(payPaise / 100).toFixed(0)} · SAVE ₹${(payOff / 100).toFixed(0)}`
                     : `PAY ₹${(netPayablePaise / 100).toFixed(0)}`
                 )}
               </Button>
+              </div>
             ) : netReceivablePaise > 0 ? (
               <div className="flex flex-col gap-2">
+                <PaymentDisputeLine className="justify-center" personId={personId} personName={targetName} />
                 <Button
                   type="button"
                   variant="outline"
                   disabled={sendReminder.isPending}
-                  onClick={() => sendReminder.mutate({ targetUserId: personId, amountPaise: netReceivablePaise })}
+                  onClick={() => sendReminder.mutate({ targetUserId: personId, amountPaise: netReceivablePaise - gameOff })}
                   className="h-13 w-full rounded-2xl border-emerald-600/40 text-base font-bold text-emerald-600 hover:bg-emerald-500/10 dark:border-emerald-500/40 dark:text-emerald-400"
                 >
-                  REMIND {targetName.toUpperCase()} (₹{(netReceivablePaise / 100).toFixed(0)})
+                  REMIND {targetName.toUpperCase()} (₹{((netReceivablePaise - gameOff) / 100).toFixed(0)})
                 </Button>
                 {/* Games use the overall balance with this person, not just the selected splits */}
                 <ChallengeButton

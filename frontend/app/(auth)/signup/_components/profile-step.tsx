@@ -23,6 +23,9 @@ import { AuthInput } from "../../_components/auth-input"
 
 export { DEFAULT_AVATAR }
 
+/** handle@bank, e.g. rajeev.r@okaxis */
+const UPI_ID_PATTERN = /^[\w.-]{2,}@[a-zA-Z][a-zA-Z0-9]{1,}$/
+
 const FEATURED_AVATARS = [
   BOY_AVATARS[0].src,
   GIRL_AVATARS[0].src,
@@ -64,11 +67,20 @@ export function ProfileStep({
       toast.error("Please enter your name.")
       return
     }
+    // Friends pay you over UPI, so every profile needs one
+    if (!upiId.trim()) {
+      toast.error("Please enter your UPI ID.")
+      return
+    }
+    if (!UPI_ID_PATTERN.test(upiId.trim())) {
+      toast.error("Enter a valid UPI ID, like yourname@okaxis.")
+      return
+    }
 
     updateProfile.mutate(
       {
         displayName: fullName.trim() || user.displayName || "User",
-        upiId: upiId.trim() || "",
+        upiId: upiId.trim(),
         photoURL: selectedAvatar,
         onboardingCompleted: true,
       },
@@ -187,12 +199,13 @@ export function ProfileStep({
 
         <AuthInput
           id="upiId"
-          label="UPI ID (optional)"
+          label="UPI ID"
           icon={AtIcon}
           value={upiId}
           onChange={(e) => onUpiIdChange(e.target.value)}
           placeholder="yourname@upi"
-          description="For receiving payments directly"
+          description="Friends pay you back on this UPI ID"
+          required
         />
 
         <Button size="lg" className="mt-2 h-11 w-full" onClick={handleComplete} disabled={updateProfile.isPending}>

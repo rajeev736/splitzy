@@ -2,10 +2,11 @@
 
 import * as React from "react"
 import { useTheme } from "next-themes"
-import { ComputerIcon, Moon02Icon, SmartPhone01Icon, Sun03Icon } from "@hugeicons/core-free-icons"
+import { ComputerIcon, Moon02Icon, Notification01Icon, SmartPhone01Icon, Sun03Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 
 import { AppHeader } from "@/components/layout/app-header"
+import { NotificationSettings } from "@/components/shared/enable-notifications"
 import { PageContainer } from "@/components/layout/app-shell"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -93,6 +94,16 @@ export default function SettingsPage() {
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
+        </SettingsCard>
+
+        {/* Notification-bar alerts */}
+        <SettingsCard
+          icon={Notification01Icon}
+          iconClassName="bg-secondary text-primary"
+          title="Notifications"
+          description="Alerts in your phone's notification bar"
+        >
+          <NotificationSettings />
         </SettingsCard>
 
         {/* PWA install */}

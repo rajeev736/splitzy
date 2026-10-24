@@ -345,6 +345,25 @@ export const useDisputePersonSettlement = createUserMutation({
   },
 })
 
+const applySettlement = ({ cache }: Ctx, result: settlementService.SettlementResult) => {
+  const updatedMap = new Map(result.updatedExpenses.map((e) => [e.id, e]))
+  cache.setExpenses((list) => list.map((e) => updatedMap.get(e.id) || e))
+}
+
+/** "It arrived after all": closes a payment you had marked not received. */
+export const useConfirmDisputedSettlement = createUserMutation({
+  run: async ({ user, cache }, input: settlementService.DisputedSettlementInput) =>
+    settlementService.confirmDisputedSettlement(user, await cache.loadExpenses(), input),
+  apply: applySettlement,
+})
+
+/** Sends a disputed payment back to the other person to check again. */
+export const useRecheckDisputedSettlement = createUserMutation({
+  run: async ({ user, cache }, input: settlementService.DisputedSettlementInput & { amountPaise: number }) =>
+    settlementService.recheckDisputedSettlement(user, await cache.loadExpenses(), input),
+  apply: applySettlement,
+})
+
 export const useSendPaymentReminder = createUserMutation({
   run: async ({ user, cache }, v: { expenseId: string; targetUserId: string }) =>
     expenseService.sendPaymentReminder(user, await cache.loadExpenses(), v.expenseId, v.targetUserId),

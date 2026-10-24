@@ -134,7 +134,7 @@ export function PersonSettlementDialog({
   // A game discount passed in, or any live one you won against this person
   const liveDiscounts = useLiveGameDiscounts()
   const won = liveDiscounts.byPerson.get(effectivePersonId)
-  const activeGame = gameDiscount ?? (won?.role === "winner" ? won : undefined)
+  const activeGame = gameDiscount ?? (won?.role === "winner" && !won.pending ? won : undefined)
   const now = useNow(activeGame?.expiresAt ?? 0)
   const discountLive = !!activeGame && now < activeGame.expiresAt
 

@@ -151,6 +151,7 @@ function derivePayments(user: UserProfile | null, expenses: Expense[]) {
 }
 
 const MAIN_VIEWS: MainView[] = ["expenses", "payments"]
+const EXPENSE_FILTER_VALUES: ExpenseFilter[] = ["all", "group", "personal"]
 
 function HistoryContent() {
   const { user } = useSession()
@@ -161,7 +162,12 @@ function HistoryContent() {
     defaultValue: "expenses",
     validValues: MAIN_VIEWS,
   })
-  const [expenseFilter, setExpenseFilter] = React.useState<ExpenseFilter>("all")
+  // ?filter=personal opens straight on personal expenses (e.g. right after adding one)
+  const [expenseFilter, setExpenseFilter] = useQueryTab<ExpenseFilter>({
+    defaultValue: "all",
+    validValues: EXPENSE_FILTER_VALUES,
+    param: "filter",
+  })
   const [paymentFilter, setPaymentFilter] = React.useState<PaymentFilter>("all")
 
   const { records, totalSentPaise, totalReceivedPaise } = React.useMemo(

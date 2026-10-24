@@ -27,7 +27,16 @@ export interface ConfirmSettlementInput {
   scope?: SettlementScope
 }
 
-export type DisputeSettlementInput = ConfirmSettlementInput
+export interface DisputeSettlementInput extends ConfirmSettlementInput {
+  /** What the debtor said they sent (after any game discount), kept so they can ask you to recheck it. */
+  amountPaise?: number
+}
+
+export interface DisputedSettlementInput {
+  /** The other person in the disputed settlement. */
+  otherId: string
+  settlementId: string
+}
 
 export interface SettlementResult {
   updatedExpenses: Expense[]
@@ -297,8 +306,11 @@ export async function confirmPersonSettlement(
 }
 
 /**
- * Creditor disputes a settlement: its reported shares become DISPUTED and any
- * of the creditor's own shares that were cancelled out by it are reopened.
+ * Creditor disputes a settlement ("not received"): its reported shares become
+ * DISPUTED. The creditor's own shares the debtor approved for cancelling out
+ * keep that approval under the same settlement id — they stay open and keep
+ * counting, but if the money turns up late the whole settlement can still be
+ * closed exactly as reported (see confirmDisputedSettlement).
  */
 export async function disputePersonSettlement(
   user: UserProfile,
@@ -309,11 +321,15 @@ export async function disputePersonSettlement(
   const editor = shareEditor(expenses)
   const matches = reportedShareMatcher(user.uid, input, expenses)
   const offsets = approvedOffsetMatcher(user.uid, input)
+  let reportedPaise = 0
+  let offsetPaise = 0
 
   for (const exp of expenses) {
-    editor.edit(exp.id, matches, (s) => ({ ...s, status: "DISPUTED" }))
-    // Withdraw the cancel-out on your own shares too: they simply stay open
-    editor.edit(exp.id, offsets, (s) => ({ ...s, status: "PENDING", settlementId: undefined, offsetApprovedBy: undefined }))
+    editor.edit(exp.id, matches, (s) => {
+      reportedPaise += s.amountPaise
+      return { ...s, status: "DISPUTED" }
+    })
+    for (const s of exp.shares || []) if (offsets(exp, s)) offsetPaise += s.amountPaise
   }
 
   const updatedExpenses = editor.result()
@@ -331,6 +347,9 @@ export async function disputePersonSettlement(
         actorName: user.displayName,
         debtorId: input.debtorId,
         creditorId: user.uid,
+        // Lets the debtor ask for a recheck of exactly this payment
+        amountPaise: input.amountPaise ?? Math.max(0, reportedPaise - offsetPaise),
+        offsetPaise,
         ...(input.settlementId ? { settlementId: input.settlementId } : {}),
       },
       createdAt: now,
@@ -339,6 +358,113 @@ export async function disputePersonSettlement(
   if (input.notifId) await updateNotificationAction(input.notifId, "DISPUTED").catch(console.warn)
 
   return { updatedExpenses, allocatedAmountPaise: 0 }
+}
+
+/**
+ * Creditor: "it arrived after all" — closes a disputed settlement exactly as it
+ * was reported: the debtor's disputed shares and your own shares they had
+ * approved for cancelling out become PAID together.
+ */
+export async function confirmDisputedSettlement(
+  user: UserProfile,
+  expenses: Expense[],
+  input: DisputedSettlementInput
+): Promise<SettlementResult> {
+  const now = nowIso()
+  const editor = shareEditor(expenses)
+  const offsets = approvedOffsetMatcher(user.uid, { debtorId: input.otherId, settlementId: input.settlementId })
+  let allocated = 0
+
+  for (const exp of expenses) {
+    editor.edit(
+      exp.id,
+      (e, s) =>
+        s.userId === input.otherId &&
+        s.settlementId === input.settlementId &&
+        s.status === "DISPUTED" &&
+        payeeOf(e, s.userId) === user.uid,
+      (s) => {
+        allocated += s.amountPaise
+        return { ...s, status: "PAID", confirmedAt: now }
+      }
+    )
+    editor.edit(exp.id, offsets, (s) => ({
+      ...s,
+      status: "PAID",
+      confirmedAt: now,
+      offsetApprovedBy: undefined,
+      paymentProofNote: "Cancelled out by mutual split",
+    }))
+  }
+
+  const updatedExpenses = editor.result()
+  if (updatedExpenses.length === 0) throw new AppError(NOT_FOUND_MESSAGE)
+  await commitShares(updatedExpenses, now)
+
+  await sendNotification({
+    userId: input.otherId,
+    title: "Payment Received ✓",
+    message: `${user.displayName} checked again and confirmed your payment arrived. You're settled.`,
+    type: "PAYMENT_CONFIRMED",
+    data: {
+      actorId: user.uid,
+      actorName: user.displayName,
+      debtorId: input.otherId,
+      creditorId: user.uid,
+      settlementId: input.settlementId,
+    },
+    createdAt: now,
+  })
+
+  return { updatedExpenses, allocatedAmountPaise: allocated }
+}
+
+/**
+ * Debtor: "please check again" after a dispute — the same payment goes back to
+ * the creditor for confirmation (disputed shares → PAYMENT_REPORTED under the
+ * same settlement, so the cancel-outs approved with it still apply).
+ */
+export async function recheckDisputedSettlement(
+  user: UserProfile,
+  expenses: Expense[],
+  input: DisputedSettlementInput & { amountPaise: number }
+): Promise<SettlementResult> {
+  const now = nowIso()
+  const editor = shareEditor(expenses)
+
+  for (const exp of expenses) {
+    editor.edit(
+      exp.id,
+      (e, s) =>
+        s.userId === user.uid &&
+        s.settlementId === input.settlementId &&
+        s.status === "DISPUTED" &&
+        payeeOf(e, s.userId) === input.otherId,
+      (s) => ({ ...s, status: "PAYMENT_REPORTED", reportedAt: now })
+    )
+  }
+
+  const updatedExpenses = editor.result()
+  if (updatedExpenses.length === 0) throw new AppError("There's no disputed payment to send again.")
+  await commitShares(updatedExpenses, now)
+
+  await sendNotification({
+    userId: input.otherId,
+    title: "Please check again",
+    message: `${user.displayName} says they did send ₹${rupees(input.amountPaise)} — bank transfers can be slow. Did it arrive now?`,
+    type: "PAYMENT_REPORTED",
+    data: {
+      actorId: user.uid,
+      actorName: user.displayName,
+      debtorId: user.uid,
+      creditorId: input.otherId,
+      settlementId: input.settlementId,
+      amountPaise: input.amountPaise,
+    },
+    createdAt: now,
+  })
+
+  return { updatedExpenses, allocatedAmountPaise: input.amountPaise }
 }
 
 /** Records the discount on the game (once). Security rules check it against server time. */

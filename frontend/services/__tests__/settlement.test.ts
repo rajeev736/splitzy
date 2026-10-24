@@ -13,7 +13,13 @@ import {
   payeeOf,
 } from "../../lib/money"
 import type { Expense, ExpenseShare, UserProfile } from "../../lib/types"
-import { confirmPersonSettlement, disputePersonSettlement, reportPersonSettlement } from "../settlement"
+import {
+  confirmDisputedSettlement,
+  confirmPersonSettlement,
+  disputePersonSettlement,
+  recheckDisputedSettlement,
+  reportPersonSettlement,
+} from "../settlement"
 
 function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(`Assertion failed: ${message}`)
@@ -106,12 +112,30 @@ async function main() {
   list = apply(list, disputed.updatedExpenses)
   assert(share(list, "exp3", A).status === "DISPUTED", "A's reported share is disputed")
   assert(
-    share(list, "exp2", B).status === "PENDING" &&
-      !share(list, "exp2", B).settlementId &&
-      !share(list, "exp2", B).offsetApprovedBy,
-    "B's cancel-out approval is withdrawn"
+    share(list, "exp2", B).status === "PENDING" && share(list, "exp2", B).settlementId === id2,
+    "B's cancelled-out share stays open, still tied to the disputed settlement"
   )
-  console.log("✓ Dispute reverts the offset")
+  assert(!isCancelOutPending(A.uid, B.uid, list), "a disputed settlement is no longer pending")
+  assert(calculatePersonNetBreakdown(A.uid, B.uid, list).netPayablePaise === 20000, "balances are back to unpaid")
+  console.log("✓ Dispute reopens the balance")
+
+  // 3b. Money arrives late: B confirms the disputed settlement, both sides close as reported
+  const late = await confirmDisputedSettlement(B, list, { otherId: A.uid, settlementId: id2 })
+  const lateList = apply(list, late.updatedExpenses)
+  assert(share(lateList, "exp3", A).status === "PAID" && share(lateList, "exp2", B).status === "PAID",
+    "late confirmation closes the disputed share and its cancel-out")
+  assert(calculatePersonNetBreakdown(A.uid, B.uid, lateList).netPayablePaise === 15000, "only the group ₹150 is left")
+  console.log("✓ Late confirmation settles exactly the reported payment")
+
+  // 3c. Or A asks B to check again: the same settlement is pending again
+  const recheck = await recheckDisputedSettlement(A, list, { otherId: B.uid, settlementId: id2, amountPaise: 5000 })
+  list = apply(list, recheck.updatedExpenses)
+  assert(share(list, "exp3", A).status === "PAYMENT_REPORTED", "disputed share is reported again")
+  assert(isCancelOutPending(A.uid, B.uid, list), "the settlement is pending again")
+  const reconfirmed = await confirmPersonSettlement(B, list, { debtorId: A.uid, settlementId: id2 })
+  list = apply(list, reconfirmed.updatedExpenses)
+  assert(share(list, "exp2", B).status === "PAID", "confirming the recheck still closes the cancel-out")
+  console.log("✓ Recheck sends the same payment back for confirmation")
 
   // 4. Legacy confirmation (no settlement id) never touches PENDING shares
   list = fixture()
