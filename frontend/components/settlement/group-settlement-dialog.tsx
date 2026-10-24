@@ -114,19 +114,19 @@ export function GroupSettlementDialog({
         <SheetContent
           side="bottom"
           showCloseButton={false}
-          className="mx-auto flex h-[85vh] max-h-[85vh] w-full max-w-xl flex-col gap-0 rounded-t-[28px] border-border bg-background p-0 text-foreground shadow-2xl sm:rounded-3xl sm:border"
+          className="mx-auto flex h-[85vh] max-h-[85vh] w-full max-w-xl flex-col gap-0 rounded-t-lg border-border bg-background p-0 text-foreground sm:rounded-lg sm:border"
         >
           {/* Top Bar */}
-          <div className="flex items-center justify-between border-b border-border/60 bg-background/95 px-4 py-3 backdrop-blur-md sm:px-6">
+          <div className="flex items-center justify-between border-b bg-background px-4 py-3 sm:px-6">
             <button
               type="button"
               onClick={() => onOpenChange(false)}
-              className="flex size-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95"
+              className="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               aria-label="Back"
             >
               <HugeiconsIcon icon={ArrowLeft01Icon} className="size-5" />
             </button>
-            <SheetTitle className="text-base font-bold tracking-tight text-foreground">
+            <SheetTitle className="text-base font-semibold text-foreground">
               Group Settlement
             </SheetTitle>
             <div className="flex items-center gap-1.5">
@@ -138,7 +138,7 @@ export function GroupSettlementDialog({
                   onOpenChange(false)
                   router.push(`/groups/${groupId}`)
                 }}
-                className="h-8 gap-1 rounded-xl border-primary/30 px-2.5 text-xs font-bold text-primary hover:bg-primary/10"
+                className="h-8 gap-1 rounded-md px-2.5 text-xs font-medium"
               >
                 View Group
                 <HugeiconsIcon icon={ArrowRight01Icon} className="size-3.5" />
@@ -146,7 +146,7 @@ export function GroupSettlementDialog({
               <button
                 type="button"
                 onClick={() => onOpenChange(false)}
-                className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95"
+                className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 aria-label="Close"
               >
                 <HugeiconsIcon icon={Cancel01Icon} className="size-4" />
@@ -157,7 +157,7 @@ export function GroupSettlementDialog({
           {/* Body */}
           <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
             {/* Group Banner */}
-            <div className="flex flex-row items-center justify-between gap-4 rounded-3xl border border-border bg-card p-4 text-card-foreground shadow-xs">
+            <div className="flex flex-row items-center justify-between gap-4 rounded-lg border bg-card p-4 text-card-foreground">
               <div className="flex items-center gap-3.5 min-w-0 flex-1">
                 <button
                   type="button"
@@ -165,10 +165,10 @@ export function GroupSettlementDialog({
                     onOpenChange(false)
                     router.push(`/groups/${groupId}`)
                   }}
-                  className="shrink-0 transition-transform hover:scale-105 active:scale-95"
+                  className="shrink-0 transition-opacity hover:opacity-80"
                   title="Go to group dashboard"
                 >
-                  <GroupIcon src={group?.icon} alt={groupName} size="md" className="size-12 rounded-full border shadow-2xs" />
+                  <GroupIcon src={group?.icon} alt={groupName} size="md" className="size-11 rounded-full border" />
                 </button>
                 <div className="min-w-0 flex-1">
                   <button
@@ -177,7 +177,7 @@ export function GroupSettlementDialog({
                       onOpenChange(false)
                       router.push(`/groups/${groupId}`)
                     }}
-                    className="truncate text-left text-base font-bold text-foreground hover:text-primary transition-colors block"
+                    className="block truncate text-left text-sm font-semibold text-foreground transition-colors hover:underline"
                   >
                     {groupName}
                   </button>
@@ -189,20 +189,20 @@ export function GroupSettlementDialog({
                         : "Group Net Receivable"}
                   </div>
                   {groupBalance.offsetPaise > 0 && (
-                    <div className="mt-0.5 text-[11px] font-semibold text-info">
+                    <div className="mt-0.5 text-[11px] font-medium text-info">
                       {formatPaise(groupBalance.offsetPaise)} cancelled out with other splits
                     </div>
                   )}
                 </div>
               </div>
               <div className="flex shrink-0 flex-col items-end text-right">
-                <span className="text-xs font-semibold text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {groupBalance.netPaise === 0 ? "Settled" : userOwesNet ? "You owe" : "You get"}
                 </span>
                 <span
                   className={cn(
-                    "text-xl sm:text-2xl font-black tabular-nums leading-tight mt-0.5",
-                    userOwesNet ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"
+                    "mt-0.5 text-xl leading-tight font-semibold tabular-nums",
+                    userOwesNet ? "text-destructive" : "text-success"
                   )}
                 >
                   ₹{(Math.abs(groupBalance.netPaise) / 100).toFixed(0)}
@@ -217,9 +217,9 @@ export function GroupSettlementDialog({
               </h2>
             </div>
 
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col divide-y rounded-lg border bg-card">
               {membersWithBalances.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
+                <div className="p-6 text-center text-xs text-muted-foreground">
                   All debts in this group are settled up!
                 </div>
               ) : (
@@ -229,22 +229,22 @@ export function GroupSettlementDialog({
                   return (
                     <div
                       key={m.userId}
-                      className="flex flex-row items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card p-3.5 text-card-foreground shadow-xs transition hover:border-border"
+                      className="flex flex-row items-center justify-between gap-3 p-3.5 text-card-foreground"
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <UserAvatar
                           src={m.photoURL}
                           name={m.name}
                           size="md"
-                          className="size-10 ring-1 ring-border/50 shrink-0"
+                          className="size-9 shrink-0"
                         />
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-bold text-foreground">{m.name}</div>
+                          <div className="truncate text-sm font-medium text-foreground">{m.name}</div>
                           <div className="text-xs text-muted-foreground mt-0.5">
                             {cancelledOnly ? "No money to move" : youOwe ? "Pending payment" : "Pending collection"}
                           </div>
                           {m.offsetPaise > 0 && (
-                            <div className="mt-0.5 text-[11px] font-semibold text-info">
+                            <div className="mt-0.5 text-[11px] font-medium text-info">
                               {formatPaise(m.offsetPaise)} cancelled out with your other splits
                             </div>
                           )}
@@ -254,7 +254,7 @@ export function GroupSettlementDialog({
                       <div className="flex shrink-0 items-center gap-2.5 text-right">
                         {cancelledOnly ? (
                           m.pendingCancel ? (
-                            <span className="text-[11px] font-semibold text-muted-foreground">
+                            <span className="text-[11px] font-medium text-muted-foreground">
                               Awaiting confirmation
                             </span>
                           ) : m.grossPaise < 0 ? (
@@ -263,12 +263,12 @@ export function GroupSettlementDialog({
                               size="sm"
                               variant="outline"
                               onClick={() => setSettlePersonId(m.userId)}
-                              className="h-8 rounded-xl px-3 text-xs font-bold"
+                              className="h-8 rounded-md px-3 text-xs font-medium"
                             >
                               Cancel out
                             </Button>
                           ) : (
-                            <span className="max-w-28 text-[11px] font-semibold text-muted-foreground">
+                            <span className="max-w-28 text-[11px] font-medium text-muted-foreground">
                               {m.name} can cancel it out
                             </span>
                           )
@@ -280,7 +280,7 @@ export function GroupSettlementDialog({
                               type="button"
                               size="sm"
                               onClick={() => setSettlePersonId(m.userId)}
-                              className="h-8 rounded-xl bg-primary px-3 text-xs font-bold text-primary-foreground hover:bg-primary/90"
+                              className="h-8 rounded-md px-3 text-xs font-medium tabular-nums"
                             >
                               Pay {formatPaise(m.netPayablePaise - appliedDiscount(winnerDiscount(m.userId), m.netPayablePaise))}
                             </Button>
@@ -294,7 +294,7 @@ export function GroupSettlementDialog({
                           </div>
                         ) : (
                           <div className="flex flex-col items-end">
-                            <span className="text-[11px] font-semibold text-muted-foreground">
+                            <span className="text-[11px] text-muted-foreground">
                               Owes you
                             </span>
                             <GameDiscountAmount
@@ -302,7 +302,7 @@ export function GroupSettlementDialog({
                               amountPaise={m.netReceivablePaise}
                               discount={hostDiscount(m.userId)}
                               now={liveDiscounts.now}
-                              className="text-base font-black text-emerald-600 dark:text-emerald-400 leading-tight"
+                              className="text-sm leading-tight font-semibold text-success"
                             />
                           </div>
                         )}

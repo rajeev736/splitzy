@@ -20,6 +20,7 @@ import {
 
 import { auth } from "@/lib/firebase/config"
 import { AppError } from "@/lib/errors"
+import { GRID_CELLS, isGridGame } from "@/lib/games"
 import { calculateNetBalances } from "@/lib/money"
 import type { Expense, Group, UserProfile } from "@/lib/types"
 import { getDb, nowIso } from "./shared"
@@ -204,12 +205,20 @@ export async function deleteAccount(
     ])
     await deleteRefs([...sentReqs, ...receivedReqs, ...friendships, ...notifications].map((d) => d.ref))
 
-    // 4. Games you hosted (with their hidden secret)
+    // 4. Games you hosted (with their hidden secret and, for grid games, their tiles)
     // (queried by participant: read access is granted per participant)
     const hosted = (await docsWhere("challenges", "participants", "array-contains", uid)).filter(
       (d) => d.data().hostId === uid
     )
-    await deleteRefs(hosted.flatMap((d) => [doc(firestore, "challenges", d.id, "secret", "value"), d.ref]))
+    await deleteRefs(
+      hosted.flatMap((d) => [
+        doc(firestore, "challenges", d.id, "secret", "value"),
+        ...(isGridGame(d.data().game)
+          ? Array.from({ length: GRID_CELLS }, (_, n) => doc(firestore, "challenges", d.id, "tiles", String(n)))
+          : []),
+        d.ref,
+      ])
+    )
 
     // 5. Identity: free the JoySplit ID, then remove the profile
     if (user.splitzyId) await deleteDoc(doc(firestore, "splitzyIds", user.splitzyId)).catch(() => undefined)

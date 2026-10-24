@@ -62,8 +62,8 @@ export function DonutChart({
           ))}
         </svg>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-          <span className="text-[10px] font-semibold text-muted-foreground uppercase">{centerLabel}</span>
-          <span className="text-base font-black tabular-nums">{formatValue(total)}</span>
+          <span className="text-[11px] text-muted-foreground">{centerLabel}</span>
+          <span className="text-base font-semibold tabular-nums">{formatValue(total)}</span>
         </div>
       </div>
 
@@ -75,18 +75,18 @@ export function DonutChart({
             <li
               key={s.key}
               className={cn(
-                "flex items-center justify-between gap-3 rounded-xl px-2.5 py-2 text-xs transition-colors",
+                "flex items-center justify-between gap-3 rounded-md px-2.5 py-2 text-xs transition-colors",
                 active === s.key && "bg-muted"
               )}
               onMouseEnter={() => setActive(s.key)}
               onMouseLeave={() => setActive(null)}
             >
-              <span className="flex items-center gap-2 font-semibold">
+              <span className="flex items-center gap-2 font-medium">
                 <span className="size-2.5 rounded-full" style={{ background: s.color }} />
                 {s.label}
               </span>
               <span className="flex items-baseline gap-2 tabular-nums">
-                <span className="font-bold">{formatValue(v)}</span>
+                <span className="font-semibold">{formatValue(v)}</span>
                 <span className="w-9 text-right text-muted-foreground">{pct}%</span>
               </span>
             </li>

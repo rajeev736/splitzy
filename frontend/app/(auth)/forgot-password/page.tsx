@@ -39,7 +39,7 @@ export default function ForgotPasswordPage() {
       footer={
         <>
           Remember your password?{" "}
-          <Link href="/login" className="font-bold text-primary hover:underline">
+          <Link href="/login" className="font-medium text-primary underline-offset-4 hover:underline">
             Back to Login
           </Link>
         </>
@@ -49,12 +49,12 @@ export default function ForgotPasswordPage() {
         <>
           <AuthStatusIcon icon={CheckmarkCircle02Icon} tone="success" />
           <div className="flex flex-col gap-2">
-            <h1 className="text-2xl font-bold tracking-tight">Check your email</h1>
+            <h1 className="text-xl font-semibold tracking-tight">Check your email</h1>
             <p className="mx-auto max-w-xs text-sm text-muted-foreground">
-              We have sent password recovery instructions to <strong className="text-foreground">{email}</strong>.
+              We have sent password recovery instructions to <strong className="font-medium break-all text-foreground">{email}</strong>.
             </p>
           </div>
-          <Button size="lg" className="h-11 w-full" onClick={() => router.push("/login")}>
+          <Button size="lg" className="h-10 w-full" onClick={() => router.push("/login")}>
             Back to Login
           </Button>
         </>
@@ -77,7 +77,7 @@ export default function ForgotPasswordPage() {
                 placeholder="Enter your email"
                 required
               />
-              <Button type="submit" size="lg" className="h-11 w-full" disabled={isLoading}>
+              <Button type="submit" size="lg" className="h-10 w-full" disabled={isLoading}>
                 {isLoading && <Spinner data-icon="inline-start" />}
                 Send Reset Link
               </Button>

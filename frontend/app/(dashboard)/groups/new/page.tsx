@@ -24,7 +24,6 @@ import {
 } from "@/components/shared/group-icon"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
 import { UserAvatar } from "@/components/shared/user-avatar"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -184,16 +183,16 @@ export default function CreateGroupPage() {
               <GroupIcon
                 src={selectedIcon}
                 alt="Group Icon"
-                className="size-24 rounded-full border-4 border-card shadow-lg"
+                className="size-24 rounded-lg"
               />
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-black/15">
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-black/15">
                 <HugeiconsIcon
                   icon={Camera01Icon}
-                  className="size-6 text-white drop-shadow-md"
+                  className="size-6 text-white"
                 />
               </div>
             </div>
-            <span className="text-xs font-semibold text-muted-foreground">
+            <span className="text-xs font-medium text-muted-foreground">
               Select group icon
             </span>
             <ToggleGroup
@@ -209,12 +208,12 @@ export default function CreateGroupPage() {
                   key={icon.id}
                   value={icon.id}
                   aria-label={icon.label}
-                  className="size-12 rounded-2xl p-0 opacity-70 transition-all hover:bg-transparent hover:opacity-100 aria-pressed:scale-105 aria-pressed:bg-transparent aria-pressed:opacity-100 aria-pressed:ring-2 aria-pressed:ring-primary aria-pressed:ring-offset-2 aria-pressed:ring-offset-background"
+                  className="size-12 rounded-md p-0 opacity-60 transition-opacity hover:bg-transparent hover:opacity-100 aria-pressed:bg-transparent aria-pressed:opacity-100 aria-pressed:ring-2 aria-pressed:ring-primary aria-pressed:ring-offset-2 aria-pressed:ring-offset-background"
                 >
                   <GroupIcon
                     src={icon.id}
                     alt={icon.label}
-                    className="size-12 rounded-2xl"
+                    className="size-12 rounded-md"
                   />
                 </ToggleGroupItem>
               ))}
@@ -222,7 +221,7 @@ export default function CreateGroupPage() {
           </div>
 
           {/* Group details */}
-          <Card className="rounded-3xl">
+          <Card>
             <CardContent>
               <FieldGroup className="gap-4">
                 <Field>
@@ -244,7 +243,7 @@ export default function CreateGroupPage() {
                     id="group-description"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="e.g. Trip to North Goa 🏖️"
+                    placeholder="e.g. Trip to North Goa"
                     className="h-10"
                   />
                 </Field>
@@ -253,17 +252,17 @@ export default function CreateGroupPage() {
           </Card>
 
           {/* Members */}
-          <Card className="rounded-3xl">
+          <Card>
             <CardHeader>
-              <CardTitle className="font-bold">Invite Members</CardTitle>
-              <CardDescription className="text-[11px]">
+              <CardTitle className="text-sm font-semibold">Invite members</CardTitle>
+              <CardDescription className="text-xs">
                 You join as creator. Everyone else gets a group invitation
                 and joins once they accept.
               </CardDescription>
               <CardAction>
-                <Badge variant="secondary" className="text-primary">
+                <span className="text-xs font-medium tabular-nums text-muted-foreground">
                   {totalSelectedCount} selected
-                </Badge>
+                </span>
               </CardAction>
             </CardHeader>
 
@@ -293,7 +292,7 @@ export default function CreateGroupPage() {
               )}
 
               <div className="flex flex-col gap-2">
-                <InputGroup className="h-10 bg-card/60 transition-colors">
+                <InputGroup className="h-10 bg-card">
                   <InputGroupAddon className="pl-3 text-muted-foreground">
                     <HugeiconsIcon icon={Search01Icon} className="size-4" />
                   </InputGroupAddon>
@@ -318,7 +317,8 @@ export default function CreateGroupPage() {
                         type="button"
                         onClick={handleSearchId}
                         disabled={isSearchingId}
-                        className="h-7 px-3 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        size="sm"
+                        className="h-7 gap-1.5 rounded-md px-3 text-xs font-medium"
                       >
                         {isSearchingId && <Spinner className="size-3" />}
                         <span>{isSearchingId ? "Searching..." : "Lookup ID"}</span>
@@ -329,9 +329,8 @@ export default function CreateGroupPage() {
 
                 {searchResult && (
                   <Item
-                    variant="muted"
                     size="sm"
-                    className="flex-wrap rounded-2xl border-border"
+                    className="flex-wrap rounded-none border-0 border-b border-border px-0 pb-3"
                   >
                     {searchResult.found && searchResult.user ? (
                       <>
@@ -343,7 +342,7 @@ export default function CreateGroupPage() {
                           />
                         </ItemMedia>
                         <ItemContent className="min-w-0 gap-0">
-                          <ItemTitle className="text-xs font-bold">
+                          <ItemTitle className="text-sm font-medium">
                             {searchResult.user.displayName}
                           </ItemTitle>
                           <ItemDescription className="font-mono text-[11px]">
@@ -406,7 +405,7 @@ export default function CreateGroupPage() {
                                   />
                                   <FieldLabel
                                     htmlFor="also-friend-request"
-                                    className="text-[11px] font-semibold"
+                                    className="text-xs font-medium"
                                   >
                                     Also send a friend request
                                   </FieldLabel>
@@ -452,7 +451,7 @@ export default function CreateGroupPage() {
                 />
               ) : friends.length === 0 ? (
                 <EmptyState
-                  className="rounded-2xl border border-dashed bg-muted/40 py-6"
+                  className="py-6"
                   icon={UserGroupIcon}
                   title="No friends added yet"
                   description="You can create this group now and add members later, or enter their JoySplit ID above to invite them!"
@@ -462,12 +461,12 @@ export default function CreateGroupPage() {
                   No friends matching &quot;{memberSearch}&quot;
                 </p>
               ) : (
-                <div className="flex max-h-60 flex-col gap-1 overflow-y-auto pr-1">
+                <div className="-mx-2 flex max-h-60 flex-col overflow-y-auto">
                   {filteredFriends.map((friend) => (
                     <Item
                       key={friend.uid}
                       size="sm"
-                      className="cursor-pointer flex-nowrap select-none hover:bg-muted/60"
+                      className="cursor-pointer flex-nowrap select-none rounded-md px-2 hover:bg-muted/60"
                       render={<label />}
                     >
                       <ItemMedia>
@@ -478,7 +477,7 @@ export default function CreateGroupPage() {
                         />
                       </ItemMedia>
                       <ItemContent className="min-w-0 gap-0">
-                        <ItemTitle className="text-xs font-bold">
+                        <ItemTitle className="text-sm font-medium">
                           {friend.displayName}
                         </ItemTitle>
                         <ItemDescription className="font-mono text-[11px]">
@@ -487,7 +486,7 @@ export default function CreateGroupPage() {
                       </ItemContent>
                       <ItemActions>
                         <Checkbox
-                          className="size-5 rounded-md"
+                          className="size-5"
                           checked={selectedMemberIds.includes(friend.uid)}
                           onCheckedChange={() => toggleFriendMember(friend.uid)}
                         />
@@ -502,7 +501,7 @@ export default function CreateGroupPage() {
           <Button
             type="submit"
             size="lg"
-            className="h-11 w-full shadow-md"
+            className="h-11 w-full"
             disabled={createGroup.isPending}
           >
             {createGroup.isPending && <Spinner />}
@@ -525,25 +524,22 @@ function MemberChip({
   onRemove: () => void
 }) {
   return (
-    <Badge
-      variant={invite ? "outline" : "secondary"}
-      className="h-7 gap-1.5 pr-1 pl-1"
-    >
+    <span className="inline-flex h-7 items-center gap-1.5 rounded-md border bg-card pr-0.5 pl-1 text-xs font-medium">
       <UserAvatar src={user.photoURL} name={user.displayName} size="xs" />
       <span>{user.displayName}</span>
       {invite && (
-        <span className="rounded bg-muted px-1 text-[10px]">{invite}</span>
+        <span className="text-[11px] text-muted-foreground">· {invite}</span>
       )}
       <Button
         type="button"
         variant="ghost"
         size="icon-xs"
-        className="rounded-full hover:text-destructive"
+        className="text-muted-foreground hover:text-destructive"
         aria-label={`Remove ${user.displayName}`}
         onClick={onRemove}
       >
         <HugeiconsIcon icon={Cancel01Icon} />
       </Button>
-    </Badge>
+    </span>
   )
 }

@@ -40,10 +40,10 @@ export function GoogleSignInSection({
 }) {
   return (
     <>
-      <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card text-xs font-bold tracking-wider uppercase">
-        OR
+      <FieldSeparator className="text-xs *:data-[slot=field-separator-content]:bg-card">
+        or
       </FieldSeparator>
-      <Button type="button" variant="outline" size="lg" className="h-11 w-full" onClick={onClick} disabled={disabled}>
+      <Button type="button" variant="outline" size="lg" className="h-10 w-full" onClick={onClick} disabled={disabled}>
         {isPending ? <Spinner data-icon="inline-start" /> : <GoogleIcon />}
         Continue with Google
       </Button>

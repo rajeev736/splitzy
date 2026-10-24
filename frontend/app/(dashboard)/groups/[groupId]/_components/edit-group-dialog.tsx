@@ -88,7 +88,7 @@ function EditGroupForm({ group, onDone }: { group: Group; onDone: () => void }) 
         </Field>
 
         <Field>
-          <FieldLabel>Group Category Icon</FieldLabel>
+          <FieldLabel>Group icon</FieldLabel>
           <div className="grid grid-cols-4 gap-2">
             {GROUP_ICONS.map((ic) => {
               const selected = icon === ic.id
@@ -99,12 +99,12 @@ function EditGroupForm({ group, onDone }: { group: Group; onDone: () => void }) 
                   aria-pressed={selected}
                   onClick={() => setIcon(ic.id)}
                   className={cn(
-                    "flex flex-col items-center gap-1.5 rounded-xl border bg-card p-2 transition-all hover:bg-muted",
-                    selected && "border-primary bg-primary/5 ring-2 ring-primary/20"
+                    "flex flex-col items-center gap-1.5 rounded-md border bg-card p-2 transition-colors hover:bg-muted",
+                    selected && "border-primary"
                   )}
                 >
                   <GroupIcon src={ic.id} alt={ic.label} size="md" />
-                  <span className="text-[11px] font-bold">{ic.label}</span>
+                  <span className="text-[11px] font-medium">{ic.label}</span>
                 </button>
               )
             })}

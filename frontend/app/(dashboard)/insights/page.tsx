@@ -90,7 +90,7 @@ export default function InsightsPage() {
             <ToggleGroupItem
               key={p}
               value={p}
-              className="rounded-xl px-3 text-xs font-bold aria-pressed:border-primary aria-pressed:bg-secondary aria-pressed:text-primary"
+              className="rounded-md bg-card px-3 text-xs font-medium aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/90 aria-pressed:hover:text-primary-foreground"
             >
               {PERIOD_LABELS[p]}
             </ToggleGroupItem>
@@ -166,7 +166,7 @@ export default function InsightsPage() {
                       trailing: (
                         <div
                           className={cn(
-                            "text-[11px] font-semibold tabular-nums",
+                            "text-[11px] font-medium tabular-nums",
                             f.netBalancePaise > 0 && "text-success",
                             f.netBalancePaise < 0 && "text-destructive",
                             f.netBalancePaise === 0 && "text-muted-foreground"

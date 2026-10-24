@@ -41,7 +41,7 @@ export function PhotoUploadDialog({ open, onOpenChange, currentPhotoURL, onPhoto
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Profile Photo</DialogTitle>
+          <DialogTitle>Profile photo</DialogTitle>
         </DialogHeader>
         {/* The body unmounts when the dialog closes, which resets its state and stops the camera. */}
         <PhotoUploadBody
@@ -365,14 +365,14 @@ function PhotoUploadBody({
   return (
     <div className="flex flex-col gap-4">
       {errorMsg && (
-        <Alert variant="destructive" className="bg-destructive/10">
+        <Alert variant="destructive">
           <HugeiconsIcon icon={AlertCircleIcon} />
           <AlertDescription className="text-xs">{errorMsg}</AlertDescription>
         </Alert>
       )}
 
       {/* Mode Switcher Tabs */}
-      <div className="flex items-center justify-center gap-1.5 rounded-2xl bg-muted/60 p-1">
+      <div className="flex items-center justify-center gap-1 rounded-md bg-muted p-0.5">
         <button
           type="button"
           onClick={() => {
@@ -381,9 +381,9 @@ function PhotoUploadBody({
             setActiveMode("illustrations")
           }}
           className={cn(
-            "flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition-all select-none",
+            "flex flex-1 items-center justify-center gap-1.5 rounded-[5px] py-1.5 text-xs font-medium transition-colors select-none",
             activeMode === "illustrations"
-              ? "bg-card text-foreground shadow-xs"
+              ? "bg-card text-foreground"
               : "text-muted-foreground hover:text-foreground"
           )}
         >
@@ -395,14 +395,14 @@ function PhotoUploadBody({
           type="button"
           onClick={() => setActiveMode("custom")}
           className={cn(
-            "flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition-all select-none",
+            "flex flex-1 items-center justify-center gap-1.5 rounded-[5px] py-1.5 text-xs font-medium transition-colors select-none",
             activeMode === "custom"
-              ? "bg-card text-foreground shadow-xs"
+              ? "bg-card text-foreground"
               : "text-muted-foreground hover:text-foreground"
           )}
         >
           <HugeiconsIcon icon={Camera01Icon} className="size-4" />
-          Camera & Upload
+          Camera & upload
         </button>
       </div>
 
@@ -416,12 +416,12 @@ function PhotoUploadBody({
           <div className="flex flex-col gap-2 pt-1">
             <Button
               type="button"
-              className="h-11 w-full rounded-2xl text-xs font-bold"
+              className="h-10 w-full"
               onClick={handleSaveAvatar}
               disabled={isSaving}
             >
               {isSaving ? <Spinner /> : <HugeiconsIcon icon={Tick02Icon} data-icon="inline-start" />}
-              {isSaving ? "Saving..." : "Use Selected Avatar"}
+              {isSaving ? "Saving..." : "Use selected avatar"}
             </Button>
 
             {currentPhotoURL && (
@@ -433,7 +433,7 @@ function PhotoUploadBody({
                 disabled={isSaving}
               >
                 <HugeiconsIcon icon={Delete02Icon} data-icon="inline-start" />
-                Remove Photo
+                Remove photo
               </Button>
             )}
           </div>
@@ -460,44 +460,44 @@ function PhotoUploadBody({
           {isCameraActive ? (
             /* Live camera view */
             <div className="flex animate-in flex-col gap-4 py-2 text-center duration-200 fade-in">
-              <div className="relative mx-auto size-60 overflow-hidden rounded-full border-4 border-primary bg-black shadow-md">
+              <div className="relative mx-auto aspect-square w-full max-w-60 overflow-hidden rounded-full border bg-black">
                 <video ref={videoRef} autoPlay playsInline muted className="size-full object-cover" />
               </div>
               <p className="text-xs text-muted-foreground">Center your face in the circle and tap Capture.</p>
 
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <Button type="button" variant="outline" onClick={stopCameraStream}>
-                  Cancel Camera
+                  Cancel
                 </Button>
                 <Button type="button" onClick={capturePhotoFromCamera}>
                   <HugeiconsIcon icon={Camera01Icon} data-icon="inline-start" />
-                  Capture Photo
+                  Capture
                 </Button>
               </div>
             </div>
           ) : !imageSrc ? (
             /* Source picker */
             <div className="flex flex-col gap-4 py-2">
-              <Empty className="rounded-3xl border-2 border-dashed bg-muted/40 p-8">
+              <Empty className="rounded-lg border border-dashed p-6">
                 <EmptyHeader>
-                  <EmptyMedia className="size-16 rounded-full bg-secondary text-primary">
-                    <HugeiconsIcon icon={Image01Icon} className="size-8" />
+                  <EmptyMedia className="size-10 rounded-md bg-primary/10 text-primary">
+                    <HugeiconsIcon icon={Image01Icon} className="size-5" />
                   </EmptyMedia>
-                  <EmptyTitle className="text-sm font-bold">Upload Custom Photo</EmptyTitle>
+                  <EmptyTitle className="text-sm font-semibold">Upload a custom photo</EmptyTitle>
                   <EmptyDescription className="text-xs">
                     Take a live photo using your camera or upload a picture from your device.
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <Button type="button" className="w-full" onClick={startCamera}>
                   <HugeiconsIcon icon={Camera01Icon} data-icon="inline-start" />
-                  Take Photo
+                  Take photo
                 </Button>
                 <Button type="button" variant="outline" className="w-full" onClick={() => fileInputRef.current?.click()}>
                   <HugeiconsIcon icon={Upload01Icon} data-icon="inline-start" />
-                  Upload Image
+                  Upload
                 </Button>
               </div>
 
@@ -512,7 +512,7 @@ function PhotoUploadBody({
                     disabled={isSaving}
                   >
                     <HugeiconsIcon icon={Delete02Icon} data-icon="inline-start" />
-                    Remove Photo
+                    Remove photo
                   </Button>
                 </>
               )}
@@ -522,7 +522,7 @@ function PhotoUploadBody({
             <div className="flex flex-col gap-4">
               <div className="flex flex-col items-center justify-center py-2">
                 <div
-                  className="relative size-60 cursor-grab touch-none overflow-hidden rounded-full border-4 border-card shadow-md select-none active:cursor-grabbing"
+                  className="relative size-60 cursor-grab touch-none overflow-hidden rounded-full border select-none active:cursor-grabbing"
                   onPointerDown={handlePointerDown}
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
@@ -534,7 +534,7 @@ function PhotoUploadBody({
               </div>
 
               {/* Zoom slider */}
-              <div className="flex items-center gap-3 rounded-2xl bg-muted/50 px-4 py-2">
+              <div className="flex items-center gap-3 px-1">
                 <HugeiconsIcon icon={ZoomOutAreaIcon} className="size-4 shrink-0 text-muted-foreground" />
                 <input
                   type="range"
@@ -566,7 +566,7 @@ function PhotoUploadBody({
 
                 <Button type="button" className="flex-1" onClick={handleSave} disabled={isSaving}>
                   {isSaving ? <Spinner /> : <HugeiconsIcon icon={Tick02Icon} data-icon="inline-start" />}
-                  {isSaving ? "Saving..." : "Save Photo"}
+                  {isSaving ? "Saving..." : "Save photo"}
                 </Button>
               </div>
             </div>

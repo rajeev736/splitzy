@@ -28,7 +28,7 @@ type ActivityType = "friends" | "groups" | "payments"
 type ActivityFilter = "all" | ActivityType
 
 const FILTERS = [
-  { value: "all", label: "All Activity" },
+  { value: "all", label: "All" },
   { value: "friends", label: "friends" },
   { value: "groups", label: "groups" },
   { value: "payments", label: "payments" },
@@ -101,27 +101,27 @@ function ActivityContent() {
         ) : isError ? (
           <QueryError error={error} onRetry={refetch} />
         ) : (
-          <Card className="rounded-3xl py-0">
+          <Card className="gap-0 py-0">
             {filtered.length > 0 ? (
               <ItemGroup className="gap-0">
                 {filtered.map((act, i) => (
                   <React.Fragment key={act.id}>
                     {i > 0 && <ItemSeparator className="my-0" />}
                     <Item
-                      className="flex-nowrap rounded-none p-4"
+                      className="flex-nowrap rounded-none px-4 py-3.5 hover:bg-muted/50"
                       render={<Link href={act.link} />}
                     >
                       <ItemMedia>
                         <UserAvatar name={act.userName} size="md" />
                       </ItemMedia>
                       <ItemContent className="min-w-0">
-                        <p className="text-xs leading-snug sm:text-sm">
-                          <span className="font-bold">{act.userName} </span>
+                        <p className="text-sm leading-snug">
+                          <span className="font-medium">{act.userName} </span>
                           <span className="text-muted-foreground">
                             {act.action}
                           </span>
                         </p>
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-[11px] text-muted-foreground">
                           {act.time}
                         </span>
                       </ItemContent>

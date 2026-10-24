@@ -13,6 +13,7 @@ import {
   Logout01Icon,
   Moon02Icon,
   Notification01Icon,
+  QrCodeIcon,
   Settings01Icon,
   Share08Icon,
   Tick02Icon,
@@ -27,13 +28,15 @@ import { PageContainer } from "@/components/layout/app-shell"
 import { LogoutDialog } from "@/components/layout/logout-dialog"
 import { useSession } from "@/components/providers/session-provider"
 import { ButtonLink } from "@/components/shared/button-link"
+import { JoySplitQr } from "@/components/shared/joysplit-qr"
+import { QrScannerDialog } from "@/components/shared/qr-scanner-dialog"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Item, ItemActions, ItemContent, ItemGroup, ItemMedia, ItemSeparator, ItemTitle } from "@/components/ui/item"
+import { Item, ItemActions, ItemContent, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { useUpdateProfile } from "@/hooks/mutations"
@@ -63,6 +66,7 @@ export default function ProfilePage() {
 
   const [isEditOpen, setIsEditOpen] = React.useState(false)
   const [isPhotoOpen, setIsPhotoOpen] = React.useState(false)
+  const [isScanning, setIsScanning] = React.useState(false)
   // Load the dialog chunk on first open, then keep it mounted so close animations play
   const [photoDialogLoaded, setPhotoDialogLoaded] = React.useState(false)
   if (isPhotoOpen && !photoDialogLoaded) setPhotoDialogLoaded(true)
@@ -112,7 +116,7 @@ export default function ProfilePage() {
         title="Profile"
         showBack
         rightAction={
-          <ButtonLink href="/settings" variant="ghost" size="icon" className="rounded-full" aria-label="Settings">
+          <ButtonLink href="/settings" variant="ghost" size="icon" aria-label="Settings">
             <HugeiconsIcon icon={Settings01Icon} className="size-5" />
           </ButtonLink>
         }
@@ -120,8 +124,8 @@ export default function ProfilePage() {
 
       <PageContainer className="max-w-xl pb-20">
         {/* Profile header */}
-        <div className="flex flex-col items-center text-center">
-          <div className="group relative mb-3 size-24 overflow-hidden rounded-full border-4 border-card shadow-lg">
+        <div className="flex items-center gap-4">
+          <div className="group relative size-16 shrink-0 overflow-hidden rounded-full border">
             <UserAvatar src={user.photoURL} name={user.displayName} size="xl" className="size-full" />
             <button
               type="button"
@@ -130,70 +134,92 @@ export default function ProfilePage() {
               title="Change profile photo"
               aria-label="Change profile photo"
             >
-              <HugeiconsIcon icon={Camera01Icon} className="size-6" />
+              <HugeiconsIcon icon={Camera01Icon} className="size-5" />
             </button>
           </div>
-          <h1 className="text-xl font-extrabold">{user.displayName}</h1>
-          <p className="mt-0.5 text-xs text-muted-foreground">{user.email}</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-lg font-semibold">{user.displayName}</h1>
+            <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+            <button
+              type="button"
+              onClick={() => setIsPhotoOpen(true)}
+              className="mt-1 text-xs font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Change photo
+            </button>
+          </div>
         </div>
 
-        {/* JoySplit ID card */}
-        <Card className="rounded-3xl border border-primary/20 bg-secondary/60 ring-0">
-          <CardContent className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
+        {/* Your QR for friends to scan, and the camera to scan theirs */}
+        <Card className="gap-0 py-0">
+          <div className="flex items-center gap-4 p-4">
+            <JoySplitQr splitzyId={user.splitzyId} className="w-28 shrink-0 p-2" />
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
               <div>
-                <span className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
-                  Your JoySplit ID
-                </span>
-                <div className="mt-0.5 font-mono text-xl font-extrabold tracking-wider">{user.splitzyId}</div>
+                <p className="text-sm font-semibold">Your QR code</p>
+                <p className="text-xs text-muted-foreground">Friends scan it to add you. Scan theirs to add them.</p>
               </div>
-              <Button variant="outline" size="icon-lg" className="rounded-2xl" title="Copy ID" aria-label="Copy ID" onClick={handleCopyId}>
-                <HugeiconsIcon icon={copied ? Tick02Icon : Copy01Icon} className={copied ? "text-success" : undefined} />
+              <Button size="sm" variant="outline" className="self-start" onClick={() => setIsScanning(true)}>
+                <HugeiconsIcon icon={QrCodeIcon} data-icon="inline-start" />
+                Scan a QR
               </Button>
             </div>
-            <Button className="w-full" onClick={handleShareId}>
-              <HugeiconsIcon icon={Share08Icon} data-icon="inline-start" />
-              Share ID
-            </Button>
-          </CardContent>
+          </div>
         </Card>
+        <QrScannerDialog open={isScanning} onOpenChange={setIsScanning} />
 
-        {/* UPI ID */}
-        <Item variant="outline" className="rounded-3xl bg-card p-4">
-          <ItemMedia className="size-10 rounded-2xl bg-brand-yellow/15 text-brand-yellow">
-            <HugeiconsIcon icon={AtIcon} className="size-5" />
-          </ItemMedia>
-          <ItemContent className="gap-0">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase">UPI ID</span>
-            <ItemTitle className="font-bold">{user.upiId || "Not set"}</ItemTitle>
-          </ItemContent>
-          <ItemActions>
-            <Button variant="link" size="sm" className="font-bold" onClick={openEdit}>
-              Edit
-            </Button>
-          </ItemActions>
-        </Item>
+        {/* Account */}
+        <section className="flex flex-col gap-2">
+          <h2 className="px-1 text-sm font-semibold">Account</h2>
+          <Card className="gap-0 divide-y py-0">
+            {/* JoySplit ID */}
+            <div className="flex items-center gap-3 px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-muted-foreground">JoySplit ID</div>
+                <div className="truncate font-mono text-sm font-medium tracking-wide">{user.splitzyId}</div>
+              </div>
+              <Button variant="ghost" size="icon-sm" title="Copy ID" aria-label="Copy ID" onClick={handleCopyId}>
+                <HugeiconsIcon icon={copied ? Tick02Icon : Copy01Icon} className={copied ? "text-success" : undefined} />
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleShareId}>
+                <HugeiconsIcon icon={Share08Icon} data-icon="inline-start" />
+                Share
+              </Button>
+            </div>
 
-        {/* Menu */}
-        <Card className="rounded-3xl py-1">
-          <ItemGroup className="gap-0 px-1">
-            <MenuRow icon={UserIcon} label="Edit Profile" render={<button type="button" onClick={openEdit} />} />
-            <ItemSeparator className="my-0" />
+            {/* UPI ID */}
+            <div className="flex items-center gap-3 px-4 py-3">
+              <HugeiconsIcon icon={AtIcon} className="size-4.5 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-muted-foreground">UPI ID</div>
+                <div className="truncate text-sm font-medium">{user.upiId || "Not set"}</div>
+              </div>
+              <Button variant="ghost" size="sm" onClick={openEdit}>
+                Edit
+              </Button>
+            </div>
+
+            <MenuRow icon={UserIcon} label="Edit profile" render={<button type="button" onClick={openEdit} />} />
+          </Card>
+        </section>
+
+        {/* App */}
+        <section className="flex flex-col gap-2">
+          <h2 className="px-1 text-sm font-semibold">App</h2>
+          <Card className="gap-0 divide-y py-0">
             <MenuRow icon={UserGroupIcon} label="Friends" value={friends.length} render={<Link href="/friends" />} />
-            <ItemSeparator className="my-0" />
             <MenuRow
               icon={Notification01Icon}
               label="Notifications"
               value={unreadCount}
               render={<Link href="/notifications" />}
             />
-            <ItemSeparator className="my-0" />
-            <Item className="p-4">
-              <ItemMedia variant="icon">
-                <HugeiconsIcon icon={Moon02Icon} className="size-5 text-muted-foreground" />
+            <Item className="rounded-none border-0 px-4 py-3">
+              <ItemMedia variant="icon" className="size-8 rounded-md bg-primary/10 text-primary">
+                <HugeiconsIcon icon={Moon02Icon} className="size-4" />
               </ItemMedia>
               <ItemContent>
-                <ItemTitle className="font-semibold">Dark Mode</ItemTitle>
+                <ItemTitle className="font-medium">Dark mode</ItemTitle>
               </ItemContent>
               <ItemActions>
                 <Switch
@@ -204,19 +230,17 @@ export default function ProfilePage() {
                 />
               </ItemActions>
             </Item>
-            <ItemSeparator className="my-0" />
-            <MenuRow icon={HelpCircleIcon} label="Help & Settings" render={<Link href="/settings" />} />
-          </ItemGroup>
-        </Card>
+            <MenuRow icon={HelpCircleIcon} label="Help & settings" render={<Link href="/settings" />} />
+          </Card>
+        </section>
 
         <Button
           variant="outline"
-          size="lg"
-          className="h-12 w-full rounded-2xl border-destructive/30 font-bold text-destructive hover:bg-destructive/10 hover:text-destructive"
+          className="h-10 w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
           onClick={() => setIsLogoutOpen(true)}
         >
           <HugeiconsIcon icon={Logout01Icon} data-icon="inline-start" />
-          Logout
+          Log out
         </Button>
       </PageContainer>
 
@@ -224,7 +248,7 @@ export default function ProfilePage() {
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Profile</DialogTitle>
+            <DialogTitle>Edit profile</DialogTitle>
           </DialogHeader>
           <form
             id="edit-profile-form"
@@ -235,7 +259,7 @@ export default function ProfilePage() {
           >
             <FieldGroup className="gap-4">
               <Field>
-                <FieldLabel htmlFor="profile-name">Display Name</FieldLabel>
+                <FieldLabel htmlFor="profile-name">Display name</FieldLabel>
                 <Input id="profile-name" value={nameInput} onChange={(e) => setNameInput(e.target.value)} />
               </Field>
               <Field>
@@ -251,7 +275,7 @@ export default function ProfilePage() {
             </Button>
             <Button type="submit" form="edit-profile-form" disabled={saveProfile.isPending}>
               {saveProfile.isPending && <Spinner />}
-              Save Changes
+              Save changes
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -283,16 +307,16 @@ function MenuRow({
   render: React.ComponentProps<typeof Item>["render"]
 }) {
   return (
-    <Item className="p-4 text-left hover:bg-muted" render={render}>
-      <ItemMedia variant="icon">
-        <HugeiconsIcon icon={icon} className="size-5 text-muted-foreground" />
+    <Item className="rounded-none border-0 px-4 py-3 text-left hover:bg-muted/60" render={render}>
+      <ItemMedia variant="icon" className="size-8 rounded-md bg-primary/10 text-primary">
+        <HugeiconsIcon icon={icon} className="size-4" />
       </ItemMedia>
       <ItemContent>
-        <ItemTitle className="font-semibold">{label}</ItemTitle>
+        <ItemTitle className="font-medium">{label}</ItemTitle>
       </ItemContent>
       <ItemActions>
-        {value !== undefined && <span className="text-xs font-semibold text-muted-foreground">{value}</span>}
-        <HugeiconsIcon icon={ArrowRight01Icon} className="size-4 text-muted-foreground/60" />
+        {value !== undefined && <span className="text-xs tabular-nums text-muted-foreground">{value}</span>}
+        <HugeiconsIcon icon={ArrowRight01Icon} className="size-4 text-muted-foreground" />
       </ItemActions>
     </Item>
   )

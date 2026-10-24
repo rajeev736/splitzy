@@ -38,12 +38,12 @@ function StatCard({
   const body = (
     <CardContent className="flex items-center gap-3">
       <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
-        <span className="text-[11px] font-semibold text-muted-foreground">{label}</span>
-        <Amount paise={paise} signed={signed} className="text-lg font-extrabold" />
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <Amount paise={paise} signed={signed} className="text-lg font-semibold tabular-nums" />
         {badge}
         {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
       </div>
-      {onClick && <HugeiconsIcon icon={ArrowRight01Icon} className="size-5 shrink-0 text-muted-foreground" />}
+      {onClick && <HugeiconsIcon icon={ArrowRight01Icon} className="size-4 shrink-0 text-muted-foreground" />}
     </CardContent>
   )
 
@@ -58,9 +58,9 @@ function StatCard({
     <button
       type="button"
       onClick={onClick}
-      className={cn("group/stat rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50", className)}
+      className={cn("group/stat rounded-lg text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50", className)}
     >
-      <Card size="sm" className="h-full transition-colors group-hover/stat:bg-muted/40 group-hover/stat:ring-primary/40">
+      <Card size="sm" className="h-full transition-colors group-hover/stat:bg-muted/40">
         {body}
       </Card>
     </button>
@@ -103,7 +103,7 @@ export function OverviewTab({
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <StatCard
-          label="Your Balance"
+          label="Your balance"
           paise={netPaise}
           signed
           hint={
@@ -119,16 +119,16 @@ export function OverviewTab({
           onClick={userId ? () => setBreakdownOpen(true) : undefined}
           className="col-span-2 sm:col-span-1"
         />
-        <StatCard label="Total Expenses" paise={totalExpensePaise} />
-        <StatCard label="Your Share" paise={myTotalGroupSharePaise} />
+        <StatCard label="Total expenses" paise={totalExpensePaise} />
+        <StatCard label="Your share" paise={myTotalGroupSharePaise} />
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-bold">Recent Group Expenses</CardTitle>
+          <CardTitle className="text-sm font-semibold">Recent expenses</CardTitle>
           <CardAction>
-            <Button variant="link" size="sm" className="h-auto p-0 text-xs font-bold" onClick={onViewAll}>
-              View All ({expenses.length})
+            <Button variant="link" size="sm" className="h-auto p-0 text-xs font-medium" onClick={onViewAll}>
+              View all ({expenses.length})
             </Button>
           </CardAction>
         </CardHeader>

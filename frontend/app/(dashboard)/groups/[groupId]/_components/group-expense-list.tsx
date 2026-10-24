@@ -39,27 +39,27 @@ export function GroupExpenseList({
               render={<Link href={`/expenses/${exp.id}`} onClick={() => markSeen(exp.id)} />}
             >
               {showIcon && (
-                <ItemMedia className="size-10 rounded-xl bg-secondary text-primary">
-                  <HugeiconsIcon icon={ReceiptIndianRupeeIcon} className="size-5" />
+                <ItemMedia className="size-9 rounded-md bg-primary/10 text-primary">
+                  <HugeiconsIcon icon={ReceiptIndianRupeeIcon} className="size-4.5" />
                 </ItemMedia>
               )}
               <ItemContent className="min-w-0 gap-0.5">
-                <ItemTitle className="flex items-center gap-1.5 text-xs font-bold">
+                <ItemTitle className="flex items-center gap-1.5 font-medium">
                   <span className="truncate">{exp.title}</span>
                   {unread && (
                     <span
                       aria-label="New expense"
-                      className="size-2 shrink-0 rounded-full bg-destructive shadow-sm animate-pulse"
+                      className="size-1.5 shrink-0 rounded-full bg-primary"
                     />
                   )}
                 </ItemTitle>
-                <ItemDescription className="line-clamp-1 text-[11px]">
+                <ItemDescription className="line-clamp-1 text-xs">
                   Paid by {exp.payerName}
                 </ItemDescription>
               </ItemContent>
               <ItemActions className="flex-col items-end gap-0.5">
-                <Amount paise={exp.amountPaise} className="text-xs font-bold" />
-                <span className="text-[10px] text-muted-foreground">{exp.date}</span>
+                <Amount paise={exp.amountPaise} className="text-sm font-semibold tabular-nums" />
+                <span className="text-[11px] text-muted-foreground">{exp.date}</span>
               </ItemActions>
             </Item>
           </Fragment>

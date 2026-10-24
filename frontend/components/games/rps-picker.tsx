@@ -17,7 +17,7 @@ export function RpsPicker({
     <div className="flex flex-col gap-3">
       {Array.from({ length: RPS_ROUNDS }, (_, round) => (
         <div key={round} className="flex items-center gap-3">
-          <span className="w-16 shrink-0 text-xs font-bold text-muted-foreground">Round {round + 1}</span>
+          <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Round {round + 1}</span>
           <div className="grid flex-1 grid-cols-3 gap-2" role="radiogroup" aria-label={`Round ${round + 1}`}>
             {RPS_MOVES.map((move) => {
               const selected = value[round] === move
@@ -30,14 +30,14 @@ export function RpsPicker({
                   disabled={disabled}
                   onClick={() => onChange(value.map((v, i) => (i === round ? move : v)))}
                   className={cn(
-                    "flex flex-col items-center gap-0.5 rounded-2xl border bg-card py-2 transition active:scale-95 disabled:opacity-50",
-                    selected ? "border-primary bg-primary/10 ring-2 ring-primary/30" : "hover:border-primary/40"
+                    "flex flex-col items-center gap-0.5 rounded-md border bg-card py-2 transition-colors active:scale-95 disabled:opacity-50",
+                    selected ? "border-primary bg-muted ring-1 ring-primary" : "hover:bg-muted/60"
                   )}
                 >
                   <span className="text-2xl leading-none" aria-hidden>
                     {RPS_LABEL[move].emoji}
                   </span>
-                  <span className="text-[11px] font-semibold">{RPS_LABEL[move].name}</span>
+                  <span className="text-[11px] font-medium">{RPS_LABEL[move].name}</span>
                 </button>
               )
             })}

@@ -46,10 +46,10 @@ function GroupInvitationsContent() {
       <PageContainer className="max-w-4xl gap-5">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as Tab)} className="gap-4">
           <TabsList className="h-11 w-full">
-            <TabsTrigger value="received" className="text-xs font-bold">
+            <TabsTrigger value="received" className="text-xs font-medium">
               Received ({received.length})
             </TabsTrigger>
-            <TabsTrigger value="sent" className="text-xs font-bold">
+            <TabsTrigger value="sent" className="text-xs font-medium">
               Sent ({sent.length})
             </TabsTrigger>
           </TabsList>
@@ -58,7 +58,7 @@ function GroupInvitationsContent() {
             {received.length > 0 ? (
               <ItemGroup className="gap-3">
                 {received.map((group) => (
-                  <GroupInviteCard key={group.id} group={group} className="rounded-3xl p-4" />
+                  <GroupInviteCard key={group.id} group={group} className="rounded-lg p-4" />
                 ))}
               </ItemGroup>
             ) : (
@@ -66,7 +66,7 @@ function GroupInvitationsContent() {
                 <CardContent className="py-12">
                   <Empty>
                     <EmptyMedia variant="icon">
-                      <HugeiconsIcon icon={UserGroupIcon} className="size-8 text-muted-foreground" />
+                      <HugeiconsIcon icon={UserGroupIcon} className="size-5" />
                     </EmptyMedia>
                     <EmptyHeader>
                       <EmptyTitle>No pending group invitations</EmptyTitle>
@@ -94,15 +94,15 @@ function GroupInvitationsContent() {
                         <UserAvatar src={invite.photoURL} name={invite.name} size="md" />
                       </ItemMedia>
                       <ItemContent className="min-w-0 gap-0.5">
-                        <ItemTitle className="font-bold">{invite.name}</ItemTitle>
+                        <ItemTitle className="font-semibold">{invite.name}</ItemTitle>
                         <ItemDescription className="truncate text-xs">
                           to{" "}
-                          <Link href={`/groups/${group.id}`} className="font-semibold text-primary hover:underline">
+                          <Link href={`/groups/${group.id}`} className="font-medium text-foreground hover:underline">
                             {group.name}
                           </Link>
                           {invite.splitzyId && <span className="font-mono"> · {invite.splitzyId}</span>}
                         </ItemDescription>
-                        <span className="text-[11px] font-semibold text-warning">Pending Response</span>
+                        <span className="text-[11px] font-medium text-warning">Pending response</span>
                       </ItemContent>
                       <ItemActions>
                         <Button
@@ -124,7 +124,7 @@ function GroupInvitationsContent() {
                 <CardContent className="py-12">
                   <Empty>
                     <EmptyMedia variant="icon">
-                      <HugeiconsIcon icon={UserGroupIcon} className="size-8 text-muted-foreground" />
+                      <HugeiconsIcon icon={UserGroupIcon} className="size-5" />
                     </EmptyMedia>
                     <EmptyHeader>
                       <EmptyTitle>No outgoing group invitations</EmptyTitle>

@@ -32,13 +32,13 @@ export function GroupInvitations() {
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-base font-bold tracking-tight">Group Invitations</h2>
+      <h2 className="text-sm font-semibold">Group Invitations</h2>
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="gap-3">
         <TabsList className="h-10! w-full">
-          <TabsTrigger value="received" className="text-xs font-bold">
+          <TabsTrigger value="received" className="text-xs font-medium">
             Received ({received.length})
           </TabsTrigger>
-          <TabsTrigger value="sent" className="text-xs font-bold">
+          <TabsTrigger value="sent" className="text-xs font-medium">
             Sent ({sent.length})
           </TabsTrigger>
         </TabsList>
@@ -47,7 +47,7 @@ export function GroupInvitations() {
           {received.length > 0 ? (
             <ItemGroup className="gap-3">
               {received.map((group) => (
-                <GroupInviteCard key={group.id} group={group} className="rounded-3xl p-4" />
+                <GroupInviteCard key={group.id} group={group} className="rounded-lg p-4" />
               ))}
             </ItemGroup>
           ) : (
@@ -69,15 +69,15 @@ export function GroupInvitations() {
                       <UserAvatar src={invite.photoURL} name={invite.name} size="md" />
                     </ItemMedia>
                     <ItemContent className="min-w-0 gap-0.5">
-                      <ItemTitle className="font-bold">{invite.name}</ItemTitle>
+                      <ItemTitle className="font-semibold">{invite.name}</ItemTitle>
                       <ItemDescription className="truncate text-xs">
                         to{" "}
-                        <Link href={`/groups/${group.id}`} className="font-semibold text-primary hover:underline">
+                        <Link href={`/groups/${group.id}`} className="font-medium text-foreground hover:underline">
                           {group.name}
                         </Link>
                         {invite.splitzyId && <span className="font-mono"> · {invite.splitzyId}</span>}
                       </ItemDescription>
-                      <span className="text-[11px] font-semibold text-warning">Pending Response</span>
+                      <span className="text-[11px] font-medium text-warning">Pending response</span>
                     </ItemContent>
                     <ItemActions>
                       <Button

@@ -103,27 +103,27 @@ export function ProfileStep({
         <button
           type="button"
           onClick={() => setIsPickerOpen(true)}
-          className="group relative cursor-pointer outline-none transition-transform hover:scale-105 active:scale-95"
+          className="group relative cursor-pointer rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           title="Change profile avatar"
         >
-          <UserAvatar src={selectedAvatar} name={fullName} size="xl" className="size-24 ring-4 ring-card shadow-lg" />
-          <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
-            <HugeiconsIcon icon={Camera01Icon} className="size-6 text-white drop-shadow-md" />
+          <UserAvatar src={selectedAvatar} name={fullName} size="xl" className="size-20 border" />
+          <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+            <HugeiconsIcon icon={Camera01Icon} className="size-5 text-white" />
           </div>
         </button>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-muted-foreground">Choose your avatar</span>
+          <span className="text-xs text-muted-foreground">Choose your avatar</span>
           <button
             type="button"
             onClick={() => setIsPickerOpen(true)}
-            className="text-xs font-bold text-primary hover:underline"
+            className="text-xs font-medium text-primary underline-offset-4 hover:underline"
           >
             Browse all (23)
           </button>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center justify-center gap-2.5">
           {FEATURED_AVATARS.map((img) => {
             const selected = selectedAvatar === img
             return (
@@ -134,8 +134,8 @@ export function ProfileStep({
                 aria-label="Avatar option"
                 aria-pressed={selected}
                 className={cn(
-                  "rounded-full transition-all outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-                  selected ? "scale-110 shadow-md ring-2 ring-primary ring-offset-2 ring-offset-card" : "opacity-70 hover:opacity-100"
+                  "rounded-full transition-opacity outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                  selected ? "ring-2 ring-primary ring-offset-2 ring-offset-card" : "opacity-70 hover:opacity-100"
                 )}
               >
                 <UserAvatar src={img} name="Avatar option" size="md" className="size-11" />
@@ -146,19 +146,19 @@ export function ProfileStep({
           <button
             type="button"
             onClick={() => setIsPickerOpen(true)}
-            className="flex size-11 items-center justify-center rounded-full border-2 border-dashed border-primary/40 bg-primary/5 text-primary transition-all hover:bg-primary/10 hover:border-primary active:scale-95"
+            className="flex size-11 items-center justify-center rounded-full border border-dashed text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
             title="Browse all 23 avatars"
             aria-label="Browse all avatars"
           >
-            <span className="text-[11px] font-bold">+19</span>
+            <span className="text-[11px] font-medium">+19</span>
           </button>
         </div>
       </div>
 
       <Dialog open={isPickerOpen} onOpenChange={setIsPickerOpen}>
-        <DialogContent className="max-w-md rounded-3xl p-5">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Choose Your Avatar</DialogTitle>
+            <DialogTitle>Choose your avatar</DialogTitle>
           </DialogHeader>
           <AvatarPicker
             selectedAvatar={selectedAvatar}
@@ -183,10 +183,10 @@ export function ProfileStep({
 
         <Field>
           <FieldLabel>JoySplit ID (unique)</FieldLabel>
-          <Item variant="outline" className="bg-card">
-            <ItemMedia className="size-7 rounded-lg bg-primary/10 text-xs font-bold text-primary">ID</ItemMedia>
+          <Item variant="outline" size="sm" className="bg-card">
+            <ItemMedia className="size-7 rounded-md border text-[11px] font-medium text-muted-foreground">ID</ItemMedia>
             <ItemContent>
-              <ItemTitle className="font-mono font-bold tracking-wider">{splitzyId}</ItemTitle>
+              <ItemTitle className="font-mono font-medium tracking-wide">{splitzyId}</ItemTitle>
             </ItemContent>
             <ItemActions>
               <Button variant="ghost" size="icon-sm" onClick={() => copy(splitzyId)} aria-label="Copy ID" title="Copy ID">
@@ -208,7 +208,7 @@ export function ProfileStep({
           required
         />
 
-        <Button size="lg" className="mt-2 h-11 w-full" onClick={handleComplete} disabled={updateProfile.isPending}>
+        <Button size="lg" className="mt-1 h-10 w-full" onClick={handleComplete} disabled={updateProfile.isPending}>
           {updateProfile.isPending && <Spinner data-icon="inline-start" />}
           Continue
           <HugeiconsIcon icon={ArrowRight01Icon} data-icon="inline-end" />

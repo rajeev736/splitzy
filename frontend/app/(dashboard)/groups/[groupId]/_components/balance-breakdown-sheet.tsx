@@ -167,7 +167,7 @@ export function BalanceBreakdownSheet({
       title={`Your balance in ${group.name}`}
       description={
         <>
-          Overall <Amount paise={netPaise} signed className="font-bold" />
+          Overall <Amount paise={netPaise} signed className="font-semibold tabular-nums" />
           {netPaise < 0
             ? " — you need to pay"
             : netPaise > 0
@@ -179,7 +179,7 @@ export function BalanceBreakdownSheet({
     >
       {iOwe.length === 0 && owedToMe.length === 0 && (
         <p className="py-6 text-center text-sm text-muted-foreground">
-          Nothing pending in this group. All splits settled or mutually balanced! 🎉
+          Nothing pending in this group. All splits settled or mutually balanced.
         </p>
       )}
 
@@ -259,7 +259,7 @@ function Section({
 }) {
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+      <h3 className="text-sm font-semibold">
         {title}
       </h3>
       {children}
@@ -284,7 +284,7 @@ function PersonBlock({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex flex-col gap-1 rounded-xl border p-3">
+    <div className="flex flex-col gap-2 rounded-lg border p-3">
       <div className="flex min-w-0 items-center gap-3">
         <UserAvatar src={person.photoURL} name={person.name} size="sm" />
         <div className="min-w-0 flex-1">
@@ -300,19 +300,19 @@ function PersonBlock({
               discount={discount}
               now={now}
               prefix={tone === "owe" ? "-" : "+"}
-              className={tone === "owe" ? "text-base font-extrabold text-destructive" : "text-base font-extrabold text-success"}
+              className={tone === "owe" ? "text-base font-semibold tabular-nums text-destructive" : "text-base font-semibold tabular-nums text-success"}
             />
           ) : (
             <Amount
               paise={tone === "owe" ? -person.totalPaise : person.totalPaise}
               signed
-              className="text-base font-extrabold"
+              className="text-base font-semibold tabular-nums"
             />
           )}
-          {action}
         </div>
       </div>
-      <div className="mt-1 flex flex-col">{children}</div>
+      {action && <div className="flex justify-start pl-11">{action}</div>}
+      <div className="mt-1 flex flex-col pl-11">{children}</div>
     </div>
   )
 }
@@ -330,12 +330,12 @@ function LineRow({
 }) {
   return (
     <div className="flex min-w-0 items-center gap-3 border-t py-2 first:border-t-0">
-      <span className="min-w-0 flex-1 truncate text-sm">
+      <span className="min-w-0 flex-1 truncate text-xs">
         {title}
       </span>
-      <span className={isOffset ? "text-xs font-semibold text-muted-foreground" : ""}>
+      <span className={isOffset ? "text-xs font-medium text-muted-foreground" : ""}>
         {isOffset ? "- " : ""}
-        <Amount paise={amountPaise} className="shrink-0 text-sm font-semibold" />
+        <Amount paise={amountPaise} className="shrink-0 text-xs font-medium tabular-nums" />
       </span>
       <div className="shrink-0">{children}</div>
     </div>

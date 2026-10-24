@@ -41,8 +41,8 @@ export function SplitWithPicker({
     <Card size="sm">
       <CardContent className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-sm font-bold">Split with</span>
-          <div role="tablist" aria-label="Split with" className="grid grid-cols-3 rounded-full bg-muted p-1">
+          <span className="text-sm font-semibold">Split with</span>
+          <div role="tablist" aria-label="Split with" className="grid grid-cols-3 rounded-md border bg-muted/60 p-0.5">
             {MODES.map((m) => (
               <button
                 key={m.value}
@@ -51,8 +51,8 @@ export function SplitWithPicker({
                 aria-selected={mode === m.value}
                 onClick={() => draft.setExpenseMode(m.value)}
                 className={cn(
-                  "rounded-full px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors",
-                  mode === m.value ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+                  "rounded-[5px] px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors",
+                  mode === m.value ? "bg-background text-foreground ring-1 ring-border" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 {m.label}
@@ -83,7 +83,7 @@ function GroupChoices({ draft, groups }: { draft: ExpenseDraft; groups: Group[] 
       ))}
       <Link
         href="/groups/new"
-        className="flex h-9 items-center gap-1.5 rounded-full border border-dashed px-3 text-sm font-semibold text-primary hover:border-primary/50"
+        className="flex h-9 items-center gap-1.5 rounded-md border border-dashed px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
       >
         <HugeiconsIcon icon={PlusSignIcon} className="size-4" />
         New group
@@ -107,7 +107,7 @@ function FriendChoices({ draft, friends }: { draft: ExpenseDraft; friends: UserP
   return (
     <div className="flex flex-col gap-2.5">
       {friends.length > SEARCH_FROM && (
-        <InputGroup className="h-9 rounded-full">
+        <InputGroup className="h-9">
           <InputGroupAddon>
             <HugeiconsIcon icon={Search01Icon} className="size-4" />
           </InputGroupAddon>
@@ -167,7 +167,7 @@ function CategoryChoices({ draft }: { draft: ExpenseDraft }) {
 
 function EmptyChoice({ text, href, cta }: { text: string; href: string; cta: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 px-3 py-2.5">
+    <div className="flex items-center justify-between gap-3 rounded-md border border-dashed px-3 py-2.5">
       <span className="text-xs text-muted-foreground">{text}</span>
       <Link href={href} className="text-xs font-semibold text-primary hover:underline">
         {cta}
@@ -191,10 +191,10 @@ function Chip({
       aria-pressed={selected}
       onClick={onClick}
       className={cn(
-        "flex h-9 max-w-52 min-w-0 items-center gap-2 rounded-full border pr-3.5 pl-1.5 text-sm font-semibold whitespace-nowrap transition-colors",
+        "flex h-9 max-w-52 min-w-0 items-center gap-2 rounded-md border pr-3 pl-1.5 text-sm font-medium whitespace-nowrap transition-colors",
         selected
-          ? "border-primary bg-primary/10 text-primary"
-          : "border-border bg-card text-foreground hover:border-primary/40"
+          ? "border-primary bg-primary/10 text-foreground"
+          : "border-border bg-card text-foreground hover:border-foreground/30"
       )}
     >
       {children}

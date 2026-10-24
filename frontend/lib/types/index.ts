@@ -106,6 +106,11 @@ export interface ExpenseShare {
    * confirming that settlement. Security rules enforce who may set it.
    */
   offsetApprovedBy?: string;
+  /**
+   * Closed for free: the owner won a 100%-off game against the person it's
+   * owed to (the challenge id). Security rules check the game.
+   */
+  waivedByGame?: string;
 }
 
 export interface Expense {
@@ -173,23 +178,27 @@ export type NotificationType =
   | "CHALLENGE_RESULT";
 
 /**
- * A settle-up game. The host is owed money by every player; winners get
- * `discountPercent` off their `bases` amount if they pay right after the result.
- * The host's secret (their RPS moves / the lucky number) lives in
- * `challenges/{id}/secret/value`, readable by players only once they've played.
+ * A game between friends. For a discount game the host is owed money by every
+ * player, and winners get `discountPercent` off their `bases` amount if they pay
+ * right after the result; `discountPercent` 0 means it's just for fun.
+ * The host's secret (RPS moves / lucky number / coin flips / treasure boxes /
+ * grid cells) lives in `challenges/{id}/secret/value`, readable by players only
+ * once they've played. Grid games also keep one doc per tile in
+ * `challenges/{id}/tiles/{n}`, readable once that player has dug it.
  */
 export interface Challenge {
   id: string;
   kind: "friend" | "group";
-  game: "rps" | "lucky_number";
+  game: "rps" | "lucky_number" | "coin_toss" | "treasure" | "minefield" | "gold_rush";
   hostId: string;
   hostName: string;
   players: string[];
   playerNames: Record<string, string>;
   /** hostId + players, for queries and read access. */
   participants: string[];
+  /** 0 = just for fun. */
   discountPercent: number;
-  /** What each player owed the host when the game was set up (paise). */
+  /** What each player owed the host when the game was set up (paise); 0 in games for fun. */
   bases: Record<string, number>;
   /** Group games: the expense the game was attached to. */
   expenseId?: string;
@@ -197,13 +206,22 @@ export interface Challenge {
   groupId?: string;
   groupName?: string;
   status: "OPEN" | "DONE" | "CANCELLED";
-  /** RPS: 3 moves per player. Lucky number: one guess per player. */
-  moves: Record<string, string[] | number>;
+  /**
+   * RPS: 3 moves. Coin toss: 5 calls ("H"/"T"). Treasure: a box 0–8. Lucky
+   * number: a guess. Grid games: the cells dug, in order (set when finished).
+   */
+  moves: Record<string, string[] | number[] | number>;
+  /** Grid games: each player's digs so far (append-only, one tile at a time). */
+  progress?: Record<string, number[]>;
   result?: {
     winners: string[];
     /** Revealed secret, for showing the outcome. */
     hostMoves?: string[];
     number?: number;
+    flips?: string[];
+    boxes?: number[];
+    /** Grid games: where the bombs / gold were. */
+    cells?: number[];
     winningDistance?: number;
   };
   /** ISO time of the result (stored as a server timestamp). */

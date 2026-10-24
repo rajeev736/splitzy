@@ -4,7 +4,6 @@ import { FlashIcon, SecurityCheckIcon, UserGroupIcon } from "@hugeicons/core-fre
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { JoySplitLogo } from "@/components/shared/joysplit-logo"
-import { Badge } from "@/components/ui/badge"
 import { SITE } from "@/lib/site"
 import heroImage from "@/public/assets/friends_hero.jpg"
 import { WelcomeActions } from "./_components/welcome-actions"
@@ -14,9 +13,9 @@ export const metadata: Metadata = {
 }
 
 const FEATURES = [
-  { icon: FlashIcon, label: "Instant UPI", className: "text-brand-yellow" },
-  { icon: SecurityCheckIcon, label: "Exact Paise", className: "text-success" },
-  { icon: UserGroupIcon, label: "Free Forever", className: "text-primary" },
+  { icon: FlashIcon, label: "Instant UPI" },
+  { icon: SecurityCheckIcon, label: "Exact paise" },
+  { icon: UserGroupIcon, label: "Free forever" },
 ]
 
 const JSON_LD = {
@@ -41,7 +40,7 @@ const JSON_LD = {
 /** Server-rendered landing page: hero + copy ship in the initial HTML (fast LCP). */
 export default function WelcomePage() {
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col justify-between bg-linear-to-b from-secondary via-background to-background p-6 sm:max-w-xl sm:py-12">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col justify-between bg-background p-6 sm:max-w-xl sm:py-12">
       <script
         type="application/ld+json"
         // Static, trusted object — safe to inline
@@ -53,7 +52,7 @@ export default function WelcomePage() {
       </header>
 
       <section className="my-auto flex flex-col items-center py-6">
-        <div className="relative mb-6 size-64 overflow-hidden rounded-3xl border-4 border-card shadow-xl sm:size-80">
+        <div className="relative mb-8 aspect-square w-full max-w-64 overflow-hidden rounded-lg border sm:max-w-80">
           <Image
             src={heroImage}
             alt="Friends splitting a bill with JoySplit"
@@ -66,7 +65,7 @@ export default function WelcomePage() {
           />
         </div>
 
-        <h1 className="text-center text-2xl font-extrabold tracking-tight sm:text-3xl">
+        <h1 className="text-center text-2xl font-semibold tracking-tight sm:text-3xl">
           Split bills. <br />
           <span className="text-primary">Keep friendships.</span>
         </h1>
@@ -74,13 +73,11 @@ export default function WelcomePage() {
           The zero-budget expense splitting app for friends, trips, and roommates with instant UPI payment handoff.
         </p>
 
-        <ul className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        <ul className="mt-5 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
           {FEATURES.map((f) => (
-            <li key={f.label}>
-              <Badge variant="outline" className="h-7 bg-card px-3 font-semibold shadow-xs">
-                <HugeiconsIcon icon={f.icon} className={f.className} data-icon="inline-start" />
-                {f.label}
-              </Badge>
+            <li key={f.label} className="flex items-center gap-1.5">
+              <HugeiconsIcon icon={f.icon} className="size-3.5" />
+              {f.label}
             </li>
           ))}
         </ul>

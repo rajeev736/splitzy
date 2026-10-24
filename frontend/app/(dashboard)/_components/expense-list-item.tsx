@@ -43,7 +43,7 @@ export function ExpenseListItem({
       variant={variant}
       className={cn(
         "flex-nowrap",
-        variant === "outline" && "bg-card hover:border-primary/40",
+        variant === "outline" ? "bg-card hover:bg-muted/50" : "hover:bg-muted/60",
         className
       )}
       render={<Link href={`/expenses/${expense.id}`} onClick={onClick} />}
@@ -52,18 +52,18 @@ export function ExpenseListItem({
         {expense.groupIcon ? (
           <GroupIcon src={expense.groupIcon} alt={expense.title} size="md" />
         ) : (
-          <div className="flex size-12 items-center justify-center rounded-xl bg-secondary text-primary">
-            <HugeiconsIcon icon={Invoice01Icon} className="size-5" />
+          <div className="flex size-10 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <HugeiconsIcon icon={Invoice01Icon} className="size-4.5" />
           </div>
         )}
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0.5">
-        <ItemTitle className="flex items-center gap-1.5 font-bold">
+        <ItemTitle className="flex items-center gap-1.5 font-medium">
           <span className="truncate">{expense.title}</span>
           {hasUnread && (
             <span
               aria-label="New expense"
-              className="size-2 shrink-0 rounded-full bg-destructive shadow-sm animate-pulse"
+              className="size-1.5 shrink-0 rounded-full bg-primary"
             />
           )}
         </ItemTitle>

@@ -30,11 +30,11 @@ export function JoySplitLogo({ size = "md", showText = true, showTagline = false
       <JoySplitLogoIcon className={ICON_SIZES[size]} />
       {showText && (
         <div className="flex flex-col">
-          <span className={cn("leading-tight font-bold tracking-tight text-foreground", TEXT_SIZES[size])}>
+          <span className={cn("leading-tight font-semibold tracking-tight text-foreground", TEXT_SIZES[size])}>
             JoySplit
           </span>
           {showTagline && (
-            <span className="-mt-0.5 text-[11px] font-medium text-muted-foreground">Split bills. Keep friendships.</span>
+            <span className="-mt-0.5 text-[11px] text-muted-foreground">Split bills. Keep friendships.</span>
           )}
         </div>
       )}

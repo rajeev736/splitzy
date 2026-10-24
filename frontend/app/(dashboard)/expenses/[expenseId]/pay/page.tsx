@@ -17,7 +17,7 @@ export default function PayExpensePage() {
 
   return (
     <div className="flex h-[50vh] flex-col items-center justify-center gap-3">
-      <Spinner className="size-6 text-primary" />
+      <Spinner className="size-5 text-muted-foreground" />
       <p className="text-xs text-muted-foreground">Redirecting to expense details...</p>
     </div>
   )

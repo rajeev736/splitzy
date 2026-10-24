@@ -13,7 +13,7 @@ import { ButtonLink } from "@/components/shared/button-link"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { Spinner } from "@/components/ui/spinner"
@@ -28,8 +28,8 @@ const TABS: Tab[] = ["received", "sent"]
 
 function EmptyListCard({ children }: { children: React.ReactNode }) {
   return (
-    <Card>
-      <CardContent className="py-4 text-center text-xs text-muted-foreground">{children}</CardContent>
+    <Card className="py-0">
+      <p className="px-4 py-6 text-center text-xs text-muted-foreground">{children}</p>
     </Card>
   )
 }
@@ -98,15 +98,15 @@ function FriendRequestsContent() {
       <>
         <TabsContent value="received">
           {receivedRequests.length > 0 ? (
-            <ItemGroup className="gap-3">
+            <ItemGroup className="gap-0 divide-y overflow-hidden rounded-lg border bg-card">
               {receivedRequests.map((req) => (
-                <Item key={req.id} variant="outline" className="flex-col items-stretch bg-card p-4 sm:flex-row sm:items-center">
-                  <div className="flex flex-1 items-center gap-3">
+                <Item key={req.id} className="flex-col items-stretch gap-3 rounded-none px-4 py-3.5 sm:flex-row sm:items-center">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
                     <ItemMedia>
                       <UserAvatar src={req.senderPhoto} name={req.senderName} size="md" />
                     </ItemMedia>
-                    <ItemContent>
-                      <ItemTitle className="font-bold">{req.senderName}</ItemTitle>
+                    <ItemContent className="min-w-0 gap-0.5">
+                      <ItemTitle className="w-full truncate font-semibold">{req.senderName}</ItemTitle>
                       <ItemDescription className="font-mono text-xs">{req.senderSplitzyId}</ItemDescription>
                       {req.groupId && groupInvites.some((g) => g.id === req.groupId) && (
                         <Link href={`/groups/${req.groupId}`} className="text-[11px] font-medium text-primary hover:underline">
@@ -115,7 +115,7 @@ function FriendRequestsContent() {
                       )}
                     </ItemContent>
                   </div>
-                  <ItemActions className="pt-2 sm:pt-0">
+                  <ItemActions className="w-full sm:w-auto">
                     <Button
                       size="sm"
                       className="flex-1 sm:flex-none"
@@ -126,7 +126,7 @@ function FriendRequestsContent() {
                     </Button>
                     <Button
                       size="sm"
-                      variant="secondary"
+                      variant="outline"
                       className="flex-1 sm:flex-none"
                       disabled={isRowPending(req.id)}
                       onClick={() => handleReject(req.id)}
@@ -144,16 +144,19 @@ function FriendRequestsContent() {
 
         <TabsContent value="sent">
           {sentRequests.length > 0 ? (
-            <ItemGroup className="gap-3">
+            <ItemGroup className="gap-0 divide-y overflow-hidden rounded-lg border bg-card">
               {sentRequests.map((req) => (
-                <Item key={req.id} variant="outline" className="bg-card p-4">
+                <Item key={req.id} className="flex-nowrap rounded-none px-4 py-3.5">
                   <ItemMedia>
                     <UserAvatar name={req.receiverName} size="md" />
                   </ItemMedia>
-                  <ItemContent className="gap-0.5">
-                    <ItemTitle className="font-bold">{req.receiverName}</ItemTitle>
+                  <ItemContent className="min-w-0 gap-0.5">
+                    <ItemTitle className="w-full truncate font-semibold">{req.receiverName}</ItemTitle>
                     <ItemDescription className="font-mono text-xs">{req.receiverSplitzyId}</ItemDescription>
-                    <span className="text-[11px] font-semibold text-warning">Pending Response</span>
+                    <span className="flex items-center gap-1.5 text-[11px] text-warning">
+                      <span className="size-1.5 rounded-full bg-current" />
+                      Pending response
+                    </span>
                   </ItemContent>
                   <ItemActions>
                     <Button
@@ -182,8 +185,8 @@ function FriendRequestsContent() {
         title="Friend Requests"
         showBack
         rightAction={
-          <ButtonLink href="/friends/add" variant="secondary" size="icon" className="rounded-full" aria-label="Add Friend">
-            <HugeiconsIcon icon={UserAdd01Icon} className="size-5" strokeWidth={2.2} />
+          <ButtonLink href="/friends/add" variant="ghost" size="icon" aria-label="Add Friend">
+            <HugeiconsIcon icon={UserAdd01Icon} className="size-5" />
           </ButtonLink>
         }
       />
@@ -191,11 +194,11 @@ function FriendRequestsContent() {
       <PageContainer className="max-w-xl">
         {/* Received / Sent */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as Tab)} className="gap-4">
-          <TabsList className="h-10! w-full">
-            <TabsTrigger value="received" className="text-xs font-bold">
+          <TabsList className="w-full">
+            <TabsTrigger value="received" className="text-xs font-medium">
               Received ({receivedRequests.length})
             </TabsTrigger>
-            <TabsTrigger value="sent" className="text-xs font-bold">
+            <TabsTrigger value="sent" className="text-xs font-medium">
               Sent ({sentRequests.length})
             </TabsTrigger>
           </TabsList>
@@ -203,11 +206,11 @@ function FriendRequestsContent() {
         </Tabs>
 
         {/* People you may know (mutual friends) */}
-        <section className="flex flex-col gap-3 pt-2">
+        <section className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold tracking-tight">People you may know</h2>
+            <h2 className="text-sm font-semibold">People you may know</h2>
             {mutualSuggestions.length > 0 && (
-              <span className="text-xs font-bold text-primary">{mutualSuggestions.length} suggested</span>
+              <span className="text-xs text-muted-foreground">{mutualSuggestions.length} suggested</span>
             )}
           </div>
 
@@ -217,9 +220,9 @@ function FriendRequestsContent() {
               Finding mutual connections...
             </div>
           ) : mutualSuggestions.length === 0 ? (
-            <Empty className="border border-dashed bg-card p-6">
+            <Empty className="rounded-lg border bg-card p-6">
               <EmptyHeader>
-                <EmptyMedia variant="icon">
+                <EmptyMedia variant="icon" className="rounded-md border bg-transparent text-muted-foreground">
                   <HugeiconsIcon icon={UserGroupIcon} />
                 </EmptyMedia>
                 <EmptyTitle className="text-xs font-medium">No mutual friends to suggest yet.</EmptyTitle>
@@ -229,18 +232,18 @@ function FriendRequestsContent() {
               </EmptyHeader>
             </Empty>
           ) : (
-            <ItemGroup className="gap-2.5">
+            <ItemGroup className="gap-0 divide-y overflow-hidden rounded-lg border bg-card">
               {mutualSuggestions.map(({ user: su, mutualCount, mutualFriendNames }) => {
                 const isAdding = sendRequest.isPending && sendRequest.variables === su.splitzyId
                 return (
-                  <Item key={su.uid} variant="outline" size="sm" className="bg-card">
+                  <Item key={su.uid} size="sm" className="flex-nowrap rounded-none px-4 py-3">
                     <ItemMedia>
                       <UserAvatar src={su.photoURL} name={su.displayName} size="sm" />
                     </ItemMedia>
-                    <ItemContent className="gap-0">
-                      <ItemTitle className="text-xs font-bold">{su.displayName}</ItemTitle>
+                    <ItemContent className="min-w-0 gap-0">
+                      <ItemTitle className="w-full truncate text-sm font-semibold">{su.displayName}</ItemTitle>
                       <span className="font-mono text-[11px] text-muted-foreground">{su.splitzyId}</span>
-                      <span className="text-[10px] font-medium text-primary">
+                      <span className="text-[11px] text-muted-foreground">
                         {mutualCount} mutual friend{mutualCount > 1 ? "s" : ""}
                         {mutualFriendNames.length > 0 && ` (${mutualFriendNames.slice(0, 2).join(", ")})`}
                       </span>
@@ -248,8 +251,8 @@ function FriendRequestsContent() {
                     <ItemActions>
                       <Button
                         size="sm"
-                        variant="secondary"
-                        className="px-4"
+                        variant="outline"
+                        className="px-3"
                         disabled={isAdding}
                         onClick={() => handleSendRequest(su.splitzyId)}
                       >
@@ -273,7 +276,7 @@ export default function FriendRequestsPage() {
     <React.Suspense
       fallback={
         <div className="flex min-h-svh items-center justify-center">
-          <Spinner className="size-8 text-primary" />
+          <Spinner className="size-6 text-muted-foreground" />
         </div>
       }
     >

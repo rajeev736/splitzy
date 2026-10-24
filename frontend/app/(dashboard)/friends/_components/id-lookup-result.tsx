@@ -5,7 +5,6 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
 
 import { UserAvatar } from "@/components/shared/user-avatar"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { Spinner } from "@/components/ui/spinner"
@@ -27,7 +26,7 @@ export function IdLookupResult({ splitzyId }: { splitzyId: string }) {
 
   if (search.isFetching && !result) {
     return (
-      <div className="flex items-center gap-2 rounded-2xl border bg-card p-4 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-xs text-muted-foreground">
         <Spinner />
         Looking up {splitzyId}...
       </div>
@@ -37,8 +36,8 @@ export function IdLookupResult({ splitzyId }: { splitzyId: string }) {
 
   if (!result.found || !result.user) {
     return (
-      <div className="flex items-center gap-2 rounded-2xl border bg-card p-4 text-xs text-warning">
-        <HugeiconsIcon icon={AlertCircleIcon} className="size-4 shrink-0" />
+      <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-xs text-muted-foreground">
+        <HugeiconsIcon icon={AlertCircleIcon} className="size-4 shrink-0 text-warning" />
         {result.message || "No user found with that JoySplit ID."}
       </div>
     )
@@ -49,22 +48,22 @@ export function IdLookupResult({ splitzyId }: { splitzyId: string }) {
   const isAccepting = acceptRequest.isPending
 
   return (
-    <Item variant="outline" className="flex-nowrap bg-card p-4">
+    <Item variant="outline" className="flex-nowrap bg-card px-4 py-3">
       <ItemMedia>
-        <UserAvatar src={u.photoURL} name={u.displayName || "User"} size="md" />
+        <UserAvatar src={u.photoURL} name={u.displayName || "User"} size="sm" />
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0.5">
-        <ItemTitle className="font-bold">{u.displayName}</ItemTitle>
+        <ItemTitle className="w-full truncate font-medium">{u.displayName}</ItemTitle>
         <ItemDescription className="font-mono text-xs">{u.splitzyId}</ItemDescription>
       </ItemContent>
       <ItemActions>
         {result.status === "CAN_ADD" ? (
           <Button size="sm" disabled={isSending} onClick={() => u.splitzyId && sendRequest.mutate(u.splitzyId)}>
             {isSending ? <Spinner /> : <HugeiconsIcon icon={UserAdd01Icon} data-icon="inline-start" />}
-            Add Friend
+            Add
           </Button>
         ) : result.status === "REQUEST_SENT" ? (
-          <Badge className="bg-primary/10 font-bold text-primary">Request Sent</Badge>
+          <span className="text-xs text-muted-foreground">Request sent</span>
         ) : result.status === "REQUEST_RECEIVED" && result.requestId ? (
           <Button
             size="sm"
@@ -76,17 +75,15 @@ export function IdLookupResult({ splitzyId }: { splitzyId: string }) {
             }
           >
             {isAccepting && <Spinner />}
-            Accept Request
+            Accept
           </Button>
         ) : result.status === "FRIENDS" ? (
-          <Badge className="bg-success/10 font-bold text-success">
-            <HugeiconsIcon icon={Tick02Icon} data-icon="inline-start" />
+          <span className="flex items-center gap-1 text-xs font-medium text-success">
+            <HugeiconsIcon icon={Tick02Icon} className="size-3.5" />
             Friends
-          </Badge>
+          </span>
         ) : (
-          <Badge variant="secondary" className="font-bold">
-            You
-          </Badge>
+          <span className="text-xs text-muted-foreground">You</span>
         )}
       </ItemActions>
     </Item>

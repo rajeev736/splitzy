@@ -3,10 +3,10 @@ import Image from "next/image"
 import { cn } from "@/lib/utils"
 
 const SIZES = {
-  sm: "size-9 rounded-lg",
-  md: "size-12 rounded-xl",
-  lg: "size-16 rounded-2xl",
-  xl: "size-20 rounded-3xl",
+  sm: "size-9 rounded-md",
+  md: "size-12 rounded-md",
+  lg: "size-16 rounded-lg",
+  xl: "size-20 rounded-lg",
 } as const
 
 /** Selectable group cover images (shared by create / edit group). */

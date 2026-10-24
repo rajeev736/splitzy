@@ -183,6 +183,113 @@ export async function reportPersonSettlement(
 }
 
 /**
+ * Settle up for free: you won a 100%-off game against the creditor and its
+ * discount covers everything you owe them here. Claiming the discount and
+ * closing both sides — your shares (marked with the game, which the security
+ * rules check) and theirs owed to you that were netted in — is one atomic
+ * write, so a rejected settle never burns the discount. If the discount was
+ * already claimed (e.g. an earlier attempt), this just finishes the settle.
+ */
+export async function settleWithGameWaiver(
+  user: UserProfile,
+  expenses: Expense[],
+  input: { creditorId: string; challengeId: string; scope?: SettlementScope }
+): Promise<SettlementResult> {
+  const breakdown = calculatePersonNetBreakdown(user.uid, input.creditorId, expenses, input.scope)
+  if (breakdown.netPayablePaise <= 0) throw new AppError("You don't owe them anything here.")
+
+  const firestore = getDb()
+  if (!firestore) throw new AppError("Settling needs an internet connection")
+  const snap = await getDoc(doc(firestore, "challenges", input.challengeId))
+  if (!snap.exists()) throw new AppError("That game no longer exists")
+  const challenge = toChallenge(snap.data())
+  if (challenge.discountPercent !== 100) throw new AppError("Only a 100%-off game settles everything for free")
+  if (challenge.hostId !== input.creditorId || !challenge.result?.winners.includes(user.uid)) {
+    throw new AppError("There's no game win for you here.")
+  }
+  // Already claimed in time: finish settling with it; otherwise claim it now (within its 10 minutes)
+  const alreadyClaimed = challenge.redeemed?.[user.uid] ?? 0
+  const discount = alreadyClaimed > 0 ? alreadyClaimed : await gameDiscountFor(user.uid, input.creditorId, input.challengeId)
+  if (discount < breakdown.netPayablePaise) {
+    throw new AppError(`Your game covers ${formatPaise(discount)} — pay the remaining amount instead.`)
+  }
+  // The game covers what was owed when it was set up, not splits added later
+  if (breakdown.aOwesBLines.some((l) => l.expense.createdAt > challenge.createdAt)) {
+    throw new AppError("You've split more since the game — settle those separately.")
+  }
+
+  const settlementId = newSettlementId()
+  const now = nowIso()
+  const editor = shareEditor(expenses)
+  for (const line of breakdown.aOwesBLines) {
+    editor.edit(
+      line.expense.id,
+      (exp, s) => s.userId === user.uid && s.status !== "PAID" && payeeOf(exp, s.userId) === input.creditorId,
+      (s) => ({
+        ...s,
+        status: "PAID",
+        confirmedAt: now,
+        settlementId,
+        waivedByGame: input.challengeId,
+        paymentProofNote: "Settled free — won a 100% off game",
+      })
+    )
+  }
+  // What they owed you was already netted into the game's amount: close it too
+  for (const line of breakdown.bOwesALines) {
+    editor.edit(
+      line.expense.id,
+      (exp, s) => s.userId === input.creditorId && s.status !== "PAID" && payeeOf(exp, s.userId) === user.uid,
+      (s) => ({ ...s, status: "PAID", confirmedAt: now, settlementId, paymentProofNote: "Cancelled out by mutual split" })
+    )
+  }
+
+  const updatedExpenses = editor.result()
+  // One batch: the claim and the closed shares land together or not at all
+  const batch = writeBatch(firestore)
+  if (alreadyClaimed === 0) {
+    batch.update(doc(firestore, "challenges", input.challengeId), {
+      [`redeemed.${user.uid}`]: Math.min(discount, breakdown.netPayablePaise),
+    })
+  }
+  for (const exp of updatedExpenses) {
+    batch.update(doc(firestore, "expenses", exp.id), { shares: exp.shares.map(stripUndefined), updatedAt: now })
+  }
+  try {
+    await batch.commit()
+  } catch (e) {
+    if ((e as { code?: string })?.code === "permission-denied") {
+      throw new AppError(
+        alreadyClaimed === 0
+          ? "Couldn't settle with your game win — it may have expired. Nothing was changed."
+          : "Couldn't finish settling with your game win. Nothing was changed."
+      )
+    }
+    throw e
+  }
+
+  await sendNotification({
+    userId: input.creditorId,
+    title: "Settled with a game win",
+    message: `${user.displayName} won your 100% off game, so the ${formatPaise(breakdown.netPayablePaise)} they owed you is settled.`,
+    type: "CHALLENGE_RESULT",
+    data: {
+      actorId: user.uid,
+      actorName: user.displayName,
+      challengeId: input.challengeId,
+      debtorId: user.uid,
+      creditorId: input.creditorId,
+      settlementId,
+      amountPaise: 0,
+      discountPaise: breakdown.netPayablePaise,
+    },
+    createdAt: now,
+  }).catch((e) => console.warn("Waiver notification failed:", e))
+
+  return { updatedExpenses, allocatedAmountPaise: 0 }
+}
+
+/**
  * The discount a won game gives against this creditor right now. Throws a
  * clear message when it can't be used (lost, someone else's game, expired).
  */

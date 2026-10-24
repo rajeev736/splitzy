@@ -122,7 +122,7 @@ export function PaymentReceivedPrompt({
   const busy = confirm.isPending || dispute.isPending
 
   const buttonSize = size === "lg" ? "lg" : "sm"
-  const buttonClass = size === "lg" ? "h-12 text-base" : size === "inline" ? "h-7 min-w-14 px-3 text-xs" : "h-8 min-w-16"
+  const buttonClass = size === "lg" ? "h-11" : size === "inline" ? "h-7 min-w-14 px-3 text-xs" : "h-8 min-w-16"
 
   return (
     // Sits inside clickable rows: keep taps here from opening the row
@@ -211,7 +211,7 @@ export function PaymentStatusStrip({
   const disputed = useDisputedPaymentWith(personId)
   if (!pending && !disputed) return null
   return (
-    <div className={cn("rounded-xl bg-muted/50 px-3 py-2", className)}>
+    <div className={cn("rounded-md bg-muted/50 px-3 py-2", className)}>
       {pending ? (
         <PaymentReceivedPrompt size="inline" personId={personId} personName={personName} />
       ) : (
@@ -268,7 +268,7 @@ export function PaymentDisputeLine({
             type="button"
             disabled={busy}
             onClick={action.run}
-            className="font-semibold text-primary hover:underline disabled:opacity-50"
+            className="font-medium text-primary hover:underline disabled:opacity-50"
           >
             {busy ? "…" : action.label}
           </button>

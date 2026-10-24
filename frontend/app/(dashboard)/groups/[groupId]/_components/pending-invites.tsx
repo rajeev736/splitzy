@@ -3,7 +3,6 @@
 import { Fragment } from "react"
 
 import { useSession } from "@/components/providers/session-provider"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ItemGroup, ItemSeparator } from "@/components/ui/item"
 import { Spinner } from "@/components/ui/spinner"
@@ -28,13 +27,13 @@ export function PendingInvites({ group, className }: { group: Group; className?:
   return (
     <div className={cn("flex flex-col gap-3 border-t pt-4", className)}>
       <div className="flex items-center justify-between">
-        <span className="text-xs font-bold tracking-wider text-muted-foreground uppercase">
-          Invited — pending ({invited.length})
+        <span className="text-sm font-semibold">
+          Invited <span className="font-normal text-muted-foreground">· pending ({invited.length})</span>
         </span>
         <span className="text-[11px] text-muted-foreground">Join once they accept</span>
       </div>
 
-      <ItemGroup className="gap-0 rounded-xl border bg-muted/40 px-3">
+      <ItemGroup className="gap-0">
         {invited.map((uid, i) => {
           const info = group.invitedMemberDetails?.[uid]
           const fr = friends.find((f) => f.uid === uid)
@@ -53,9 +52,9 @@ export function PendingInvites({ group, className }: { group: Group; className?:
                     : info?.splitzyId || fr?.splitzyId || uid
                 }
                 size="sm"
+                footer={<span className="text-xs font-medium text-warning">Invite sent</span>}
                 actions={
                   <>
-                    <Badge className="bg-warning/10 font-semibold text-warning">Invite sent</Badge>
                     <Button
                       size="sm"
                       variant="ghost"

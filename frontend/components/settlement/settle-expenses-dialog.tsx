@@ -28,7 +28,11 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { Spinner } from "@/components/ui/spinner"
-import { useReportPersonSettlement, useSendFriendBalanceReminder } from "@/hooks/mutations"
+import {
+  useReportPersonSettlement,
+  useSendFriendBalanceReminder,
+  useSettleWithGameWaiver,
+} from "@/hooks/mutations"
 import {
   PaymentDisputeLine,
   PaymentReceivedPrompt,
@@ -36,10 +40,7 @@ import {
 } from "@/components/shared/payment-received-prompt"
 import { useExpenses, useFriends, useGroups } from "@/hooks/queries"
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
-import {
-  calculatePersonNetBreakdown,
-  type SettlementScope,
-} from "@/lib/money"
+import { calculatePersonNetBreakdown, type SettlementScope } from "@/lib/money"
 import { buildUPILink, type UPITransactionParams } from "@/lib/upi"
 import { cn } from "@/lib/utils"
 
@@ -77,6 +78,7 @@ export function SettleExpensesDialog({
   const sendReminder = useSendFriendBalanceReminder()
   // They reported paying you: the only question left is whether it arrived
   const pendingFromThem = usePendingPaymentFrom(personId)
+  const waive = useSettleWithGameWaiver()
   const reportSettlement = useReportPersonSettlement({
     successMessage: "Settlement reported! Notified recipient for confirmation.",
   })
@@ -106,7 +108,10 @@ export function SettleExpensesDialog({
 
   // Person information
   const targetName =
-    friendProfile?.displayName || fullBreakdown?.userBName || propPersonName || "Member"
+    friendProfile?.displayName ||
+    fullBreakdown?.userBName ||
+    propPersonName ||
+    "Member"
   const targetPhoto =
     friendProfile?.photoURL || fullBreakdown?.userBPhoto || propPersonPhoto
   const targetUpiId =
@@ -185,28 +190,45 @@ export function SettleExpensesDialog({
   const liveDiscounts = useLiveGameDiscounts()
   const live = liveDiscounts.byPerson.get(personId)
   const gameDiscount =
-    live && ((live.role === "winner" && isUserOwing) || (live.role === "host" && !isUserOwing && netReceivablePaise > 0))
+    live &&
+    ((live.role === "winner" && isUserOwing) ||
+      (live.role === "host" && !isUserOwing && netReceivablePaise > 0))
       ? live
       : undefined
   const gameOff = gameDiscount
-    ? Math.min(gameDiscount.discountPaise, isUserOwing ? netPayablePaise : netReceivablePaise)
+    ? Math.min(
+        gameDiscount.discountPaise,
+        isUserOwing ? netPayablePaise : netReceivablePaise
+      )
     : 0
   /** Off a new payment: only a live offer, never one already used on a payment awaiting confirmation. */
   const payOff = gameDiscount && !gameDiscount.pending ? gameOff : 0
   /** What you actually pay right now. */
   const payPaise = netPayablePaise - (isUserOwing ? payOff : 0)
+  // A 100%-off win that covers everything selected: settle for free instead of "paying" ₹0
+  const settlesFree =
+    isUserOwing &&
+    payOff > 0 &&
+    payPaise === 0 &&
+    gameDiscount?.role === "winner" &&
+    gameDiscount.percent === 100
 
   /** A live discount in the direction of this balance (you owe → won, you get → hosted), capped by it. */
   const offFor = (netPaise: number) =>
-    live && ((live.role === "winner" && netPaise < 0) || (live.role === "host" && netPaise > 0))
+    live &&
+    ((live.role === "winner" && netPaise < 0) ||
+      (live.role === "host" && netPaise > 0))
       ? Math.min(live.discountPaise, Math.abs(netPaise))
       : 0
   // The overall balance with them, after the discount
   const fullOff = fullBreakdown ? offFor(fullBreakdown.netBalancePaise) : 0
   // The split the game was played on (friend games: direct splits; else the first matching one)
   const gameCtxKey = live
-    ? (allContexts.find((c) => c.key === (live.groupId ?? "direct") && offFor(c.netPaise) > 0) ??
-        allContexts.find((c) => offFor(c.netPaise) > 0))?.key
+    ? (
+        allContexts.find(
+          (c) => c.key === (live.groupId ?? "direct") && offFor(c.netPaise) > 0
+        ) ?? allContexts.find((c) => offFor(c.netPaise) > 0)
+      )?.key
     : undefined
 
   const handleReport = (noteText?: string) => {
@@ -231,7 +253,9 @@ export function SettleExpensesDialog({
           contextKeys: selectedKeys,
         },
         note,
-        ...(gameDiscount?.role === "winner" && payOff > 0 ? { challengeId: gameDiscount.challengeId } : {}),
+        ...(gameDiscount?.role === "winner" && payOff > 0
+          ? { challengeId: gameDiscount.challengeId }
+          : {}),
       },
       {
         onSuccess: () => {
@@ -249,7 +273,9 @@ export function SettleExpensesDialog({
     }
 
     if (!targetUpiId) {
-      toast.warning("Recipient UPI ID is not available. You can mark it as settled directly.")
+      toast.warning(
+        "Recipient UPI ID is not available. You can mark it as settled directly."
+      )
       handleReport()
       return
     }
@@ -283,25 +309,25 @@ export function SettleExpensesDialog({
         <SheetContent
           side="bottom"
           showCloseButton={false}
-          className="mx-auto flex h-[92vh] max-h-[92vh] w-full max-w-xl flex-col gap-0 rounded-t-[28px] border-border bg-background p-0 text-foreground shadow-2xl sm:h-[86vh] sm:max-h-[86vh] sm:rounded-3xl sm:border"
+          className="mx-auto flex h-[92vh] max-h-[92vh] w-full max-w-xl flex-col gap-0 rounded-t-lg border-border bg-background p-0 text-foreground sm:h-[86vh] sm:max-h-[86vh] sm:rounded-lg sm:border"
         >
           {/* Top Navigation Bar */}
-          <div className="flex items-center justify-between border-b border-border/60 bg-background/95 px-4 py-3 backdrop-blur-md sm:px-6">
+          <div className="flex items-center justify-between border-b bg-background px-4 py-3 sm:px-6">
             <button
               type="button"
               onClick={() => onOpenChange(false)}
-              className="flex size-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95"
+              className="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               aria-label="Back"
             >
               <HugeiconsIcon icon={ArrowLeft01Icon} className="size-5" />
             </button>
-            <SheetTitle className="text-base font-bold tracking-tight text-foreground">
+            <SheetTitle className="text-base font-semibold text-foreground">
               Settle with {targetName}
             </SheetTitle>
             <button
               type="button"
               onClick={() => onOpenChange(false)}
-              className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95"
+              className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               aria-label="Close"
             >
               <HugeiconsIcon icon={Cancel01Icon} className="size-4" />
@@ -310,17 +336,19 @@ export function SettleExpensesDialog({
 
           {/* Scrollable Content */}
           <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-            {/* Person Profile Card with PhonePe Badge and Net Balance */}
-            <div className="flex flex-row items-center justify-between gap-4 rounded-3xl border border-border bg-card p-4 text-card-foreground shadow-xs">
-              <div className="flex items-center gap-3.5 min-w-0 flex-1">
+            {/* Person profile and net balance */}
+            <div className="flex flex-row items-center justify-between gap-4 rounded-lg border bg-card p-4 text-card-foreground">
+              <div className="flex min-w-0 flex-1 items-center gap-3.5">
                 <UserAvatar
                   src={targetPhoto}
                   name={targetName}
                   size="lg"
-                  className="size-12 ring-2 ring-border/60 shrink-0"
+                  className="size-11 shrink-0"
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-base font-bold text-foreground">{targetName}</div>
+                  <div className="truncate text-sm font-semibold text-foreground">
+                    {targetName}
+                  </div>
                   <div className="truncate text-xs text-muted-foreground">
                     {targetUpiId ? `UPI: ${targetUpiId}` : "Splitzy Member"}
                   </div>
@@ -330,23 +358,30 @@ export function SettleExpensesDialog({
               {/* Overall Net Balance aamne-saamne */}
               {fullBreakdown && (
                 <div className="flex shrink-0 flex-col items-end text-right">
-                  <span className="text-xs font-semibold text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     {fullBreakdown.netBalancePaise < 0 ? "You owe" : "You get"}
                   </span>
                   <span
                     className={cn(
-                      "text-xl sm:text-2xl font-black tabular-nums leading-tight mt-0.5",
+                      "mt-0.5 text-xl leading-tight font-semibold tabular-nums",
                       fullBreakdown.netBalancePaise < 0
                         ? "text-destructive"
-                        : "text-emerald-600 dark:text-emerald-400"
+                        : "text-success"
                     )}
                   >
                     {fullOff > 0 && (
-                      <span className="mr-1.5 text-xs font-semibold text-muted-foreground line-through">
-                        ₹{(Math.abs(fullBreakdown.netBalancePaise) / 100).toFixed(0)}
+                      <span className="mr-1.5 text-xs font-normal text-muted-foreground line-through">
+                        ₹
+                        {(
+                          Math.abs(fullBreakdown.netBalancePaise) / 100
+                        ).toFixed(0)}
                       </span>
                     )}
-                    ₹{((Math.abs(fullBreakdown.netBalancePaise) - fullOff) / 100).toFixed(0)}
+                    ₹
+                    {(
+                      (Math.abs(fullBreakdown.netBalancePaise) - fullOff) /
+                      100
+                    ).toFixed(0)}
                   </span>
                 </div>
               )}
@@ -354,14 +389,17 @@ export function SettleExpensesDialog({
 
             {/* Select groups to settle header */}
             <div className="mt-5 mb-2.5 px-0.5">
-              <h2 className="text-sm font-semibold text-foreground">Select groups to settle</h2>
+              <h2 className="text-sm font-semibold text-foreground">
+                Select groups to settle
+              </h2>
             </div>
 
             {/* List of Contexts (Groups + Direct Splits) */}
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col divide-y rounded-lg border bg-card">
               {allContexts.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-                  No pending group or direct splits with {targetName}. All balances are settled up!
+                <div className="p-6 text-center text-xs text-muted-foreground">
+                  No pending group or direct splits with {targetName}. All
+                  balances are settled up!
                 </div>
               ) : (
                 allContexts.map((ctx) => {
@@ -377,42 +415,45 @@ export function SettleExpensesDialog({
                       key={ctx.key}
                       onClick={() => toggleContext(ctx.key)}
                       className={cn(
-                        "flex flex-row cursor-pointer items-center justify-between gap-3 rounded-2xl border p-3.5 transition-all select-none",
-                        isChecked
-                          ? "border-primary/50 bg-primary/5 shadow-xs"
-                          : "border-border/60 bg-card/60 opacity-60 hover:opacity-100 hover:bg-card"
+                        "flex cursor-pointer flex-row items-center justify-between gap-3 p-3.5 transition-colors select-none",
+                        isChecked ? "bg-card" : "opacity-60 hover:opacity-100"
                       )}
                     >
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
                         {/* Custom styled checkbox indicator */}
                         <div
                           className={cn(
-                            "flex size-5 shrink-0 items-center justify-center rounded-md border transition-colors",
+                            "flex size-4.5 shrink-0 items-center justify-center rounded-sm border transition-colors",
                             isChecked
-                              ? "border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-500"
+                              ? "border-primary bg-primary text-primary-foreground"
                               : "border-muted-foreground/40 bg-transparent"
                           )}
                         >
-                          {isChecked && <HugeiconsIcon icon={Tick02Icon} className="size-3.5 stroke-[3]" />}
+                          {isChecked && (
+                            <HugeiconsIcon
+                              icon={Tick02Icon}
+                              className="size-3 stroke-[3]"
+                            />
+                          )}
                         </div>
 
                         {/* Group or Direct icon */}
-                        <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
+                        <div className="hidden size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary min-[400px]:flex">
                           <HugeiconsIcon
                             icon={ctx.isGroup ? UserGroupIcon : Invoice01Icon}
-                            className="size-5 text-muted-foreground"
+                            className="size-4.5"
                           />
                         </div>
 
                         {/* Name and breakdown snippet */}
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-bold text-foreground">
+                          <div className="truncate text-sm font-medium text-foreground">
                             {ctx.resolvedLabel}
                           </div>
                           <div className="text-[11px] text-muted-foreground">
                             {ctx.isGroup ? "Group Split" : "Direct Split"}
                             {ctxOwes > 0 && ctxGets > 0 && (
-                              <span className="ml-1 text-[10px] font-medium text-primary">
+                              <span className="ml-1 text-[11px] text-muted-foreground">
                                 (offset applied)
                               </span>
                             )}
@@ -423,21 +464,17 @@ export function SettleExpensesDialog({
                       {/* Right amount and options aamne-saamne */}
                       <div className="flex shrink-0 items-center gap-2.5 text-right">
                         <div className="flex flex-col items-end">
-                          <span
-                            className="text-xs font-semibold text-muted-foreground"
-                          >
+                          <span className="text-[11px] text-muted-foreground">
                             {youOweInCtx ? "You owe" : "You get"}
                           </span>
                           <span
                             className={cn(
-                              "text-base font-black tabular-nums leading-tight mt-0.5",
-                              youOweInCtx
-                                ? "text-destructive"
-                                : "text-emerald-600 dark:text-emerald-400"
+                              "mt-0.5 text-sm leading-tight font-semibold tabular-nums",
+                              youOweInCtx ? "text-destructive" : "text-success"
                             )}
                           >
                             {ctxOff > 0 && (
-                              <span className="mr-1 text-[11px] font-semibold text-muted-foreground line-through">
+                              <span className="mr-1 text-[11px] font-normal text-muted-foreground line-through">
                                 ₹{(Math.abs(ctxNet) / 100).toFixed(0)}
                               </span>
                             )}
@@ -449,9 +486,12 @@ export function SettleExpensesDialog({
                         <DropdownMenu>
                           <DropdownMenuTrigger
                             onClick={(e) => e.stopPropagation()}
-                            className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+                            className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
                           >
-                            <HugeiconsIcon icon={MoreVerticalIcon} className="size-4" />
+                            <HugeiconsIcon
+                              icon={MoreVerticalIcon}
+                              className="size-4"
+                            />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-48">
                             <DropdownMenuItem
@@ -469,7 +509,10 @@ export function SettleExpensesDialog({
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  window.open(`/groups/${ctx.groupId}`, "_blank")
+                                  window.open(
+                                    `/groups/${ctx.groupId}`,
+                                    "_blank"
+                                  )
                                 }}
                               >
                                 View Group
@@ -485,10 +528,12 @@ export function SettleExpensesDialog({
             </div>
 
             {/* Total Selected Summary Row */}
-            <div className="mt-5 flex flex-col rounded-2xl border border-border bg-muted/40 p-4 text-card-foreground shadow-xs">
-              <div className="flex items-center justify-between">
+            <div className="mt-5 flex flex-col rounded-lg border bg-muted/40 p-4 text-card-foreground">
+              <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-bold text-foreground">Total Selected Summary</div>
+                  <div className="text-sm font-semibold text-foreground">
+                    Selected total
+                  </div>
                   <div className="text-xs text-muted-foreground">
                     {selectedKeys.length} of {allContexts.length} split
                     {allContexts.length === 1 ? "" : "s"} selected
@@ -497,16 +542,7 @@ export function SettleExpensesDialog({
 
                 <div className="flex items-center gap-2 text-right">
                   <div>
-                    <div
-                      className={cn(
-                        "text-xs font-semibold",
-                        isUserOwing
-                          ? "text-destructive"
-                          : netReceivablePaise > 0
-                            ? "text-emerald-600 dark:text-emerald-400"
-                            : "text-muted-foreground"
-                      )}
-                    >
+                    <div className={cn("text-xs text-muted-foreground")}>
                       {isUserOwing
                         ? "You need to pay"
                         : netReceivablePaise > 0
@@ -515,29 +551,38 @@ export function SettleExpensesDialog({
                     </div>
                     <div
                       className={cn(
-                        "text-lg font-black tabular-nums",
+                        "text-lg font-semibold tabular-nums",
                         isUserOwing
                           ? "text-destructive"
                           : netReceivablePaise > 0
-                            ? "text-emerald-600 dark:text-emerald-400"
+                            ? "text-success"
                             : "text-muted-foreground"
                       )}
                     >
                       {gameOff > 0 && (
-                        <span className="mr-1.5 text-xs font-semibold text-muted-foreground line-through">
-                          ₹{((isUserOwing ? netPayablePaise : netReceivablePaise) / 100).toFixed(0)}
+                        <span className="mr-1.5 text-xs font-normal text-muted-foreground line-through">
+                          ₹
+                          {(
+                            (isUserOwing
+                              ? netPayablePaise
+                              : netReceivablePaise) / 100
+                          ).toFixed(0)}
                         </span>
                       )}
                       ₹
                       {(
-                        ((isUserOwing ? netPayablePaise : netReceivablePaise) - gameOff) / 100
+                        ((isUserOwing ? netPayablePaise : netReceivablePaise) -
+                          gameOff) /
+                        100
                       ).toFixed(0)}
                     </div>
                     {gameDiscount && gameOff > 0 && (
                       <GameDiscountChip
                         className="mt-1"
                         discount={gameDiscount}
-                        amountPaise={isUserOwing ? netPayablePaise : netReceivablePaise}
+                        amountPaise={
+                          isUserOwing ? netPayablePaise : netReceivablePaise
+                        }
                         now={liveDiscounts.now}
                       />
                     )}
@@ -545,12 +590,12 @@ export function SettleExpensesDialog({
 
                   {/* Indicator badge */}
                   {isUserOwing && (
-                    <div className="flex size-7 items-center justify-center rounded-full bg-destructive/15 text-destructive font-bold">
+                    <div className="flex size-7 items-center justify-center rounded-md border text-destructive">
                       <span className="text-sm leading-none">↗</span>
                     </div>
                   )}
                   {netReceivablePaise > 0 && (
-                    <div className="flex size-7 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">
+                    <div className="flex size-7 items-center justify-center rounded-md border text-success">
                       <span className="text-sm leading-none">↙</span>
                     </div>
                   )}
@@ -558,62 +603,117 @@ export function SettleExpensesDialog({
               </div>
 
               {selectedBreakdown && selectedBreakdown.offsetPaise > 0 && (
-                <div className="mt-2.5 border-t border-border/40 pt-2 text-[11px] text-muted-foreground">
-                  💡 ₹{(selectedBreakdown.offsetPaise / 100).toFixed(0)} mutual offset applied
-                  automatically across reciprocal splits.
+                <div className="mt-3 border-t pt-2.5 text-[11px] text-muted-foreground">
+                  ₹{(selectedBreakdown.offsetPaise / 100).toFixed(0)} mutual
+                  offset applied automatically across reciprocal splits.
                 </div>
               )}
             </div>
           </div>
 
           {/* Sticky Bottom Action Bar */}
-          <div className="border-t border-border/60 bg-background/95 p-4 backdrop-blur-md sm:px-6">
+          <div className="border-t bg-background p-4 sm:px-6">
             {pendingFromThem ? (
-              <PaymentReceivedPrompt size="lg" personId={personId} personName={targetName} />
+              <PaymentReceivedPrompt
+                size="lg"
+                personId={personId}
+                personName={targetName}
+              />
             ) : awaitingConfirmation ? (
               <div className="flex flex-col items-center gap-1.5 text-center">
                 <AwaitingConfirmationBadge className="py-1.5 text-xs" />
                 <p className="text-xs text-muted-foreground">
-                  You reported this payment. {targetName} will confirm once they receive it.
+                  You reported this payment. {targetName} will confirm once they
+                  receive it.
                 </p>
               </div>
             ) : isUserOwing ? (
               <div className="flex flex-col gap-2">
-              <PaymentDisputeLine className="justify-center" personId={personId} personName={targetName} />
-              <Button
-                type="button"
-                disabled={reportSettlement.isPending || selectedKeys.length === 0}
-                onClick={handlePayViaUPI}
-                className="h-13 w-full rounded-2xl bg-primary text-base font-extrabold tracking-wider text-primary-foreground shadow-lg transition hover:bg-primary/90 active:scale-[0.99] disabled:opacity-50"
-              >
-                {reportSettlement.isPending ? (
-                  <span className="flex items-center gap-2">
-                    <Spinner className="size-4" /> Processing...
-                  </span>
+                <PaymentDisputeLine
+                  className="justify-center"
+                  personId={personId}
+                  personName={targetName}
+                />
+                {settlesFree && gameDiscount ? (
+                  <Button
+                    type="button"
+                    variant="success"
+                    disabled={waive.isPending || selectedKeys.length === 0}
+                    onClick={() =>
+                      waive.mutate(
+                        {
+                          creditorId: personId,
+                          challengeId: gameDiscount.challengeId,
+                          scope: {
+                            type: "contexts",
+                            contextKeys: selectedKeys,
+                          },
+                        },
+                        {
+                          onSuccess: () => {
+                            onSettled?.()
+                            onOpenChange(false)
+                          },
+                        }
+                      )
+                    }
+                    className="h-11 w-full rounded-md text-sm font-medium"
+                  >
+                    {waive.isPending && <Spinner className="size-4" />}
+                    Settle up for free (game win)
+                  </Button>
                 ) : (
-                  payOff > 0
-                    ? `PAY ₹${(payPaise / 100).toFixed(0)} · SAVE ₹${(payOff / 100).toFixed(0)}`
-                    : `PAY ₹${(netPayablePaise / 100).toFixed(0)}`
+                  <Button
+                    type="button"
+                    disabled={
+                      reportSettlement.isPending || selectedKeys.length === 0
+                    }
+                    onClick={handlePayViaUPI}
+                    className="h-11 w-full rounded-md text-sm font-medium"
+                  >
+                    {reportSettlement.isPending ? (
+                      <span className="flex items-center gap-2">
+                        <Spinner className="size-4" /> Processing...
+                      </span>
+                    ) : payOff > 0 ? (
+                      `Pay ₹${(payPaise / 100).toFixed(0)} · save ₹${(payOff / 100).toFixed(0)}`
+                    ) : (
+                      `Pay ₹${(netPayablePaise / 100).toFixed(0)}`
+                    )}
+                  </Button>
                 )}
-              </Button>
               </div>
             ) : netReceivablePaise > 0 ? (
               <div className="flex flex-col gap-2">
-                <PaymentDisputeLine className="justify-center" personId={personId} personName={targetName} />
+                <PaymentDisputeLine
+                  className="justify-center"
+                  personId={personId}
+                  personName={targetName}
+                />
                 <Button
                   type="button"
                   variant="outline"
                   disabled={sendReminder.isPending}
-                  onClick={() => sendReminder.mutate({ targetUserId: personId, amountPaise: netReceivablePaise - gameOff })}
-                  className="h-13 w-full rounded-2xl border-emerald-600/40 text-base font-bold text-emerald-600 hover:bg-emerald-500/10 dark:border-emerald-500/40 dark:text-emerald-400"
+                  onClick={() =>
+                    sendReminder.mutate({
+                      targetUserId: personId,
+                      amountPaise: netReceivablePaise - gameOff,
+                    })
+                  }
+                  className="h-11 w-full rounded-md text-sm font-medium"
                 >
-                  REMIND {targetName.toUpperCase()} (₹{((netReceivablePaise - gameOff) / 100).toFixed(0)})
+                  Remind {targetName} (₹
+                  {((netReceivablePaise - gameOff) / 100).toFixed(0)})
                 </Button>
                 {/* Games use the overall balance with this person, not just the selected splits */}
                 <ChallengeButton
                   size="lg"
                   className="w-full"
-                  person={{ uid: personId, name: targetName, photoURL: targetPhoto }}
+                  person={{
+                    uid: personId,
+                    name: targetName,
+                    photoURL: targetPhoto,
+                  }}
                   owedPaise={fullBreakdown?.netReceivablePaise ?? 0}
                 />
               </div>
@@ -621,9 +721,10 @@ export function SettleExpensesDialog({
               <Button
                 type="button"
                 disabled
-                className="h-13 w-full rounded-2xl bg-secondary text-base font-bold text-muted-foreground"
+                className="h-11 w-full rounded-md text-sm font-medium"
+                variant="secondary"
               >
-                ALL SETTLED UP
+                All settled up
               </Button>
             )}
           </div>

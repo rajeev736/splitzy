@@ -37,11 +37,11 @@ export function ConfirmShareDialog({
           <div className="flex flex-col items-center gap-4 py-2 text-center">
             <UserAvatar src={share.userPhoto} name={share.userName} size="lg" />
             <div>
-              <h4 className="text-base font-bold">{share.userName}</h4>
+              <h4 className="text-base font-semibold">{share.userName}</h4>
               <p className="text-xs text-muted-foreground">reported paid for {expenseTitle}</p>
             </div>
 
-            <Amount paise={share.amountPaise} className="text-2xl font-extrabold" />
+            <Amount paise={share.amountPaise} className="text-2xl font-semibold tabular-nums" />
 
             <p className="max-w-xs text-xs text-muted-foreground">
               Please check your UPI app or bank balance to verify if the payment was received.

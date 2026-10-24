@@ -14,8 +14,8 @@ export function DiscountPicker({ value, onChange }: { value: number; onChange: (
           type="button"
           onClick={() => onChange(pct)}
           className={cn(
-            "rounded-full border px-3.5 py-1.5 text-xs font-bold transition",
-            value === pct ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:border-primary/40"
+            "h-8 rounded-md border px-3 text-xs font-medium tabular-nums transition-colors",
+            value === pct ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted"
           )}
         >
           {pct}%
@@ -30,7 +30,7 @@ export function DiscountPicker({ value, onChange }: { value: number; onChange: (
           aria-label="Custom discount percent"
           value={value}
           onChange={(e) => onChange(Math.min(100, Math.max(1, Math.round(Number(e.target.value) || 1))))}
-          className="text-right text-xs font-bold"
+          className="text-right text-xs font-medium"
         />
         <InputGroupAddon align="inline-end" className="text-xs">
           %

@@ -132,14 +132,14 @@ function LoginForm() {
       footer={
         <>
           New to JoySplit?{" "}
-          <Link href={signupHref} className="font-bold text-primary hover:underline">
+          <Link href={signupHref} className="font-medium text-primary underline-offset-4 hover:underline">
             Create an account
           </Link>
         </>
       }
     >
-      <div className="flex flex-col items-center gap-6 text-center">
-        <JoySplitLogo size="lg" />
+      <div className="flex flex-col items-center gap-5 text-center">
+        <JoySplitLogo size="md" />
         <AuthHeading
           centered
           title="Welcome back"
@@ -181,23 +181,23 @@ function LoginForm() {
               required
             />
             <div className="flex justify-end">
-              <Link href="/forgot-password" className="text-xs font-semibold text-primary hover:underline">
+              <Link href="/forgot-password" className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
                 Forgot password?
               </Link>
             </div>
           </div>
 
           {formError && (
-            <Alert variant="destructive" className="border-destructive/30 bg-destructive/10">
+            <Alert variant="destructive">
               <HugeiconsIcon icon={AlertCircleIcon} />
-              <AlertDescription className="flex flex-col gap-2 text-xs font-medium">
+              <AlertDescription className="flex flex-col gap-2 text-xs">
                 <p>{formError}</p>
                 {showSignupOption && (
                   <Button
                     type="button"
                     variant="link"
                     size="sm"
-                    className="h-auto self-start px-0 font-bold"
+                    className="h-auto self-start px-0 font-medium"
                     onClick={() => router.push(`/signup?email=${encodeURIComponent(email.trim())}`)}
                   >
                     Create an account with this email
@@ -208,7 +208,7 @@ function LoginForm() {
             </Alert>
           )}
 
-          <Button type="submit" size="lg" className="mt-2 h-11 w-full" disabled={isLoading}>
+          <Button type="submit" size="lg" className="mt-1 h-10 w-full" disabled={isLoading}>
             {login.isPending && <Spinner data-icon="inline-start" />}
             Login
           </Button>

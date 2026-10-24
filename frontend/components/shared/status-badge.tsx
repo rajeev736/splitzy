@@ -1,25 +1,24 @@
 import { cva, type VariantProps } from "class-variance-authority"
 
-import { Badge } from "@/components/ui/badge"
 import type { SharePaymentStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-/** JoySplit design-system status badges (section 6 of the design poster). */
-const statusBadgeVariants = cva("border-transparent font-semibold", {
+/** Status as a coloured dot + label: reads at a glance without a filled pill. */
+const statusBadgeVariants = cva("", {
   variants: {
     status: {
-      pending: "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
-      payment_reported: "bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300",
-      paid: "bg-green-100 text-green-700 dark:bg-green-950/60 dark:text-green-300",
-      failed: "bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300",
-      you_owe: "bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300",
-      you_are_owed: "bg-green-100 text-green-700 dark:bg-green-950/60 dark:text-green-300",
-      settled: "bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300",
-      reminder: "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
-      friend_request: "bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300",
-      group_invitation: "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300",
-      new: "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300",
-      all_settled: "bg-green-100 text-green-700 dark:bg-green-950/60 dark:text-green-300",
+      pending: "text-amber-600 dark:text-amber-400",
+      payment_reported: "text-sky-600 dark:text-sky-400",
+      paid: "text-emerald-600 dark:text-emerald-400",
+      failed: "text-red-600 dark:text-red-400",
+      you_owe: "text-red-600 dark:text-red-400",
+      you_are_owed: "text-emerald-600 dark:text-emerald-400",
+      settled: "text-sky-600 dark:text-sky-400",
+      reminder: "text-amber-600 dark:text-amber-400",
+      friend_request: "text-violet-600 dark:text-violet-400",
+      group_invitation: "text-violet-600 dark:text-violet-400",
+      new: "text-blue-600 dark:text-blue-400",
+      all_settled: "text-emerald-600 dark:text-emerald-400",
     },
   },
   defaultVariants: { status: "pending" },
@@ -59,5 +58,17 @@ export function StatusBadge({
   children?: React.ReactNode
   className?: string
 }) {
-  return <Badge className={cn(statusBadgeVariants({ status }), className)}>{children ?? LABELS[status]}</Badge>
+  return (
+    <span
+      data-slot="status"
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium whitespace-nowrap",
+        statusBadgeVariants({ status }),
+        className
+      )}
+    >
+      <span aria-hidden className="size-1.5 rounded-full bg-current" />
+      {children ?? LABELS[status]}
+    </span>
+  )
 }

@@ -14,7 +14,6 @@ import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Spinner } from "@/components/ui/spinner"
 import { useCreateChallenge, useCreateExpense } from "@/hooks/mutations"
@@ -43,15 +42,18 @@ function LoadingBody() {
 /**
  * The big amount: ₹ sits right before the number as one centred unit, and the
  * text shrinks smoothly as digits are added so it never gets cut off.
+ * `data-large-input` opts out of the global 16px mobile input size, which would
+ * otherwise shrink the digits next to the ₹.
  */
 function AmountInput({ value, onChange }: { value: string; onChange: (value: string) => boolean }) {
   const length = Math.max(1, value.length)
   const size = length <= 5 ? "text-6xl" : length <= 7 ? "text-5xl" : length <= 9 ? "text-4xl" : "text-3xl"
   return (
-    <div className="flex w-full max-w-full items-baseline justify-center overflow-hidden">
-      <span className={cn("mr-1 font-bold text-muted-foreground transition-all duration-200", size)}>₹</span>
+    <div className="flex w-full max-w-full items-center justify-center overflow-hidden leading-none">
+      <span className={cn("mr-1.5 font-semibold text-muted-foreground transition-all duration-200", size)}>₹</span>
       <input
         id="expense-amount"
+        data-large-input
         type="text"
         inputMode="decimal"
         autoComplete="off"
@@ -60,9 +62,9 @@ function AmountInput({ value, onChange }: { value: string; onChange: (value: str
         onChange={(e) => onChange(e.target.value)}
         placeholder="0"
         // Width follows the digits so ₹ stays snug against the number
-        style={{ width: `${length + 0.3}ch` }}
+        style={{ width: `${length + 0.2}ch` }}
         className={cn(
-          "min-w-0 bg-transparent font-black tracking-tight tabular-nums outline-none transition-all duration-200 placeholder:text-muted-foreground/40",
+          "min-w-0 bg-transparent p-0 leading-none font-bold tracking-tight tabular-nums outline-none transition-all duration-200 placeholder:text-muted-foreground/40",
           size
         )}
       />
@@ -174,28 +176,26 @@ function NewExpenseFlow({
           }}
         >
           {/* 1 — the amount is the star: big, centred, focused on open */}
-          <Card className="rounded-3xl">
-            <CardContent className="flex flex-col items-center gap-4 py-4">
-              <label htmlFor="expense-amount" className="text-xs font-semibold text-muted-foreground">
-                Amount
-              </label>
-              <AmountInput value={draft.amountRupees} onChange={draft.changeAmount} />
+          <section className="flex flex-col items-center gap-5 border-b pt-4 pb-6">
+            <label htmlFor="expense-amount" className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Amount
+            </label>
+            <AmountInput value={draft.amountRupees} onChange={draft.changeAmount} />
 
-              {/* Description: optional, under the amount */}
-              <InputGroup className="h-11 w-full rounded-full bg-muted/40">
-                <InputGroupAddon>
-                  <HugeiconsIcon icon={ReceiptIndianRupeeIcon} className="size-4" />
-                </InputGroupAddon>
-                <InputGroupInput
-                  aria-label="Description (optional)"
-                  value={draft.title}
-                  onChange={(e) => draft.setTitle(e.target.value)}
-                  placeholder="What was it for? (optional)"
-                  className="text-sm"
-                />
-              </InputGroup>
-            </CardContent>
-          </Card>
+            {/* Description: optional, under the amount */}
+            <InputGroup className="h-11 w-full bg-card">
+              <InputGroupAddon>
+                <HugeiconsIcon icon={ReceiptIndianRupeeIcon} className="size-4" />
+              </InputGroupAddon>
+              <InputGroupInput
+                aria-label="Description (optional)"
+                value={draft.title}
+                onChange={(e) => draft.setTitle(e.target.value)}
+                placeholder="What was it for? (optional)"
+                className="text-sm"
+              />
+            </InputGroup>
+          </section>
 
           {/* 2 — who it's split with: Group / Friends / Just me, choices right below */}
           <SplitWithPicker draft={draft} groups={groups} friends={friends} />
@@ -216,7 +216,7 @@ function NewExpenseFlow({
             </>
           )}
 
-          <Button type="submit" size="lg" className="mt-2 h-12 w-full text-base" disabled={createExpense.isPending}>
+          <Button type="submit" size="lg" className="mt-2 h-12 w-full text-sm font-semibold" disabled={createExpense.isPending}>
             {createExpense.isPending && <Spinner />}
             {isShared ? "Save expense" : "Save personal expense"}
           </Button>

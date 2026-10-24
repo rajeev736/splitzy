@@ -27,7 +27,7 @@ export function SplitSection({ draft }: { draft: ExpenseDraft }) {
   return (
     <Card size="sm">
       <CardHeader>
-        <CardTitle className="text-sm font-bold">Split</CardTitle>
+        <CardTitle className="text-sm font-semibold">Split</CardTitle>
         <CardDescription className="text-xs">
           {draft.isCustomSplit ? "Custom amounts · rest split equally" : "Equally"} · {people}{" "}
           {people === 1 ? "person" : "people"} · paid by you
@@ -52,7 +52,7 @@ export function SplitSection({ draft }: { draft: ExpenseDraft }) {
                 checked={included}
                 onCheckedChange={() => draft.toggleMemberIncluded(m.uid)}
                 aria-label={`Include ${m.rawName} in split`}
-                className="size-4.5 rounded-md"
+                className="size-4.5 rounded-[4px]"
               />
               <MemberRow
                 name={m.displayName}
@@ -150,12 +150,14 @@ function SplitOutcome({ draft }: { draft: ExpenseDraft }) {
   return (
     <div
       className={cn(
-        "mt-1 flex items-center justify-between rounded-xl px-3 py-2.5 text-xs font-semibold",
-        iPaid ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
+        "mt-1 flex items-center justify-between border-t pt-3 text-xs font-medium text-muted-foreground"
       )}
     >
       <span>{iPaid ? "You'll get back" : `You'll owe ${payer?.rawName ?? "the payer"}`}</span>
-      <Amount paise={iPaid ? getBack : myShare} className="text-sm font-black" />
+      <Amount
+        paise={iPaid ? getBack : myShare}
+        className={cn("text-base font-semibold tabular-nums", iPaid ? "text-success" : "text-destructive")}
+      />
     </div>
   )
 }

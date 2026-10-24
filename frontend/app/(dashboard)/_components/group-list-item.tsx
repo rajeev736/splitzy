@@ -23,29 +23,31 @@ export function GroupListItem({
   children,
   className,
   hasUnread,
+  variant = "outline",
 }: {
   group: Group
   action?: React.ReactNode
   children?: React.ReactNode
   className?: string
   hasUnread?: boolean
+  variant?: "outline" | "default"
 }) {
   return (
     <Item
-      variant="outline"
-      className={cn("flex-nowrap bg-card hover:border-primary/40", className)}
+      variant={variant}
+      className={cn("flex-nowrap", variant === "outline" ? "bg-card hover:bg-muted/50" : "hover:bg-muted/60", className)}
       render={<Link href={`/groups/${group.id}`} />}
     >
       <ItemMedia>
         <GroupIcon src={group.icon} alt={group.name} size="md" />
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0.5">
-        <ItemTitle className="flex items-center gap-2 font-bold">
+        <ItemTitle className="flex items-center gap-2 font-medium">
           <span className="truncate">{group.name}</span>
           {hasUnread && (
             <span
               aria-label="New expenses in group"
-              className="size-2 shrink-0 rounded-full bg-destructive shadow-sm animate-pulse"
+              className="size-1.5 shrink-0 rounded-full bg-primary"
             />
           )}
         </ItemTitle>

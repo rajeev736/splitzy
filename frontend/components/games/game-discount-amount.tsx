@@ -77,7 +77,10 @@ export function GameDiscountAmount({
     <span className="flex flex-col items-end gap-0.5">
       <span className="flex items-baseline gap-1.5">
         <span className="text-xs text-muted-foreground line-through tabular-nums">{formatPaise(amountPaise)}</span>
-        <span className={cn("tabular-nums", className)}>{prefix}{formatPaise(amountPaise - off)}</span>
+        {/* A win that covers it all reads "Free", never "₹0" */}
+        <span className={cn("tabular-nums", className)}>
+          {amountPaise - off === 0 ? "Free" : `${prefix}${formatPaise(amountPaise - off)}`}
+        </span>
       </span>
       <GameDiscountChip discount={discount} amountPaise={amountPaise} now={now} />
     </span>

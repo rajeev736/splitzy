@@ -49,9 +49,9 @@ export function DeleteExpenseDialog({
       onConfirm={onConfirm}
     >
       {hasPaidMembers && (
-        <Alert className="border-warning/30 bg-warning/10">
+        <Alert>
           <HugeiconsIcon icon={Alert02Icon} className="text-warning" />
-          <AlertTitle className="font-bold">Cannot Delete Expense</AlertTitle>
+          <AlertTitle className="font-semibold">Cannot delete expense</AlertTitle>
           <AlertDescription className="text-xs leading-relaxed">
             One or more members have paid (or reported paying) their share of this expense. To preserve financial audit
             integrity, it can&apos;t be deleted. Confirm or dispute any reported payments first.

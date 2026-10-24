@@ -4,7 +4,6 @@ import { useRouter } from "nextjs-toploader/app"
 
 import { useSession } from "@/components/providers/session-provider"
 import { Amount } from "@/components/shared/amount"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
@@ -38,9 +37,9 @@ export function NotificationDetailDialog({
             <div className="flex flex-col items-center gap-4 py-2 text-center">
               <NotificationIcon type={notif.type} size="lg" neutral />
               <div>
-                <p className="text-sm leading-relaxed font-semibold">{notif.message}</p>
+                <p className="text-sm leading-relaxed font-medium">{notif.message}</p>
                 {!!notif.data?.amountPaise && (
-                  <Amount paise={notif.data.amountPaise} className="mt-2 block text-2xl font-extrabold" />
+                  <Amount paise={notif.data.amountPaise} className="mt-2 block text-2xl font-semibold tabular-nums" />
                 )}
               </div>
               <div className="flex w-full flex-col gap-2 pt-2">
@@ -93,7 +92,7 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
 
     if (!invites.some((g) => g.id === groupId)) {
       return (
-        <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           This invitation is no longer pending (it was declined, cancelled or the group was deleted).
         </p>
       )
@@ -177,13 +176,15 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
     return (
       <div className="flex flex-col gap-3">
         {isConfirmed ? (
-          <Badge className="bg-success/15 font-bold text-success border border-success/30 text-xs py-2 justify-center">
-            ✓ Payment Confirmed as Received
-          </Badge>
+          <p className="flex items-center justify-center gap-1.5 py-2 text-sm font-medium text-success">
+            <span aria-hidden className="size-1.5 rounded-full bg-current" />
+            Payment confirmed as received
+          </p>
         ) : isDisputed ? (
-          <Badge variant="destructive" className="font-bold text-xs py-2 justify-center">
-            Payment Marked as Not Received (Disputed)
-          </Badge>
+          <p className="flex items-center justify-center gap-1.5 py-2 text-sm font-medium text-destructive">
+            <span aria-hidden className="size-1.5 rounded-full bg-current" />
+            Payment marked as not received (disputed)
+          </p>
         ) : (
           <div className="grid grid-cols-2 gap-2">
             <Button
@@ -207,7 +208,7 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
             </Button>
           </div>
         )}
-        <Button variant="link" size="sm" className="w-full font-bold" onClick={goToExpenseOrHistory}>
+        <Button variant="link" size="sm" className="w-full font-medium" onClick={goToExpenseOrHistory}>
           {data?.expenseId ? "View Full Expense Details" : data?.groupId ? "View Group" : "View Activity"}
         </Button>
       </div>

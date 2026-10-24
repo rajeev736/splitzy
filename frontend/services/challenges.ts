@@ -1,17 +1,19 @@
-import { doc, getDoc, serverTimestamp, Timestamp, updateDoc, writeBatch } from "firebase/firestore"
+import { arrayUnion, doc, getDoc, serverTimestamp, Timestamp, updateDoc, writeBatch } from "firebase/firestore"
 
 import { AppError } from "@/lib/errors"
 import {
   allPlayed,
+  computeResult,
   GAMES,
-  isLuckyGuess,
-  isRpsMoves,
+  GRID_CELLS,
+  gridMaxDigs,
+  isGridGame,
+  isValidMove,
   MAX_GROUP_PLAYERS,
   newSecretFor,
-  scoreLuckyNumber,
-  scoreRps,
   type GameId,
-  type RpsMove,
+  type GameMove,
+  type GameSecret,
 } from "@/lib/games"
 import type { Challenge, UserProfile } from "@/lib/types"
 import { getDb, nowIso, rupees, sendNotification } from "./shared"
@@ -19,12 +21,22 @@ import { getDb, nowIso, rupees, sendNotification } from "./shared"
 export interface CreateChallengeInput {
   kind: Challenge["kind"]
   game: GameId
+  /** 0 = just for fun. */
   discountPercent: number
-  /** People who owe you, with what they owe (paise) — the discount base. */
+  /**
+   * Who plays. For a discount game, people who owe you with what they owe
+   * (paise) — the discount base; anyone else is left out. For fun, anyone.
+   */
   players: { uid: string; name: string; basePaise: number }[]
-  /** Your 3 RPS moves (friend challenges). */
-  hostRpsMoves?: RpsMove[]
+  /**
+   * Your side of the secret: RPS moves, coin flips, treasure boxes, the lucky
+   * number, or where you hid the bombs / gold. Flips, boxes and the number are
+   * random if left out.
+   */
+  hostSecret?: GameSecret
   expense?: { id: string; title: string; groupId?: string; groupName?: string }
+  /** Group games started from the Games tab rather than an expense. */
+  group?: { id: string; name: string }
 }
 
 export const newChallengeId = () => `chl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -40,17 +52,29 @@ export function toChallenge(data: Record<string, unknown>): Challenge {
 
 export async function createChallenge(user: UserProfile, input: CreateChallengeInput): Promise<Challenge> {
   const pct = input.discountPercent
-  if (!Number.isInteger(pct) || pct < 1 || pct > 100) throw new AppError("Discount must be between 1% and 100%")
-  const players = input.players.filter((p) => p.uid !== user.uid && p.basePaise > 0)
-  if (players.length === 0) throw new AppError("Nobody owes you money here, so there's no one to challenge")
-  if (input.kind === "friend" && (players.length !== 1 || input.game !== "rps")) {
-    throw new AppError("Friend challenges are Stone Paper Scissors against one friend")
+  if (!Number.isInteger(pct) || pct < 0 || pct > 100) throw new AppError("Discount must be between 0% and 100%")
+  if (!GAMES[input.game]) throw new AppError("Unknown game")
+  const forFun = pct === 0
+  const players = input.players
+    .filter((p) => p.uid !== user.uid && (forFun || p.basePaise > 0))
+    .map((p) => (forFun ? { ...p, basePaise: 0 } : p))
+  if (players.length === 0) {
+    throw new AppError(forFun ? "Pick someone to play with" : "Nobody owes you money here, so there's no one to challenge")
   }
-  if (input.kind === "group" && (input.game !== "lucky_number" || players.length > MAX_GROUP_PLAYERS)) {
-    throw new AppError(`Group games are Lucky Number with up to ${MAX_GROUP_PLAYERS} players`)
+  if (input.kind === "friend" && players.length !== 1) throw new AppError("Friend challenges are against one friend")
+  if (input.kind === "group" && players.length > MAX_GROUP_PLAYERS) {
+    throw new AppError(`Group games can have up to ${MAX_GROUP_PLAYERS} players`)
   }
+  if (input.kind === "group" && !forFun && !GAMES[input.game].groupDiscount) {
+    throw new AppError(`${GAMES[input.game].name} can only be played just for fun in a group`)
+  }
+  const group = input.expense?.groupId
+    ? { groupId: input.expense.groupId, groupName: input.expense.groupName }
+    : input.group
+      ? { groupId: input.group.id, groupName: input.group.name }
+      : {}
 
-  const secret = newSecretFor(input.game, input.hostRpsMoves)
+  const secret = newSecretFor(input.game, input.hostSecret)
   const challenge: Challenge = {
     id: newChallengeId(),
     kind: input.kind,
@@ -62,13 +86,8 @@ export async function createChallenge(user: UserProfile, input: CreateChallengeI
     participants: [user.uid, ...players.map((p) => p.uid)],
     discountPercent: pct,
     bases: Object.fromEntries(players.map((p) => [p.uid, p.basePaise])),
-    ...(input.expense
-      ? {
-          expenseId: input.expense.id,
-          expenseTitle: input.expense.title,
-          ...(input.expense.groupId ? { groupId: input.expense.groupId, groupName: input.expense.groupName } : {}),
-        }
-      : {}),
+    ...(input.expense ? { expenseId: input.expense.id, expenseTitle: input.expense.title } : {}),
+    ...group,
     status: "OPEN",
     moves: {},
     createdAt: nowIso(),
@@ -81,6 +100,12 @@ export async function createChallenge(user: UserProfile, input: CreateChallengeI
   const batch = writeBatch(firestore)
   batch.set(doc(firestore, "challenges", challenge.id), challenge)
   batch.set(doc(firestore, "challenges", challenge.id, "secret", "value"), secret)
+  // Grid games: one doc per tile, so each can be opened (read) on its own
+  if (isGridGame(input.game)) {
+    for (let n = 0; n < GRID_CELLS; n++) {
+      batch.set(doc(firestore, "challenges", challenge.id, "tiles", String(n)), { hit: secret.cells!.includes(n) })
+    }
+  }
   await batch.commit()
 
   const game = GAMES[input.game]
@@ -89,8 +114,12 @@ export async function createChallenge(user: UserProfile, input: CreateChallengeI
       userId: p.uid,
       title: `${game.emoji} You've been challenged!`,
       message: `${user.displayName} challenged you to ${game.name}${
-        input.expense ? ` for "${input.expense.title}"` : ""
-      }. Win to get ${pct}% off the ₹${rupees(p.basePaise)} you owe — pay right after the game to use it.`,
+        input.expense ? ` for "${input.expense.title}"` : group.groupName ? ` in ${group.groupName}` : ""
+      }. ${
+        forFun
+          ? "Just for fun — play when you're ready."
+          : `Win to get ${pct}% off the ₹${rupees(p.basePaise)} you owe — pay right after the game to use it.`
+      }`,
       type: "CHALLENGE_RECEIVED",
       data: { challengeId: challenge.id, actorId: user.uid, actorName: user.displayName, amountPaise: p.basePaise },
     }).catch((e) => console.warn("Challenge notification failed:", e))
@@ -99,12 +128,42 @@ export async function createChallenge(user: UserProfile, input: CreateChallengeI
   return challenge
 }
 
+/**
+ * Grid games: dig one tile. The dig is recorded first (security rules only let
+ * you read tiles you've dug, and never undo a dig), then the tile is read.
+ * Returns whether it hid a bomb / gold.
+ */
+export async function digTile(user: UserProfile, challenge: Challenge, cell: number): Promise<boolean> {
+  if (!isGridGame(challenge.game)) throw new AppError("This game has no grid")
+  if (challenge.status !== "OPEN") throw new AppError("This game is already over")
+  if (!challenge.players.includes(user.uid)) throw new AppError("You're not a player in this game")
+  if (challenge.moves?.[user.uid] !== undefined) throw new AppError("You've already finished")
+  const dug = challenge.progress?.[user.uid] ?? []
+  if (!dug.includes(cell) && dug.length >= gridMaxDigs(challenge.game)) throw new AppError("No digs left")
+
+  const firestore = getDb()
+  if (!firestore) throw new AppError("Games need an internet connection")
+  if (!dug.includes(cell)) {
+    await updateDoc(doc(firestore, "challenges", challenge.id), { [`progress.${user.uid}`]: arrayUnion(cell) })
+  }
+  return readTile(challenge.id, cell)
+}
+
+/** Whether a tile you've already dug (or any tile, once the game is over) hid a bomb / gold. */
+export async function readTile(challengeId: string, cell: number): Promise<boolean> {
+  const firestore = getDb()
+  if (!firestore) throw new AppError("Games need an internet connection")
+  const snap = await getDoc(doc(firestore, "challenges", challengeId, "tiles", String(cell)))
+  if (!snap.exists()) throw new AppError("This tile is missing")
+  return snap.data().hit === true
+}
+
 /** A player locks in their move. Friend games resolve right away; group games once everyone has played. */
-export async function submitMove(user: UserProfile, challenge: Challenge, move: RpsMove[] | number) {
+export async function submitMove(user: UserProfile, challenge: Challenge, move: GameMove) {
   if (challenge.status !== "OPEN") throw new AppError("This game is already over")
   if (!challenge.players.includes(user.uid)) throw new AppError("You're not a player in this game")
   if (challenge.moves?.[user.uid] !== undefined) throw new AppError("You've already played")
-  if (challenge.game === "rps" ? !isRpsMoves(move) : !isLuckyGuess(move)) throw new AppError("That move isn't valid")
+  if (!isValidMove(challenge.game, move)) throw new AppError("That move isn't valid")
 
   const firestore = getDb()
   const updated: Challenge = { ...challenge, moves: { ...challenge.moves, [user.uid]: move } }
@@ -130,20 +189,7 @@ export async function resolveChallenge(user: UserProfile, challenge: Challenge):
   if (!firestore) throw new AppError("Games need an internet connection")
   const secretSnap = await getDoc(doc(firestore, "challenges", challenge.id, "secret", "value"))
   if (!secretSnap.exists()) throw new AppError("This game's secret is missing")
-  const secret = secretSnap.data() as { moves?: RpsMove[]; number?: number }
-
-  let result: NonNullable<Challenge["result"]>
-  if (challenge.game === "rps") {
-    const player = challenge.players[0]
-    const score = scoreRps(secret.moves as RpsMove[], challenge.moves[player] as RpsMove[])
-    result = { winners: score.playerWon ? [player] : [], hostMoves: secret.moves }
-  } else {
-    const guesses = Object.fromEntries(
-      Object.entries(challenge.moves).filter(([uid]) => challenge.players.includes(uid))
-    ) as Record<string, number>
-    const score = scoreLuckyNumber(secret.number as number, guesses)
-    result = { winners: score.winners, number: secret.number, winningDistance: score.winningDistance }
-  }
+  const result = computeResult(challenge, secretSnap.data() as GameSecret)
 
   await updateDoc(doc(firestore, "challenges", challenge.id), {
     status: "DONE",
@@ -154,6 +200,7 @@ export async function resolveChallenge(user: UserProfile, challenge: Challenge):
 
   // Tell everyone else how it ended
   const game = GAMES[challenge.game]
+  const forFun = challenge.discountPercent === 0
   for (const uid of challenge.participants.filter((p) => p !== user.uid)) {
     const won = result.winners.includes(uid)
     const isHostTarget = uid === challenge.hostId
@@ -162,10 +209,22 @@ export async function resolveChallenge(user: UserProfile, challenge: Challenge):
       title: `${game.emoji} ${game.name} result`,
       message: isHostTarget
         ? result.winners.length > 0
-          ? `${result.winners.map((w) => challenge.playerNames[w]).join(", ")} won your challenge and get ${challenge.discountPercent}% off if they pay now.`
-          : "Nobody beat you — no discount this time."
+          ? `${result.winners.map((w) => challenge.playerNames[w]).join(", ")} won your challenge${
+              forFun
+                ? "."
+                : challenge.discountPercent === 100
+                  ? " — what they owe you will be settled for free."
+                  : ` and get ${challenge.discountPercent}% off if they pay now.`
+            }`
+          : forFun
+            ? "Nobody beat you — you win this one!"
+            : "Nobody beat you — no discount this time."
         : won
-          ? `You won! Pay ${challenge.hostName} in the next 10 minutes to get ${challenge.discountPercent}% off.`
+          ? forFun
+            ? `You beat ${challenge.hostName}!`
+            : challenge.discountPercent === 100
+              ? `You won 100% off! What you owe ${challenge.hostName} is settled automatically — nothing to pay.`
+              : `You won! Pay ${challenge.hostName} in the next 10 minutes to get ${challenge.discountPercent}% off.`
           : `${challenge.hostName}'s game is over. Better luck next time!`,
       type: "CHALLENGE_RESULT",
       data: { challengeId: challenge.id, actorId: user.uid, actorName: user.displayName },

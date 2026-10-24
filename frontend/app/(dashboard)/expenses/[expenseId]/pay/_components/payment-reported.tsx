@@ -16,12 +16,12 @@ import { InfoCallout } from "./info-callout"
 export function PaymentReported({ expense, amountPaise }: { expense: Expense; amountPaise: number }) {
   return (
     <div className="flex animate-in flex-col gap-6 text-center duration-200 zoom-in-95">
-      <div className="mx-auto flex size-24 items-center justify-center rounded-full bg-success/10 text-success shadow-lg">
-        <HugeiconsIcon icon={Tick02Icon} className="size-12" strokeWidth={3} />
+      <div className="mx-auto flex size-14 items-center justify-center rounded-full border text-success">
+        <HugeiconsIcon icon={Tick02Icon} className="size-7" strokeWidth={2.5} />
       </div>
 
       <div>
-        <h2 className="text-2xl font-extrabold">Payment Reported</h2>
+        <h2 className="text-xl font-semibold">Payment reported</h2>
         <p className="mt-1 text-xs text-muted-foreground">You have returned from your UPI app.</p>
       </div>
 
@@ -29,16 +29,16 @@ export function PaymentReported({ expense, amountPaise }: { expense: Expense; am
         <CardContent className="flex flex-col gap-3.5 text-xs">
           <div className="flex items-center gap-3">
             <GroupIcon src={expense.groupIcon} alt={expense.title} size="sm" />
-            <div className="font-bold">{expense.title}</div>
+            <div className="min-w-0 truncate text-sm font-medium">{expense.title}</div>
           </div>
           <Separator />
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">Amount</span>
-            <Amount paise={amountPaise} className="text-base font-extrabold" />
+            <Amount paise={amountPaise} className="text-base font-semibold tabular-nums" />
           </div>
           <div className="flex items-center justify-between gap-3">
             <span className="text-muted-foreground">To</span>
-            <span className="text-right font-bold">
+            <span className="min-w-0 text-right font-medium break-all">
               {expense.recipientName} ({expense.recipientUpiId})
             </span>
           </div>

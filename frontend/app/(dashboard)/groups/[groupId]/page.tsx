@@ -19,7 +19,6 @@ import { useSession } from "@/components/providers/session-provider"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { GroupIcon } from "@/components/shared/group-icon"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -73,7 +72,7 @@ function GroupDashboardContent() {
       <>
         <AppHeader title={group.name} showBack />
         <PageContainer className="max-w-xl">
-          <GroupInviteCard group={group} className="rounded-3xl p-4" />
+          <GroupInviteCard group={group} className="rounded-lg p-4" />
         </PageContainer>
       </>
     )
@@ -95,10 +94,10 @@ function GroupDashboardContent() {
         showBack
         titleContent={
           <div className="flex min-w-0 items-center gap-3">
-            <GroupIcon src={group.icon} alt={group.name} size="sm" className="size-10 rounded-full" />
+            <GroupIcon src={group.icon} alt={group.name} size="sm" className="size-9 rounded-md" />
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-0.5">
-                <h1 className="truncate text-lg font-bold tracking-tight">{group.name}</h1>
+                <h1 className="truncate text-base font-semibold">{group.name}</h1>
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -132,12 +131,12 @@ function GroupDashboardContent() {
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as Tab)} className="gap-6">
           <TabsList className="w-full">
             {TABS.map((tab) => (
-              <TabsTrigger key={tab} value={tab} className="font-bold capitalize">
+              <TabsTrigger key={tab} value={tab} className="font-medium capitalize">
                 {tab}
                 {tab === "members" && (
-                  <Badge variant="secondary" className="ml-1">
+                  <span className="ml-1 text-xs tabular-nums text-muted-foreground">
                     {group.members.length}
-                  </Badge>
+                  </span>
                 )}
               </TabsTrigger>
             ))}
@@ -155,7 +154,7 @@ function GroupDashboardContent() {
           <TabsContent value="expenses">
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm font-bold">All Expenses</CardTitle>
+                <CardTitle className="text-sm font-semibold">All expenses</CardTitle>
               </CardHeader>
               <CardContent>
                 <GroupExpenseList expenses={groupExpenses} emptyText="No expenses added yet." />
@@ -169,7 +168,7 @@ function GroupDashboardContent() {
         </Tabs>
 
         {/* Action bar: pinned above the bottom nav on mobile, inline on desktop. */}
-        <div className="fixed inset-x-0 bottom-16 z-30 border-t bg-background/95 p-4 backdrop-blur-md md:static md:border-0 md:bg-transparent md:p-0">
+        <div className="fixed inset-x-0 bottom-16 z-30 border-t bg-background p-4 md:static md:border-0 md:bg-transparent md:p-0">
           <div className="mx-auto flex max-w-md items-center gap-3">
             <Button size="lg" variant="outline" className="h-11 flex-1" onClick={() => router.push(addExpenseHref)}>
               <HugeiconsIcon icon={AddCircleIcon} data-icon="inline-start" />
@@ -238,9 +237,9 @@ function GroupDashboardContent() {
 /** Explains why leave/delete is currently blocked (unsettled balances etc.). */
 function BlockedNotice({ title, reason }: { title: string; reason?: string }) {
   return (
-    <Alert className="border-warning/30 bg-warning/10 text-warning">
-      <HugeiconsIcon icon={Alert02Icon} />
-      <AlertTitle className="font-bold">{title}</AlertTitle>
+    <Alert>
+      <HugeiconsIcon icon={Alert02Icon} className="text-warning" />
+      <AlertTitle className="font-semibold">{title}</AlertTitle>
       <AlertDescription className="leading-relaxed text-foreground">{reason}</AlertDescription>
     </Alert>
   )

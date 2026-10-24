@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useRouter } from "nextjs-toploader/app"
+import { PlusSignIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { useSession } from "@/components/providers/session-provider"
@@ -60,53 +61,87 @@ export function BottomNav() {
   }
 
   return (
-    <nav className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 px-2 pt-2 backdrop-blur-md md:hidden">
-      {/* Equal-width columns regardless of label length */}
-      <div
-        className="mx-auto grid max-w-md"
-        style={{ gridTemplateColumns: `repeat(${MOBILE_ITEMS.length}, minmax(0, 1fr))` }}
-      >
-        {MOBILE_ITEMS.map((item) => {
-          const active = isNavActive(pathname, item.href)
-          const isProfile = item.href === "/profile"
-          const showDot =
-            (item.href === "/friends" && hasPendingFriendRequests) || (item.href === "/challenges" && gamesYourTurn > 0)
+    <>
+      {/* Mobile counterpart of the sidebar's "Add Expense" button. Split summary has its own full-width one. */}
+      {pathname !== "/split-summary" && (
+        <Link
+          href="/expenses/new"
+          aria-label="Add expense"
+          title="Add expense"
+          className="fixed right-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] z-40 flex size-13 items-center justify-center rounded-full bg-foreground text-background shadow-lg shadow-black/15 transition-transform active:scale-95 md:hidden dark:shadow-black/40"
+        >
+          <HugeiconsIcon icon={PlusSignIcon} className="size-6" strokeWidth={2} />
+        </Link>
+      )}
+      <nav className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t bg-background/85 px-1.5 pt-1.5 backdrop-blur-xl backdrop-saturate-150 md:hidden">
+        {/* Equal-width columns regardless of label length */}
+        <div
+          className="mx-auto grid max-w-md"
+          style={{
+            gridTemplateColumns: `repeat(${MOBILE_ITEMS.length}, minmax(0, 1fr))`,
+          }}
+        >
+          {MOBILE_ITEMS.map((item) => {
+            const active = isNavActive(pathname, item.href)
+            const isProfile = item.href === "/profile"
+            const showDot =
+              (item.href === "/friends" && hasPendingFriendRequests) ||
+              (item.href === "/challenges" && gamesYourTurn > 0)
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={(e) => goTo(e, item.href)}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "relative flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl py-1 transition-colors",
-                active ? "font-bold text-primary" : "font-medium text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <div className="relative">
-                {isProfile && user ? (
-                  <UserAvatar
-                    src={user.photoURL}
-                    name={user.displayName}
-                    size="xs"
-                    className={cn("size-6 ring-2 transition-all", active ? "ring-primary" : "ring-transparent")}
-                  />
-                ) : (
-                  <HugeiconsIcon
-                    icon={item.icon}
-                    className={cn("size-6 transition-transform", active && "scale-110")}
-                    strokeWidth={active ? 2.5 : 1.75}
-                  />
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={(e) => goTo(e, item.href)}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "group/nav relative flex min-w-0 flex-col items-center justify-center gap-1 pt-0.5 pb-1 transition-colors",
+                  active ? "text-foreground" : "text-muted-foreground"
                 )}
-                {showDot && (
-                  <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-destructive ring-2 ring-background animate-pulse" />
-                )}
-              </div>
-              <span className="truncate text-[11px] tracking-tight">{item.mobileLabel || item.label}</span>
-            </Link>
-          )
-        })}
-      </div>
-    </nav>
+              >
+                {/* Active tab: a soft tinted pill behind the icon */}
+                <div
+                  className={cn(
+                    "relative flex h-8 w-14 items-center justify-center rounded-lg transition-all duration-200 ease-out",
+                    active
+                      ? "bg-primary/12 text-primary"
+                      : "group-hover/nav:bg-muted group-active/nav:scale-95"
+                  )}
+                >
+                  {isProfile && user ? (
+                    <UserAvatar
+                      src={user.photoURL}
+                      name={user.displayName}
+                      size="xs"
+                      className={cn(
+                        "size-6 ring-2 ring-offset-1 ring-offset-background transition-all",
+                        active ? "ring-primary" : "ring-transparent"
+                      )}
+                    />
+                  ) : (
+                    <HugeiconsIcon
+                      icon={item.icon}
+                      className="size-[22px]"
+                      strokeWidth={active ? 2 : 1.6}
+                    />
+                  )}
+                  {showDot && (
+                    <span className="absolute top-1 right-3 size-2 rounded-full bg-destructive ring-2 ring-background" />
+                  )}
+                </div>
+                <span
+                  className={cn(
+                    "truncate text-[11px] leading-none tracking-tight",
+                    active ? "font-semibold" : "font-medium"
+                  )}
+                >
+                  {item.mobileLabel || item.label}
+                </span>
+              </Link>
+            )
+          })}
+        </div>
+      </nav>
+    </>
   )
 }

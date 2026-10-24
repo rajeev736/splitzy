@@ -4,15 +4,16 @@ import Link from "next/link"
 
 import { useSession } from "@/components/providers/session-provider"
 import { useChallenges } from "@/hooks/queries"
-import { gameStats, GAMES } from "@/lib/games"
+import { gameStats } from "@/lib/games"
 import { formatPaise } from "@/lib/money"
 import { SectionCard, SectionEmpty } from "./section-card"
+import { GameGlyph } from "@/components/games/game-glyph"
 
 function Stat({ label, value, hint, tone }: { label: string; value: string; hint: string; tone?: string }) {
   return (
-    <div className="flex flex-col gap-1 rounded-2xl bg-muted/50 p-3">
-      <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">{label}</span>
-      <span className={`text-xl font-black tabular-nums ${tone ?? ""}`}>{value}</span>
+    <div className="flex flex-col gap-1">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className={`text-xl font-semibold tabular-nums ${tone ?? ""}`}>{value}</span>
       <span className="text-[11px] text-muted-foreground">{hint}</span>
     </div>
   )
@@ -27,10 +28,10 @@ export function GamesSection() {
 
   return (
     <SectionCard
-      title="🎮 Games"
+      title="Games"
       description="All time — money saved by winning settle-up games"
       action={
-        <Link href="/challenges" className="text-xs font-bold text-primary hover:underline">
+        <Link href="/challenges" className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
           View games
         </Link>
       }
@@ -41,7 +42,7 @@ export function GamesSection() {
         </SectionEmpty>
       ) : (
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5 lg:grid-cols-4">
             <Stat
               label="You saved"
               value={formatPaise(stats.savedPaise)}
@@ -53,21 +54,21 @@ export function GamesSection() {
             <Stat label="Given away" value={formatPaise(stats.givenPaise)} hint="Discounts winners used on you" />
           </div>
           {stats.savings.length > 0 && (
-            <ul className="flex flex-col gap-1.5">
+            <ul className="-mx-4 flex flex-col divide-y border-t">
               {stats.savings.slice(0, 5).map(({ challenge, savedPaise }) => (
                 <li key={challenge.id}>
                   <Link
                     href={`/challenges/${challenge.id}`}
-                    className="flex items-center gap-3 rounded-2xl border px-3 py-2 text-sm transition hover:bg-muted/50"
+                    className="flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-muted/50"
                   >
-                    <span className="text-xl" aria-hidden>
-                      {GAMES[challenge.game].emoji}
+                    <span className="text-base" aria-hidden>
+                      <GameGlyph game={challenge.game} />
                     </span>
                     <span className="min-w-0 flex-1 truncate">
                       Beat {challenge.hostName}
                       {challenge.expenseTitle && <span className="text-muted-foreground"> · {challenge.expenseTitle}</span>}
                     </span>
-                    <span className="shrink-0 font-bold text-success tabular-nums">+{formatPaise(savedPaise)}</span>
+                    <span className="shrink-0 font-semibold text-success tabular-nums">+{formatPaise(savedPaise)}</span>
                   </Link>
                 </li>
               ))}

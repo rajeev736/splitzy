@@ -19,7 +19,7 @@ export function GroupLoading({ title, hero = true }: { title?: string; hero?: bo
         {hero && (
           <Card>
             <CardContent className="flex flex-col items-center gap-3">
-              <Skeleton className="size-20 rounded-3xl" />
+              <Skeleton className="size-20 rounded-lg" />
               <Skeleton className="h-7 w-40" />
               <Skeleton className="h-3 w-24" />
               <Skeleton className="mt-2 h-8 w-full max-w-sm" />

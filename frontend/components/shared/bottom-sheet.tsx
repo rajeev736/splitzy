@@ -28,9 +28,9 @@ export function BottomSheet({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="mx-auto flex max-h-[85svh] w-full max-w-xl flex-col gap-0 rounded-t-2xl">
+      <SheetContent side="bottom" className="mx-auto flex max-h-[85svh] w-full max-w-xl flex-col gap-0 rounded-t-lg">
         <SheetHeader className="gap-1 pb-3">
-          <SheetTitle className="text-base font-bold">{title}</SheetTitle>
+          <SheetTitle className="text-base font-semibold">{title}</SheetTitle>
           {description && <SheetDescription className="text-xs">{description}</SheetDescription>}
           {header && <div className="pt-2">{header}</div>}
         </SheetHeader>

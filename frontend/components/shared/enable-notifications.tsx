@@ -48,29 +48,31 @@ export function EnableNotificationsBanner({ className }: { className?: string })
   if (permission !== "default" || dismissed || dismissedInitially) return null
 
   return (
-    <div className={cn("flex items-center gap-3 rounded-2xl border bg-card px-4 py-3", className)}>
-      <HugeiconsIcon icon={Notification01Icon} className="size-5 shrink-0 text-primary" />
-      <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+    <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border bg-card px-4 py-3", className)}>
+      <HugeiconsIcon icon={Notification01Icon} className="size-4.5 shrink-0 text-muted-foreground" />
+      <p className="min-w-48 flex-1 text-sm text-muted-foreground">
         Get payment and game alerts in your notification bar.
       </p>
-      <Button
-        size="sm"
-        variant="ghost"
-        className="h-8 px-2 text-xs"
-        onClick={() => {
-          setDismissed(true)
-          try {
-            localStorage.setItem(DISMISSED_KEY, "1")
-          } catch {
-            /* storage unavailable */
-          }
-        }}
-      >
-        Not now
-      </Button>
-      <Button size="sm" className="h-8 px-3 text-xs" onClick={enable}>
-        Turn on
-      </Button>
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-xs"
+          onClick={() => {
+            setDismissed(true)
+            try {
+              localStorage.setItem(DISMISSED_KEY, "1")
+            } catch {
+              /* storage unavailable */
+            }
+          }}
+        >
+          Not now
+        </Button>
+        <Button size="sm" className="text-xs" onClick={enable}>
+          Turn on
+        </Button>
+      </div>
     </div>
   )
 }
@@ -80,7 +82,7 @@ export function NotificationSettings() {
   const { permission, enable } = useNotificationPermission()
   return (
     <div className="flex items-center justify-between gap-3">
-      <p className="text-xs text-muted-foreground">
+      <p className="min-w-0 text-xs text-muted-foreground">
         {permission === "granted"
           ? "On. New payments, reminders and games show in your notification bar."
           : permission === "denied"

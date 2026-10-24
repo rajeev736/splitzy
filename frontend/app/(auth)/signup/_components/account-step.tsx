@@ -162,13 +162,13 @@ export function AccountStep({
           />
 
           {errorMsg && (
-            <Alert variant="destructive" className="border-destructive/30 bg-destructive/10">
+            <Alert variant="destructive">
               <HugeiconsIcon icon={AlertCircleIcon} />
-              <AlertDescription className="text-xs font-medium">{errorMsg}</AlertDescription>
+              <AlertDescription className="text-xs">{errorMsg}</AlertDescription>
             </Alert>
           )}
 
-          <Button type="submit" size="lg" className="mt-2 h-11 w-full" disabled={isLoading}>
+          <Button type="submit" size="lg" className="mt-1 h-10 w-full" disabled={isLoading}>
             {signup.isPending && <Spinner data-icon="inline-start" />}
             Create account
           </Button>

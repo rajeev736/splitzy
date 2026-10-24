@@ -85,7 +85,7 @@ function NotificationsContent() {
               <Button
                 variant="link"
                 size="sm"
-                className="font-bold"
+                className="font-medium"
                 onClick={() => {
                   markAllRead.mutate()
                   toast.success("All notifications marked as read")
@@ -98,7 +98,7 @@ function NotificationsContent() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-xs font-bold text-destructive hover:bg-destructive/10 hover:text-destructive"
+                className="text-xs font-medium text-destructive hover:bg-muted hover:text-destructive"
                 onClick={() => setShowClearConfirm(true)}
               >
                 <HugeiconsIcon icon={Delete02Icon} className="mr-1 size-3.5" />
@@ -113,7 +113,7 @@ function NotificationsContent() {
         <Tabs value={filter} onValueChange={(value) => setFilter(value as Filter)}>
           <TabsList>
             {FILTERS.map((f) => (
-              <TabsTrigger key={f.value} value={f.value} className="px-3 text-xs font-bold">
+              <TabsTrigger key={f.value} value={f.value} className="px-3 text-xs font-medium">
                 {f.label}
               </TabsTrigger>
             ))}

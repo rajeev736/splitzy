@@ -91,7 +91,7 @@ export default function GroupMembersPage() {
                       isMe={isMe}
                       isCreator={mId === group.createdBy}
                       isAdmin={member?.role === "admin"}
-                      creatorLabel="Creator 👑"
+                      creatorLabel="Creator"
                     />
                   </React.Fragment>
                 )
@@ -108,7 +108,7 @@ export default function GroupMembersPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-xs font-bold">Group Invite Link</CardTitle>
+            <CardTitle className="text-sm font-semibold">Group invite link</CardTitle>
             <CardDescription className="text-xs">
               Share this link with your friends to let them join this group.
             </CardDescription>

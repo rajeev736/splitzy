@@ -85,7 +85,7 @@ export function StackedBarChart({
                   {visible.map((s, si) => (
                     <div
                       key={s.key}
-                      className={cn("min-h-[2px] w-full", si === visible.length - 1 && "rounded-t-[4px]")}
+                      className={cn("min-h-[2px] w-full", si === visible.length - 1 && "rounded-t-[2px]")}
                       style={{ flexGrow: d.values[s.key], flexBasis: 0, background: s.color }}
                     />
                   ))}
@@ -108,13 +108,13 @@ export function StackedBarChart({
         {activeDatum && active !== null && (
           <div
             role="status"
-            className="pointer-events-none absolute -top-2 z-10 min-w-36 rounded-xl border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
+            className="pointer-events-none absolute -top-2 z-10 min-w-36 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground"
             style={{
               left: `${((active + 0.5) / data.length) * 100}%`,
               transform: `translate(${active < data.length / 3 ? "-15%" : active > (data.length * 2) / 3 ? "-85%" : "-50%"}, -100%)`,
             }}
           >
-            <div className="mb-1 font-bold">{activeDatum.fullLabel}</div>
+            <div className="mb-1 font-semibold">{activeDatum.fullLabel}</div>
             {series.map((s) => (
               <div key={s.key} className="flex items-center justify-between gap-3">
                 <span className="flex items-center gap-1.5 text-muted-foreground">
@@ -124,7 +124,7 @@ export function StackedBarChart({
                 <span className="font-semibold tabular-nums">{formatValue(activeDatum.values[s.key] ?? 0)}</span>
               </div>
             ))}
-            <div className="mt-1 flex justify-between gap-3 border-t pt-1 font-bold">
+            <div className="mt-1 flex justify-between gap-3 border-t pt-1 font-semibold">
               <span>Total</span>
               <span className="tabular-nums">{formatValue(activeDatum.total)}</span>
             </div>

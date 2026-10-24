@@ -28,12 +28,9 @@ export function ExpenseGameOption({
     <Card size="sm">
       <CardContent className="flex flex-col gap-3">
         <label className="flex cursor-pointer items-center gap-3">
-          <span className="text-2xl" aria-hidden>
-            🎮
-          </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-bold">Add a game (optional)</span>
-            <span className="block text-xs text-muted-foreground">
+            <span className="block text-sm font-semibold">Add a game <span className="font-normal text-muted-foreground">(optional)</span></span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
               {game.emoji} {game.name}: {game.tagline.toLowerCase()}
             </span>
           </span>

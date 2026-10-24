@@ -69,7 +69,7 @@ export default function OnboardingPage() {
     <AuthLayout
       bare
       topLeft={
-        <span className="text-xs font-semibold text-muted-foreground">
+        <span className="text-xs font-medium text-muted-foreground tabular-nums">
           Step {currentStep + 1} of {STEPS.length}
         </span>
       }
@@ -84,21 +84,21 @@ export default function OnboardingPage() {
                 aria-label={`Go to step ${idx + 1}`}
                 aria-current={idx === currentStep ? "step" : undefined}
                 className={cn(
-                  "h-2 rounded-full transition-all duration-300 outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-                  idx === currentStep ? "w-6 bg-primary" : "w-2 bg-muted-foreground/30 hover:bg-muted-foreground/50"
+                  "h-1 rounded-full transition-all duration-300 outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                  idx === currentStep ? "w-6 bg-foreground" : "w-3 bg-muted-foreground/30 hover:bg-muted-foreground/50"
                 )}
               />
             ))}
           </div>
 
-          <Button size="lg" className="h-11 w-full" onClick={handleNext}>
+          <Button size="lg" className="h-10 w-full" onClick={handleNext}>
             {isLast ? "Get Started" : "Next"}
             <HugeiconsIcon icon={ArrowRight01Icon} data-icon="inline-end" />
           </Button>
         </div>
       }
       topRight={
-        <Button variant="ghost" className="font-bold text-primary" onClick={() => router.push("/signup")}>
+        <Button variant="ghost" className="text-muted-foreground" onClick={() => router.push("/signup")}>
           Skip
         </Button>
       }

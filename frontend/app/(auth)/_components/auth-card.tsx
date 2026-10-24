@@ -31,11 +31,11 @@ interface AuthLayoutProps {
 /** Full-screen centred shell shared by every auth route. */
 export function AuthLayout({ children, onBack, topLeft, topRight, footer, bare = false, className }: AuthLayoutProps) {
   return (
-    <div className="flex min-h-svh flex-col bg-linear-to-b from-secondary via-background to-background">
+    <div className="flex min-h-svh flex-col bg-background">
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4 sm:p-6">
         <div className="flex min-h-9 items-center justify-between">
           {onBack ? (
-            <Button variant="ghost" size="icon-lg" className="rounded-full" onClick={onBack} aria-label="Back">
+            <Button variant="ghost" size="icon" className="-ml-2" onClick={onBack} aria-label="Back">
               <HugeiconsIcon icon={ArrowLeft01Icon} />
             </Button>
           ) : (
@@ -48,7 +48,7 @@ export function AuthLayout({ children, onBack, topLeft, topRight, footer, bare =
           {bare ? (
             children
           ) : (
-            <Card className="shadow-sm">
+            <Card>
               <CardContent className={cn("flex flex-col gap-6 py-2", className)}>{children}</CardContent>
             </Card>
           )}
@@ -80,12 +80,12 @@ export function AuthHeading({
 }) {
   return (
     <div className={cn("flex flex-col gap-1.5", centered && "items-center text-center", className)}>
-      <h1 className={cn("font-extrabold tracking-tight", size === "lg" ? "text-3xl" : "text-2xl")}>
+      <h1 className={cn("font-semibold tracking-tight", size === "lg" ? "text-2xl sm:text-3xl" : "text-xl sm:text-2xl")}>
         {title}
         {highlight ? (
           <>
             {breakLine ? <br /> : " "}
-            <span className="text-primary">{highlight}</span>
+            <span className="text-muted-foreground">{highlight}</span>
           </>
         ) : null}
       </h1>
@@ -99,11 +99,11 @@ export function AuthHeading({
 }
 
 const ICON_TONES = {
-  primary: "bg-primary/10 text-primary ring-primary/20",
-  success: "bg-success/10 text-success ring-success/20",
+  primary: "text-foreground",
+  success: "text-success",
 } as const
 
-/** Round tinted icon badge used at the top of status screens. */
+/** Quiet bordered icon tile used at the top of status screens. */
 export function AuthStatusIcon({
   icon,
   tone = "primary",
@@ -114,8 +114,8 @@ export function AuthStatusIcon({
   className?: string
 }) {
   return (
-    <div className={cn("mx-auto flex size-16 items-center justify-center rounded-full ring-1", ICON_TONES[tone], className)}>
-      <HugeiconsIcon icon={icon} className="size-8" />
+    <div className={cn("mx-auto flex size-12 items-center justify-center rounded-md border", ICON_TONES[tone], className)}>
+      <HugeiconsIcon icon={icon} className="size-6" />
     </div>
   )
 }

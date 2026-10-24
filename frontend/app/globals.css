@@ -58,70 +58,70 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Light — Splitzy design system: Primary #2563EB, Yellow #FBBF24, Success #10B981,
-   Error #EF4444, Warning #F59E0B, Background #F8FAFC, Border #E5E7EB, Text #0F172A / #64748B */
+/* Clean, neutral system: zinc greys with a single blue accent. Flat surfaces —
+   borders separate things, not shadows. Small radius for a sharp, precise feel. */
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #fafafa;
+  --foreground: #09090b;
   --card: #ffffff;
-  --card-foreground: #0f172a;
+  --card-foreground: #09090b;
   --popover: #ffffff;
-  --popover-foreground: #0f172a;
+  --popover-foreground: #09090b;
   --primary: #2563eb;
   --primary-foreground: #ffffff;
-  --secondary: #eff6ff;
-  --secondary-foreground: #1d4ed8;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --accent: #f1f5f9;
-  --accent-foreground: #0f172a;
-  --destructive: #ef4444;
-  --border: #e5e7eb;
-  --input: #e5e7eb;
-  --ring: #3b82f6;
-  --success: #10b981;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --accent: #f4f4f5;
+  --accent-foreground: #09090b;
+  --destructive: #dc2626;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #2563eb;
+  --success: #059669;
   --success-foreground: #ffffff;
-  --warning: #f59e0b;
+  --warning: #d97706;
   --warning-foreground: #ffffff;
   --info: #0284c7;
   --info-foreground: #ffffff;
-  --brand-yellow: #fbbf24;
-  --brand-yellow-foreground: #0f172a;
+  --brand-yellow: #f59e0b;
+  --brand-yellow-foreground: #09090b;
   --chart-1: #2563eb;
-  --chart-2: #10b981;
-  --chart-3: #fbbf24;
-  --chart-4: #ef4444;
-  --chart-5: #8b5cf6;
-  --radius: 0.75rem;
+  --chart-2: #059669;
+  --chart-3: #f59e0b;
+  --chart-4: #dc2626;
+  --chart-5: #7c3aed;
+  --radius: 0.5rem;
   --sidebar: #ffffff;
-  --sidebar-foreground: #0f172a;
+  --sidebar-foreground: #09090b;
   --sidebar-primary: #2563eb;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #eff6ff;
-  --sidebar-accent-foreground: #2563eb;
-  --sidebar-border: #e5e7eb;
-  --sidebar-ring: #3b82f6;
+  --sidebar-accent: #f4f4f5;
+  --sidebar-accent-foreground: #09090b;
+  --sidebar-border: #e4e4e7;
+  --sidebar-ring: #2563eb;
 }
 
 .dark {
-  --background: #0b1120;
-  --foreground: #f8fafc;
-  --card: #111827;
-  --card-foreground: #f8fafc;
-  --popover: #1e293b;
-  --popover-foreground: #f8fafc;
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #111113;
+  --card-foreground: #fafafa;
+  --popover: #161618;
+  --popover-foreground: #fafafa;
   --primary: #3b82f6;
   --primary-foreground: #ffffff;
-  --secondary: #172554;
-  --secondary-foreground: #bfdbfe;
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
-  --accent: #1e293b;
-  --accent-foreground: #f8fafc;
+  --secondary: #1c1c1f;
+  --secondary-foreground: #fafafa;
+  --muted: #1c1c1f;
+  --muted-foreground: #a1a1aa;
+  --accent: #1c1c1f;
+  --accent-foreground: #fafafa;
   --destructive: #f87171;
-  --border: #1e293b;
-  --input: #334155;
-  --ring: #60a5fa;
+  --border: #26262a;
+  --input: #2e2e33;
+  --ring: #3b82f6;
   --success: #34d399;
   --success-foreground: #052e16;
   --warning: #fbbf24;
@@ -129,20 +129,20 @@
   --info: #38bdf8;
   --info-foreground: #082f49;
   --brand-yellow: #fbbf24;
-  --brand-yellow-foreground: #0f172a;
+  --brand-yellow-foreground: #09090b;
   --chart-1: #3b82f6;
   --chart-2: #34d399;
   --chart-3: #fbbf24;
   --chart-4: #f87171;
   --chart-5: #a78bfa;
-  --sidebar: #0f172a;
-  --sidebar-foreground: #f8fafc;
+  --sidebar: #09090b;
+  --sidebar-foreground: #fafafa;
   --sidebar-primary: #3b82f6;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #172554;
-  --sidebar-accent-foreground: #93c5fd;
-  --sidebar-border: #1e293b;
-  --sidebar-ring: #60a5fa;
+  --sidebar-accent: #1c1c1f;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #26262a;
+  --sidebar-ring: #3b82f6;
 }
 
 @layer base {
@@ -150,7 +150,7 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
     -webkit-tap-highlight-color: transparent;
     touch-action: pan-x pan-y;
   }
@@ -161,9 +161,10 @@
     text-size-adjust: 100%;
   }
 
-  /* Prevent automatic iOS Safari / mobile WebView zoom on input focus */
+  /* Prevent automatic iOS Safari / mobile WebView zoom on input focus.
+     Inputs that are deliberately larger (the big amount field) opt out. */
   @media screen and (max-width: 768px) {
-    input,
+    input:not([data-large-input]),
     select,
     textarea {
       font-size: 16px !important;

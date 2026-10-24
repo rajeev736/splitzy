@@ -198,7 +198,8 @@ service cloud.firestore {
      * dispute, forgive, approve a cancel-out) or by its owner reporting /
      * reopening their own payment. A debtor can mark their own share PAID only
      * when the person it is owed to approved cancelling it out
-     * (`offsetApprovedBy`) — which only that person can set.
+     * (`offsetApprovedBy`) — which only that person can set — or when they
+     * won a 100%-off game against that person and claimed it (`waivedByGame`).
      */
     function shareOk(i) {
       // Index check first, so unused slots never touch out-of-range elements
@@ -217,7 +218,24 @@ service cloud.firestore {
                 after.get('offsetApprovedBy', '') in [approval, ''] &&
                 (after.status == before.status ||
                  after.status in ['PAYMENT_REPORTED', 'PENDING'] ||
-                 (after.status == 'PAID' && approval != '' && approval == payee)))));
+                 (after.status == 'PAID' && approval != '' && approval == payee) ||
+                 (after.status == 'PAID' && after.get('waivedByGame', '') != '' &&
+                  gameWaiverOk(after.waivedByGame, payee))))));
+    }
+
+    /**
+     * A share closed for free by a game: you won the payee's 100%-off game,
+     * claimed its discount (in this same batch, or earlier), and the expense
+     * is from before the game.
+     */
+    function gameWaiverOk(challengeId, payee) {
+      let c = getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data;
+      return c.status == 'DONE' &&
+             c.hostId == payee &&
+             c.discountPercent == 100 &&
+             uid() in c.result.winners &&
+             uid() in c.get('redeemed', {}) &&
+             resource.data.createdAt <= c.createdAt;
     }
 
     function sharesOk() {
@@ -273,11 +291,16 @@ service cloud.firestore {
                      resource.data.get('participantUids', ['_']).hasOnly([uid()]));
     }
 
-    // ───────────────────────── Challenges (settle-up games) ─────────────────────────
-    // The host (who is owed money) hides a secret in challenges/{id}/secret/value:
-    // their 3 Stone-Paper-Scissors moves, or the lucky number. A player can read
-    // it only after locking in their own move, and a result is accepted only if
-    // it matches the secret — so nobody can peek or fake a win. Mirrors lib/games.
+    // ───────────────────────── Challenges (games) ─────────────────────────
+    // The host hides a secret in challenges/{id}/secret/value: their 3
+    // Stone-Paper-Scissors moves, the lucky number, 5 coin flips, 3 treasure
+    // boxes, or grid cells (bombs / gold). A player can read it only after
+    // locking in their own move, and a result is accepted only if it matches the
+    // secret — so nobody can peek or fake a win. Grid games (Minefield, Gold
+    // Rush) also keep one doc per tile in tiles/{n}; a player can read a tile
+    // only once it's in their append-only `progress` list, so tiles open one at
+    // a time and a dig can't be taken back. discountPercent 0 = just for fun
+    // (nothing to redeem). Mirrors lib/games.
 
     function challengeDoc(id) {
       return get(/databases/$(database)/documents/challenges/$(id)).data;
@@ -285,6 +308,19 @@ service cloud.firestore {
 
     function secretDoc(id) {
       return get(/databases/$(database)/documents/challenges/$(id)/secret/value).data;
+    }
+
+    function isGridGame(game) {
+      return game in ['minefield', 'gold_rush'];
+    }
+
+    function gridCells() {
+      return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+    }
+
+    /** n different cells of the 4×4 grid. */
+    function validCells(cells, n) {
+      return cells is list && cells.size() == n && cells.toSet().size() == n && cells.hasOnly(gridCells());
     }
 
     function everyonePlayed(c) {
@@ -297,7 +333,48 @@ service cloud.firestore {
           move[0] in ['rock', 'paper', 'scissors'] &&
           move[1] in ['rock', 'paper', 'scissors'] &&
           move[2] in ['rock', 'paper', 'scissors']
-        : move is int && move >= 1 && move <= 100;
+        : game == 'coin_toss'
+          ? move is list && move.size() == 5 &&
+            move[0] in ['H', 'T'] && move[1] in ['H', 'T'] && move[2] in ['H', 'T'] &&
+            move[3] in ['H', 'T'] && move[4] in ['H', 'T']
+          : game == 'treasure'
+            ? move is int && move >= 0 && move <= 8
+            : move is int && move >= 1 && move <= 100;
+    }
+
+    /** The host's secret has the right shape for the game. */
+    function validSecret(game, s) {
+      return game == 'rps'
+        ? validMove('rps', s.get('moves', null))
+        : game == 'coin_toss'
+          ? validMove('coin_toss', s.get('flips', null))
+          : game == 'treasure'
+            ? s.get('boxes', null) is list && s.boxes.size() == 3 &&
+              validMove('treasure', s.boxes[0]) && validMove('treasure', s.boxes[1]) &&
+              validMove('treasure', s.boxes[2]) &&
+              s.boxes[0] != s.boxes[1] && s.boxes[0] != s.boxes[2] && s.boxes[1] != s.boxes[2]
+            : isGridGame(game)
+              ? validCells(s.get('cells', null), game == 'minefield' ? 3 : 4)
+              : validMove('lucky_number', s.get('number', null));
+    }
+
+    /** A player's final move. In grid games it's exactly the digs they made. */
+    function validFinalMove(c, move) {
+      return isGridGame(c.game)
+        ? move is list && move.size() >= 1 && move == c.get('progress', {}).get(uid(), null)
+        : validMove(c.game, move);
+    }
+
+    /** Grid games: one more dig, appended to your own list — a new cell, within the game's limit. */
+    function validDig(before, after) {
+      let old = before.get('progress', {}).get(uid(), []);
+      let now = after.progress[uid()];
+      return after.progress.diff(before.get('progress', {})).affectedKeys().hasOnly([uid()]) &&
+             now is list && now.size() == old.size() + 1 &&
+             now.size() <= (before.game == 'gold_rush' ? 5 : 16) &&
+             (old.size() == 0 || now[0:old.size()] == old) &&
+             now[old.size()] in gridCells() &&
+             !(now[old.size()] in old);
     }
 
     function rpsBeats(a, b) {
@@ -308,14 +385,67 @@ service cloud.firestore {
       return rpsBeats(a, b) ? 1 : 0;
     }
 
-    function validRpsResult(c, secret, result) {
-      let p = c.players[0];
-      let m = c.moves[p];
-      let h = secret.moves;
-      let playerWins = roundWin(m[0], h[0]) + roundWin(m[1], h[1]) + roundWin(m[2], h[2]);
-      let hostWins = roundWin(h[0], m[0]) + roundWin(h[1], m[1]) + roundWin(h[2], m[2]);
-      return result.hostMoves == h &&
-             result.winners == (playerWins > hostWins ? [p] : []);
+    function rpsScore(a, b) {
+      return roundWin(a[0], b[0]) + roundWin(a[1], b[1]) + roundWin(a[2], b[2]);
+    }
+
+    function coinMatch(a, b) {
+      return a == b ? 1 : 0;
+    }
+
+    /** One player's move against the secret (every game but group Lucky Number). */
+    function beatsSecret(c, secret, m) {
+      return c.game == 'rps'
+        ? rpsScore(m, secret.moves) > rpsScore(secret.moves, m)
+        : c.game == 'coin_toss'
+          ? coinMatch(m[0], secret.flips[0]) + coinMatch(m[1], secret.flips[1]) +
+            coinMatch(m[2], secret.flips[2]) + coinMatch(m[3], secret.flips[3]) +
+            coinMatch(m[4], secret.flips[4]) >= 3
+          : c.game == 'treasure'
+            ? m in secret.boxes
+            : c.game == 'minefield'
+              // Every safe tile opened, with fewer than 3 bombs set off
+              ? m.toSet().hasAll(gridCells().toSet().difference(secret.cells.toSet())) &&
+                m.toSet().intersection(secret.cells.toSet()).size() <= 2
+              : c.game == 'gold_rush'
+                // 2+ gold coins within 5 digs
+                ? m.size() <= 5 && m.toSet().intersection(secret.cells.toSet()).size() >= 2
+                : math.abs(m - secret.number) <= 10;
+    }
+
+    /** The result reveals the host's actual secret. */
+    function secretRevealed(c, secret, result) {
+      return c.game == 'rps'
+        ? result.hostMoves == secret.moves
+        : c.game == 'coin_toss'
+          ? result.flips == secret.flips
+          : c.game == 'treasure'
+            ? result.boxes == secret.boxes
+            : isGridGame(c.game)
+              ? result.cells == secret.cells
+              : result.number == secret.number;
+    }
+
+    /** Player i didn't play and didn't win, or is a winner exactly when their move beats the secret. */
+    function soloPlayerOk(c, secret, result, i) {
+      return i >= c.players.size() ||
+             (!(c.players[i] in c.moves) && !(c.players[i] in result.winners)) ||
+             ((c.players[i] in c.moves) &&
+              (c.players[i] in result.winners) == beatsSecret(c, secret, c.moves[c.players[i]]));
+    }
+
+    function validSoloResult(c, secret, result) {
+      return secretRevealed(c, secret, result) &&
+             result.winners is list &&
+             result.winners.toSet().difference(c.moves.keys().toSet()).size() == 0 &&
+             soloPlayerOk(c, secret, result, 0) && soloPlayerOk(c, secret, result, 1) &&
+             soloPlayerOk(c, secret, result, 2) && soloPlayerOk(c, secret, result, 3) &&
+             soloPlayerOk(c, secret, result, 4) && soloPlayerOk(c, secret, result, 5) &&
+             soloPlayerOk(c, secret, result, 6) && soloPlayerOk(c, secret, result, 7) &&
+             soloPlayerOk(c, secret, result, 8) && soloPlayerOk(c, secret, result, 9) &&
+             soloPlayerOk(c, secret, result, 10) && soloPlayerOk(c, secret, result, 11) &&
+             soloPlayerOk(c, secret, result, 12) && soloPlayerOk(c, secret, result, 13) &&
+             soloPlayerOk(c, secret, result, 14);
     }
 
     /** Player i either didn't play, or is a winner exactly when at the winning distance. */
@@ -351,19 +481,21 @@ service cloud.firestore {
                     request.resource.data.hostId == uid() &&
                     request.resource.data.status == 'OPEN' &&
                     request.resource.data.moves == {} &&
+                    request.resource.data.get('progress', {}) == {} &&
                     !('result' in request.resource.data) &&
                     request.resource.data.discountPercent is int &&
-                    request.resource.data.discountPercent >= 1 &&
+                    request.resource.data.discountPercent >= 0 &&
                     request.resource.data.discountPercent <= 100 &&
                     request.resource.data.players.size() >= 1 &&
                     !(uid() in request.resource.data.players) &&
                     request.resource.data.participants.size() == request.resource.data.players.size() + 1 &&
                     request.resource.data.participants.hasAll(request.resource.data.players) &&
                     uid() in request.resource.data.participants &&
-                    ((request.resource.data.kind == 'friend' && request.resource.data.game == 'rps' &&
-                      request.resource.data.players.size() == 1) ||
-                     (request.resource.data.kind == 'group' && request.resource.data.game == 'lucky_number' &&
-                      request.resource.data.players.size() <= 15)) &&
+                    request.resource.data.game in ['rps', 'lucky_number', 'coin_toss', 'treasure', 'minefield', 'gold_rush'] &&
+                    ((request.resource.data.kind == 'friend' && request.resource.data.players.size() == 1) ||
+                     (request.resource.data.kind == 'group' && request.resource.data.players.size() <= 15 &&
+                      // grid tiles open one by one, so players could tip each other off: fun only
+                      !(isGridGame(request.resource.data.game) && request.resource.data.discountPercent > 0))) &&
                     existsAfter(/databases/$(database)/documents/challenges/$(challengeId)/secret/value);
 
       allow update: if signedIn() && (
@@ -378,7 +510,9 @@ service cloud.firestore {
                        request.resource.data.redeemed[uid()] > 0 &&
                        request.resource.data.redeemed[uid()] <=
                          resource.data.bases[uid()] * resource.data.discountPercent / 100 &&
-                       request.time < resource.data.resolvedAt + duration.value(10, 'm'))
+                       // 100% off has nothing to pay, so it never expires
+                       (resource.data.discountPercent == 100 ||
+                        request.time < resource.data.resolvedAt + duration.value(10, 'm')))
                       ||
                       (resource.data.status == 'OPEN' && validOpenUpdate(challengeId))
                     );
@@ -391,7 +525,14 @@ service cloud.firestore {
                        onlyChanges(['moves']) &&
                        !(uid() in resource.data.moves) &&
                        request.resource.data.moves.diff(resource.data.moves).affectedKeys().hasOnly([uid()]) &&
-                       validMove(resource.data.game, request.resource.data.moves[uid()]))
+                       validFinalMove(resource.data, request.resource.data.moves[uid()]))
+                      ||
+                      // Grid games: a player digs one more tile, before finishing
+                      (uid() in resource.data.players &&
+                       isGridGame(resource.data.game) &&
+                       !(uid() in resource.data.moves) &&
+                       onlyChanges(['progress']) &&
+                       validDig(resource.data, request.resource.data))
                       ||
                       // Anyone in the game records the result once everyone played;
                       // the host may also end a group game early
@@ -402,9 +543,9 @@ service cloud.firestore {
                        onlyChanges(['status', 'result', 'resolvedAt']) &&
                        request.resource.data.status == 'DONE' &&
                        request.resource.data.resolvedAt == request.time &&
-                       (resource.data.game == 'rps'
-                         ? validRpsResult(resource.data, secretDoc(challengeId), request.resource.data.result)
-                         : validLuckyResult(resource.data, secretDoc(challengeId), request.resource.data.result)))
+                       (resource.data.game == 'lucky_number' && resource.data.kind == 'group'
+                         ? validLuckyResult(resource.data, secretDoc(challengeId), request.resource.data.result)
+                         : validSoloResult(resource.data, secretDoc(challengeId), request.resource.data.result)))
                       ||
                       // The host withdraws an unfinished game
                       (resource.data.hostId == uid() &&
@@ -423,8 +564,27 @@ service cloud.firestore {
                        challengeDoc(challengeId).status == 'DONE')));
         allow create: if signedIn() && docId == 'value' &&
                       getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.hostId == uid() &&
-                      (validMove('rps', request.resource.data.get('moves', null)) ||
-                       validMove('lucky_number', request.resource.data.get('number', null)));
+                      validSecret(getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.game,
+                                  request.resource.data);
+        allow update: if false;
+        allow delete: if signedIn() && challengeDoc(challengeId).hostId == uid();
+      }
+
+      // Grid games: one doc per tile ({hit: bool}). A player reads a tile only
+      // after digging it (or once the game is over); the host sees them all.
+      match /tiles/{tile} {
+        allow read: if signedIn() &&
+                    (challengeDoc(challengeId).hostId == uid() ||
+                     (uid() in challengeDoc(challengeId).players &&
+                      (int(tile) in challengeDoc(challengeId).get('progress', {}).get(uid(), []) ||
+                       challengeDoc(challengeId).status == 'DONE')));
+        allow create: if signedIn() &&
+                      getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.hostId == uid() &&
+                      isGridGame(getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.game) &&
+                      tile in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'] &&
+                      request.resource.data.keys().hasOnly(['hit']) &&
+                      request.resource.data.hit ==
+                        (int(tile) in getAfter(/databases/$(database)/documents/challenges/$(challengeId)/secret/value).data.cells);
         allow update: if false;
         allow delete: if signedIn() && challengeDoc(challengeId).hostId == uid();
       }

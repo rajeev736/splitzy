@@ -5,7 +5,6 @@ import { Search01Icon, Tick02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { UserAvatar } from "@/components/shared/user-avatar"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -20,7 +19,7 @@ import type { InviteOption } from "@/services/groups"
 import { InviteFriendsList } from "./invite-friends-list"
 
 /** A done-already line in place of a checkbox. */
-function DoneLine({ children, tone = "text-primary" }: { children: React.ReactNode; tone?: string }) {
+function DoneLine({ children, tone = "text-muted-foreground" }: { children: React.ReactNode; tone?: string }) {
   return (
     <p className={`flex items-center gap-1.5 text-xs font-medium ${tone}`}>
       <HugeiconsIcon icon={Tick02Icon} className="size-3.5" />
@@ -105,7 +104,7 @@ export function InviteDialog({
               handleSearch()
             }}
           >
-            <FieldLabel htmlFor="invite-joysplit-id" className="text-xs font-semibold">
+            <FieldLabel htmlFor="invite-joysplit-id" className="text-xs font-medium">
               Add by JoySplit ID (Non-friends &amp; Friends)
             </FieldLabel>
             <div className="flex gap-2">
@@ -124,22 +123,22 @@ export function InviteDialog({
           </form>
 
           {searchedUser && (
-            <div className="flex flex-col gap-3 rounded-xl border bg-muted/50 p-3.5">
+            <div className="flex flex-col gap-3 rounded-lg border p-3.5">
               {target ? (
                 <>
                   <div className="flex items-center gap-3">
                     <UserAvatar src={target.photoURL} name={target.displayName || "User"} size="md" />
                     <div className="min-w-0">
-                      <div className="truncate text-xs font-bold">{target.displayName}</div>
+                      <div className="truncate text-sm font-medium">{target.displayName}</div>
                       <div className="truncate font-mono text-[11px] text-muted-foreground">{target.splitzyId}</div>
                     </div>
                   </div>
 
                   {isSelf ? (
-                    <p className="text-xs font-medium text-muted-foreground">This is your own JoySplit ID.</p>
+                    <p className="text-xs text-muted-foreground">This is your own JoySplit ID.</p>
                   ) : (
-                    <div className="flex flex-col gap-3 pt-1">
-                      <FieldGroup className="gap-2 rounded-lg border bg-card p-3">
+                    <div className="flex flex-col gap-3 border-t pt-3">
+                      <FieldGroup className="gap-2.5">
                         {isMember ? (
                           <DoneLine>Already a member of this group</DoneLine>
                         ) : (
@@ -149,7 +148,7 @@ export function InviteDialog({
                               checked={wantGroupInvite}
                               onCheckedChange={(checked) => setWantGroupInvite(checked)}
                             />
-                            <FieldLabel htmlFor="invite-send-group" className="text-xs font-semibold">
+                            <FieldLabel htmlFor="invite-send-group" className="text-xs font-medium">
                               Add directly to group (no approval needed)
                             </FieldLabel>
                           </Field>
@@ -168,7 +167,7 @@ export function InviteDialog({
                               checked={wantFriendRequest}
                               onCheckedChange={(checked) => setWantFriendRequest(checked)}
                             />
-                            <FieldLabel htmlFor="invite-send-friend" className="text-xs font-semibold">
+                            <FieldLabel htmlFor="invite-send-friend" className="text-xs font-medium">
                               Send friend request (requires their approval)
                             </FieldLabel>
                           </Field>
@@ -177,8 +176,7 @@ export function InviteDialog({
 
                       {canGroupInvite || canFriendRequest ? (
                         <>
-                          <Alert className="border-primary/20 bg-primary/5">
-                            <AlertDescription className="text-[11px] leading-relaxed text-foreground">
+                          <p className="text-xs leading-relaxed text-muted-foreground">
                               {option === "COMBINED" ? (
                                 <span>
                                   Will add directly to <strong>{group.name}</strong> and send a{" "}
@@ -193,12 +191,11 @@ export function InviteDialog({
                                   Will send a <strong>friend request</strong> only (requires approval).
                                 </span>
                               ) : (
-                                <span className="font-semibold text-warning">
+                                <span className="font-medium text-warning">
                                   Please select at least one action above to continue.
                                 </span>
                               )}
-                            </AlertDescription>
-                          </Alert>
+                          </p>
 
                           <Button
                             size="sm"
@@ -228,7 +225,7 @@ export function InviteDialog({
           <Separator />
 
           <div className="flex flex-col gap-2">
-            <span className="text-xs font-semibold">Or invite from your friends list:</span>
+            <span className="text-sm font-semibold">Or invite from your friends</span>
             <InviteFriendsList
               group={group}
               friends={friends}

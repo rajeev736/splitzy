@@ -12,12 +12,12 @@ export function notificationCategory(type: NotificationType) {
 }
 
 const VISUALS = {
-  payments: { icon: CreditCardIcon, tone: "bg-success/10 text-success" },
-  friends: { icon: UserAdd01Icon, tone: "bg-info/10 text-info" },
-  groups: { icon: UserGroupIcon, tone: "bg-secondary text-primary" },
+  payments: { icon: CreditCardIcon, tone: "text-success" },
+  friends: { icon: UserAdd01Icon, tone: "text-info" },
+  groups: { icon: UserGroupIcon, tone: "text-muted-foreground" },
 } as const
 
-/** Round category icon for a notification (payment / friend / group). */
+/** Tinted category icon tile for a notification (payment / friend / group). */
 export function NotificationIcon({
   type,
   size = "md",
@@ -26,23 +26,23 @@ export function NotificationIcon({
 }: {
   type: NotificationType
   size?: "md" | "lg"
-  /** Use the neutral brand tone instead of the per-category tone. */
+  /** Use the neutral tone instead of the per-category tone. */
   neutral?: boolean
   className?: string
 }) {
   const visual = type.includes("CHALLENGE")
-    ? { icon: GameController03Icon, tone: "bg-warning/10 text-warning" }
+    ? { icon: GameController03Icon, tone: "text-warning" }
     : VISUALS[notificationCategory(type)]
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full",
-        size === "lg" ? "size-16 shadow-xs" : "size-10",
-        neutral ? "bg-secondary text-primary" : visual.tone,
+        "flex shrink-0 items-center justify-center rounded-md",
+        size === "lg" ? "size-14" : "size-9",
+        neutral ? "bg-muted text-muted-foreground" : cn(visual.tone, "bg-current/10"),
         className
       )}
     >
-      <HugeiconsIcon icon={visual.icon} className={size === "lg" ? "size-8" : "size-5"} />
+      <HugeiconsIcon icon={visual.icon} className={size === "lg" ? "size-7" : "size-4.5"} />
     </div>
   )
 }

@@ -121,19 +121,19 @@ function SplitSummaryContent() {
   return (
     <div className="mx-auto flex h-[calc(100dvh-5rem)] max-h-[calc(100dvh-5rem)] w-full max-w-4xl flex-col overflow-hidden bg-background text-foreground md:h-auto md:max-h-none md:min-h-[calc(100vh-4rem)] md:overflow-visible md:pb-12">
       {/* Top Header */}
-      <header className="shrink-0 border-b border-border/50 bg-background/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3 sm:px-6 sm:py-3.5">
-          <div className="flex items-center gap-3">
+      <header className="shrink-0 border-b bg-background">
+        <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => router.back()}
-              className="flex size-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95"
+              className="-ml-2 flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               aria-label="Back"
             >
               <HugeiconsIcon icon={ArrowLeft01Icon} className="size-5" />
             </button>
-            <h1 className="text-base font-bold tracking-tight text-foreground sm:text-lg">
-              Split Expense Summary
+            <h1 className="text-base font-semibold tracking-tight text-foreground">
+              Split summary
             </h1>
           </div>
 
@@ -142,10 +142,10 @@ function SplitSummaryContent() {
               type="button"
               size="sm"
               onClick={() => router.push("/expenses/new")}
-              className="hidden h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-xs font-bold text-primary-foreground sm:flex"
+              className="hidden sm:inline-flex"
             >
-              <HugeiconsIcon icon={PlusSignIcon} className="size-4" />
-              Split New Expense
+              <HugeiconsIcon icon={PlusSignIcon} data-icon="inline-start" />
+              Split new expense
             </Button>
           </div>
         </div>
@@ -168,24 +168,25 @@ function SplitSummaryContent() {
       ) : (
         <>
           {/* Sticky Top Balance & Tabs Area for Mobile */}
-          <div className="shrink-0 border-b border-border/60 bg-background/95 px-4 pt-3 pb-0 backdrop-blur-md sm:border-0 sm:bg-transparent sm:px-6 sm:pt-6">
-            {/* Total Split Balance Hero Card */}
-            <Card className="relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-br from-card via-card to-muted/30 p-3.5 shadow-xs sm:rounded-3xl sm:p-6">
-              <div className="flex flex-col gap-1 sm:gap-1.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground sm:text-xs">
-                    Total Split Balance
+          <div className="shrink-0 border-b bg-background px-4 pt-3 pb-0 sm:border-0 sm:px-6 sm:pt-6">
+            {/* Total split balance */}
+            <Card className="gap-0 p-4 sm:p-6">
+              <div className="flex flex-col gap-1">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    Total split balance
                   </span>
                   <span
                     className={cn(
-                      "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold sm:px-2.5 sm:text-[11px]",
+                      "inline-flex items-center gap-1.5 text-xs font-medium",
                       isNetPayable
-                        ? "bg-destructive/10 text-destructive"
+                        ? "text-destructive"
                         : isNetReceivable
-                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                          : "bg-muted text-muted-foreground"
+                          ? "text-success"
+                          : "text-muted-foreground"
                     )}
                   >
+                    <span aria-hidden className="size-1.5 rounded-full bg-current" />
                     {isNetPayable
                       ? "You need to pay"
                       : isNetReceivable
@@ -197,11 +198,11 @@ function SplitSummaryContent() {
                 <div className="flex items-baseline gap-2">
                   <span
                     className={cn(
-                      "text-2xl font-black tracking-tight tabular-nums sm:text-4xl",
+                      "text-4xl font-bold tracking-tight tabular-nums sm:text-5xl",
                       isNetPayable
                         ? "text-destructive"
                         : isNetReceivable
-                          ? "text-emerald-600 dark:text-emerald-400"
+                          ? "text-success"
                           : "text-foreground"
                     )}
                   >
@@ -230,12 +231,12 @@ function SplitSummaryContent() {
             </Card>
 
             {/* Navigation Tabs (Groups | People) */}
-            <div className="mt-2.5 flex sm:mt-6 sm:border-b sm:border-border/60">
+            <div className="mt-3 flex sm:mt-6 sm:border-b">
               <button
                 type="button"
                 onClick={() => setActiveTab("groups")}
                 className={cn(
-                  "relative flex-1 pb-2.5 text-center text-sm font-bold transition-all select-none sm:pb-3",
+                  "relative flex-1 pb-2.5 text-center text-sm font-medium transition-colors select-none sm:pb-3",
                   activeTab === "groups"
                     ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
                     : "text-muted-foreground hover:text-foreground"
@@ -248,7 +249,7 @@ function SplitSummaryContent() {
                 type="button"
                 onClick={() => setActiveTab("people")}
                 className={cn(
-                  "relative flex-1 pb-2.5 text-center text-sm font-bold transition-all select-none sm:pb-3",
+                  "relative flex-1 pb-2.5 text-center text-sm font-medium transition-colors select-none sm:pb-3",
                   activeTab === "people"
                     ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
                     : "text-muted-foreground hover:text-foreground"
@@ -276,7 +277,7 @@ function SplitSummaryContent() {
                       }}
                     />
                   ) : (
-                    <div className="flex flex-col gap-3">
+                    <div className="flex flex-col divide-y overflow-hidden rounded-lg border bg-card">
                       {groupRows.map((row) => {
                         const youOwe = row.userOwesPaise > row.owedToUserPaise
                         const amount = Math.abs(row.netPaise)
@@ -285,9 +286,9 @@ function SplitSummaryContent() {
                           <div
                             key={row.group.id}
                             onClick={() => setSelectedGroupId(row.group.id)}
-                            className="flex flex-row cursor-pointer items-center justify-between gap-4 rounded-3xl border border-border bg-card p-4 text-card-foreground shadow-xs transition hover:border-primary/40 hover:bg-muted/30 active:scale-[0.99]"
+                            className="flex cursor-pointer flex-row items-center justify-between gap-3 px-4 py-3 text-card-foreground transition-colors hover:bg-muted/50"
                           >
-                            <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                            <div className="flex min-w-0 flex-1 items-center gap-3">
                               {/* Group Avatar / Icon */}
                               <button
                                 type="button"
@@ -296,49 +297,54 @@ function SplitSummaryContent() {
                                   router.push(`/groups/${row.group.id}`)
                                 }}
                                 title="View group expenses and members"
-                                className="shrink-0 transition-transform hover:scale-105 active:scale-95"
+                                className="shrink-0 rounded-full transition-opacity hover:opacity-80"
                               >
                                 <GroupIcon
                                   src={row.group.icon}
                                   alt={row.group.name}
                                   size="md"
-                                  className="size-12 rounded-full border shadow-2xs"
+                                  className="size-10 rounded-full border"
                                 />
                               </button>
 
                               <div className="min-w-0 flex-1">
-                                <div className="truncate text-base font-bold text-foreground">
+                                <div className="truncate text-sm font-semibold text-foreground">
                                   {row.group.name}
                                 </div>
-                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
+                                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                                   <span>{row.group.members.length} members</span>
-                                  <span>•</span>
+                                  <span aria-hidden>·</span>
                                   <span>
                                     {row.expenseCount} {row.expenseCount === 1 ? "expense" : "expenses"}
                                   </span>
                                 </div>
                                 {row.offsetPaise > 0 && (
-                                  <div className="mt-1 text-[11px] font-semibold text-info">
+                                  <div className="mt-0.5 text-[11px] text-muted-foreground">
                                     {formatPaise(row.offsetPaise)} cancelled out with other splits
                                   </div>
                                 )}
                               </div>
                             </div>
 
-                            {/* Right side: You get / You owe + Large Amount + Arrow */}
-                            <div className="flex shrink-0 items-center gap-3.5 text-right">
+                            {/* Right side: You get / You owe + amount + arrow */}
+                            <div className="flex shrink-0 items-center gap-2 text-right">
                               <div className="flex flex-col items-end">
-                                <span className="text-xs font-semibold text-muted-foreground">
+                                <span
+                                  className={cn(
+                                    "text-[11px] font-medium",
+                                    !row.hasBalance ? "text-muted-foreground" : youOwe ? "text-destructive/80" : "text-success/80"
+                                  )}
+                                >
                                   {!row.hasBalance ? "Settled" : youOwe ? "You owe" : "You get"}
                                 </span>
                                 <span
                                   className={cn(
-                                    "text-xl font-black tabular-nums leading-tight mt-0.5 sm:text-2xl",
+                                    "text-xl leading-tight font-bold tracking-tight tabular-nums",
                                     !row.hasBalance
                                       ? "text-muted-foreground"
                                       : youOwe
                                         ? "text-destructive"
-                                        : "text-emerald-600 dark:text-emerald-400"
+                                        : "text-success"
                                   )}
                                 >
                                   ₹{(amount / 100).toFixed(0)}
@@ -347,7 +353,7 @@ function SplitSummaryContent() {
 
                               <HugeiconsIcon
                                 icon={ArrowRight01Icon}
-                                className="size-5 shrink-0 text-muted-foreground/70"
+                                className="size-4 shrink-0 text-muted-foreground"
                               />
                             </div>
                           </div>
@@ -368,74 +374,81 @@ function SplitSummaryContent() {
                       description="You are settled up with all your friends and group members!"
                     />
                   ) : (
-                    <div className="flex flex-col gap-3">
+                    <div className="flex flex-col divide-y overflow-hidden rounded-lg border bg-card">
                       {peopleRows.map((person) => {
                         return (
                           <div
                             key={person.userId}
                             onClick={() => setSelectedPersonId(person.userId)}
-                            className="flex flex-row cursor-pointer items-center justify-between gap-4 rounded-3xl border border-border bg-card p-4 text-card-foreground shadow-xs transition hover:border-primary/40 hover:bg-muted/30 active:scale-[0.99]"
+                            className="flex cursor-pointer flex-col px-4 py-3 text-card-foreground transition-colors hover:bg-muted/50"
                           >
-                            <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                            <div className="flex min-w-0 items-center gap-3">
                               {/* Person Avatar */}
                               <UserAvatar
                                 src={person.photoURL}
                                 name={person.name}
                                 size="md"
-                                className="size-12 ring-1 ring-border/50 shrink-0"
+                                className="size-10 shrink-0"
                               />
 
                               <div className="min-w-0 flex-1">
-                                <div className="truncate text-base font-bold text-foreground">
+                                <div className="truncate text-sm font-semibold text-foreground">
                                   {person.name}
                                 </div>
                                 {person.upiId ? (
-                                  <div className="truncate font-mono text-xs text-muted-foreground mt-0.5">
+                                  <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
                                     {person.upiId}
                                   </div>
                                 ) : (
-                                  <div className="text-xs text-muted-foreground mt-0.5">Direct & Groups</div>
+                                  <div className="mt-0.5 text-xs text-muted-foreground">Direct & groups</div>
                                 )}
-                                {/* They reported a payment: just ask if it arrived; otherwise challenge */}
-                                <PaymentReceivedOr className="mt-2" personId={person.userId} personName={person.name}>
-                                  {!person.youOwe && (
-                                    <ChallengeButton
-                                      className="mt-1.5"
-                                      person={{ uid: person.userId, name: person.name, photoURL: person.photoURL }}
-                                      owedPaise={person.amountPaise}
-                                    />
-                                  )}
-                                </PaymentReceivedOr>
-                                <ChallengeInviteStrip className="mt-2" personId={person.userId} />
+                              </div>
+
+                              {/* Right side: You owe / You get */}
+                              <div className="flex shrink-0 items-center gap-2 text-right">
+                                <div className="flex flex-col items-end">
+                                  <span
+                                    className={cn(
+                                      "text-[11px] font-medium",
+                                      person.youOwe ? "text-destructive/80" : "text-success/80"
+                                    )}
+                                  >
+                                    {person.youOwe ? "You owe" : "You get"}
+                                    {gameDiscounts.byPerson.has(person.userId) && " (if paid now)"}
+                                  </span>
+                                  <GameDiscountAmount
+                                    amountPaise={person.amountPaise}
+                                    discount={gameDiscounts.byPerson.get(person.userId)}
+                                    now={gameDiscounts.now}
+                                    className={cn(
+                                      "text-xl leading-tight font-bold tracking-tight",
+                                      person.youOwe ? "text-destructive" : "text-success"
+                                    )}
+                                  />
+                                  {person.awaitingConfirmation && <AwaitingConfirmationBadge className="mt-1" />}
+                                  <PaymentDisputeLine className="mt-1" personId={person.userId} personName={person.name} />
+                                </div>
+
+                                <HugeiconsIcon
+                                  icon={ArrowRight01Icon}
+                                  className="size-4 shrink-0 text-muted-foreground"
+                                />
                               </div>
                             </div>
 
-                            {/* Right side: Pay Now / You get */}
-                            <div className="flex shrink-0 items-center gap-3.5 text-right">
-                              <div className="flex flex-col items-end">
-                                <span className="text-xs font-semibold text-muted-foreground">
-                                  {person.youOwe ? "You owe" : "You get"}
-                                  {gameDiscounts.byPerson.has(person.userId) && " (if paid now)"}
-                                </span>
-                                <GameDiscountAmount
-                                  amountPaise={person.amountPaise}
-                                  discount={gameDiscounts.byPerson.get(person.userId)}
-                                  now={gameDiscounts.now}
-                                  className={cn(
-                                    "text-xl font-black leading-tight mt-0.5 sm:text-2xl",
-                                    person.youOwe
-                                      ? "text-destructive"
-                                      : "text-emerald-600 dark:text-emerald-400"
-                                  )}
-                                />
-                                {person.awaitingConfirmation && <AwaitingConfirmationBadge className="mt-1" />}
-                                <PaymentDisputeLine className="mt-1" personId={person.userId} personName={person.name} />
-                              </div>
-
-                              <HugeiconsIcon
-                                icon={ArrowRight01Icon}
-                                className="size-5 shrink-0 text-muted-foreground/70"
-                              />
+                            {/* Actions on their own line, under the name */}
+                            <div className="pl-[3.25rem] empty:hidden">
+                              {/* They reported a payment: just ask if it arrived; otherwise challenge */}
+                              <PaymentReceivedOr className="mt-2" personId={person.userId} personName={person.name}>
+                                {!person.youOwe && (
+                                  <ChallengeButton
+                                    className="mt-2.5 w-full justify-center"
+                                    person={{ uid: person.userId, name: person.name, photoURL: person.photoURL }}
+                                    owedPaise={person.amountPaise}
+                                  />
+                                )}
+                              </PaymentReceivedOr>
+                              <ChallengeInviteStrip className="mt-2.5" personId={person.userId} />
                             </div>
                           </div>
                         )
@@ -454,9 +467,10 @@ function SplitSummaryContent() {
         <Button
           type="button"
           onClick={() => router.push("/expenses/new")}
-          className="pointer-events-auto h-12 w-full rounded-2xl bg-primary text-sm font-extrabold tracking-wider text-primary-foreground shadow-2xl transition hover:bg-primary/90 active:scale-[0.99]"
+          className="pointer-events-auto h-11 w-full text-sm font-medium"
         >
-          SPLIT NEW EXPENSE
+          <HugeiconsIcon icon={PlusSignIcon} data-icon="inline-start" />
+          Split new expense
         </Button>
       </div>
 

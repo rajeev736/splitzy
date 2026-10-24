@@ -10,6 +10,12 @@ import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
 import { useUnreadCount } from "@/hooks/queries"
 
+/** Time-of-day greeting for the home header. */
+function greeting() {
+  const h = new Date().getHours()
+  return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"
+}
+
 export interface AppHeaderProps {
   title?: string
   subtitle?: string
@@ -36,7 +42,7 @@ export function AppHeader({
   const unread = useUnreadCount()
 
   return (
-    <header className="sticky top-0 z-30 border-b bg-background/95 px-4 py-3 backdrop-blur-md sm:px-6">
+    <header className="sticky top-0 z-30 border-b bg-background/85 px-4 py-2.5 backdrop-blur-xl backdrop-saturate-150 sm:px-6">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           {showBack && (
@@ -53,14 +59,14 @@ export function AppHeader({
                 <UserAvatar src={user.photoURL} name={user.displayName} size="md" />
               </Link>
               <div>
-                <div className="text-base leading-tight font-bold">Hi {user.displayName.split(" ")[0]}! 👋</div>
-                <div className="text-xs font-medium text-muted-foreground">Good to see you again</div>
+                <div className="text-xs text-muted-foreground">{greeting()}</div>
+                <div className="text-base leading-tight font-semibold">{user.displayName.split(" ")[0]}</div>
               </div>
             </div>
           ) : (
             <div className="min-w-0">
-              {title && <h1 className="truncate text-lg font-bold tracking-tight sm:text-xl">{title}</h1>}
-              {subtitle && <p className="text-xs font-medium text-muted-foreground">{subtitle}</p>}
+              {title && <h1 className="truncate text-base font-semibold tracking-tight sm:text-lg">{title}</h1>}
+              {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
             </div>
           )}
         </div>
@@ -77,7 +83,7 @@ export function AppHeader({
             >
               <HugeiconsIcon icon={Notification01Icon} className="size-5" />
               {unread > 0 && (
-                <span className="absolute top-1.5 right-1.5 size-2.5 rounded-full bg-destructive ring-2 ring-background" />
+                <span className="absolute top-2 right-2 size-2 rounded-full bg-destructive ring-2 ring-background" />
               )}
             </Button>
           )}

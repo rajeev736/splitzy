@@ -42,7 +42,7 @@ export function FilterPills<T extends string>({
         <ToggleGroupItem
           key={o.value}
           value={o.value}
-          className="h-9 rounded-xl bg-card px-4 text-xs font-bold capitalize aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/90 aria-pressed:hover:text-primary-foreground"
+          className="h-9 rounded-md bg-card px-4 text-xs font-medium capitalize aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/90 aria-pressed:hover:text-primary-foreground"
         >
           {o.label}
         </ToggleGroupItem>

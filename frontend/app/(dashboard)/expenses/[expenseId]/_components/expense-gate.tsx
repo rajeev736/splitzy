@@ -36,7 +36,7 @@ export function ExpenseGate({
       <>
         <AppHeader title={loadingTitle} showBack />
         <PageContainer className="max-w-2xl" aria-busy="true">
-          <Skeleton className="h-44 w-full rounded-3xl sm:h-52" />
+          <Skeleton className="h-44 w-full rounded-lg sm:h-52" />
           <Card>
             <CardContent className="flex flex-col gap-3">
               <Skeleton className="h-4 w-1/3" />

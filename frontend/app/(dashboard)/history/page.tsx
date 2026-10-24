@@ -21,8 +21,7 @@ import { useSession } from "@/components/providers/session-provider"
 import { Amount } from "@/components/shared/amount"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import {
   Item,
   ItemActions,
@@ -45,13 +44,13 @@ type ExpenseFilter = "all" | "group" | "personal"
 type PaymentFilter = "all" | "sent" | "received"
 
 const EXPENSE_FILTERS = [
-  { value: "all", label: "All Expenses" },
+  { value: "all", label: "All" },
   { value: "group", label: "Group" },
   { value: "personal", label: "Personal" },
 ] as const
 
 const PAYMENT_FILTERS = [
-  { value: "all", label: "All Payments" },
+  { value: "all", label: "All" },
   { value: "sent", label: "sent" },
   { value: "received", label: "received" },
 ] as const
@@ -204,18 +203,12 @@ function HistoryContent() {
           onValueChange={(v) => setMainView(v as MainView)}
           className="gap-5"
         >
-          <TabsList className="h-11! w-full rounded-2xl">
-            <TabsTrigger
-              value="expenses"
-              className="rounded-xl text-xs font-bold"
-            >
-              Expense History
+          <TabsList className="w-full">
+            <TabsTrigger value="expenses" className="text-xs font-medium">
+              Expenses
             </TabsTrigger>
-            <TabsTrigger
-              value="payments"
-              className="rounded-xl text-xs font-bold"
-            >
-              Payment History
+            <TabsTrigger value="payments" className="text-xs font-medium">
+              Payments
             </TabsTrigger>
           </TabsList>
 
@@ -233,19 +226,22 @@ function HistoryContent() {
 
             {queryState ??
               (filteredExpenses.length > 0 ? (
-                <ItemGroup className="gap-3">
-                  {filteredExpenses.map((exp) => {
+                <Card className="gap-0 py-0">
+                <ItemGroup className="gap-0">
+                  {filteredExpenses.map((exp, i) => {
                     const myShare = exp.shares.find(
                       (s) => s.userId === user?.uid
                     )
                     const personal = isPersonal(exp)
 
                     return (
+                      <React.Fragment key={exp.id}>
+                      {i > 0 && <ItemSeparator className="my-0" />}
                       <ExpenseListItem
-                        key={exp.id}
                         expense={exp}
+                        variant="default"
                         className={cn(
-                          "rounded-3xl p-4",
+                          "rounded-none px-4 py-3.5",
                           exp.deletedAt && "opacity-70"
                         )}
                         description={`${
@@ -255,21 +251,9 @@ function HistoryContent() {
                         } • ${formatWhen(exp.date)} • Paid by ${exp.payerName}`}
                         action={
                           <div className="flex items-center gap-2">
-                            {personal ? (
-                              <Badge
-                                variant="outline"
-                                className="border-primary/30 bg-primary/5 text-primary text-[10px] font-bold"
-                              >
-                                Personal
-                              </Badge>
-                            ) : (
-                              <Badge
-                                variant="secondary"
-                                className="max-w-[120px] truncate text-[10px] font-bold"
-                              >
-                                {exp.groupName || "Group"}
-                              </Badge>
-                            )}
+                            <span className="hidden max-w-[120px] truncate text-xs text-muted-foreground sm:inline">
+                              {personal ? "Personal" : exp.groupName || "Group"}
+                            </span>
                             <HugeiconsIcon
                               icon={ArrowRight01Icon}
                               className="size-4 shrink-0 text-muted-foreground"
@@ -281,7 +265,7 @@ function HistoryContent() {
                           <Amount
                             paise={exp.amountPaise}
                             className={cn(
-                              "font-bold",
+                              "font-semibold",
                               exp.deletedAt && "line-through"
                             )}
                           />
@@ -292,11 +276,13 @@ function HistoryContent() {
                           )}
                         </div>
                       </ExpenseListItem>
+                      </React.Fragment>
                     )
                   })}
                 </ItemGroup>
+                </Card>
               ) : (
-                <Card className="rounded-3xl">
+                <Card>
                   <EmptyState
                     icon={Invoice01Icon}
                     title="No expenses found in this filter category."
@@ -310,7 +296,7 @@ function HistoryContent() {
             value="payments"
             className="flex animate-in flex-col gap-4 duration-200 fade-in"
           >
-            <div className="grid grid-cols-2 gap-3">
+            <Card className="grid grid-cols-2 gap-0 divide-x py-0">
               <TotalCard
                 icon={SentIcon}
                 label="Total Sent"
@@ -322,7 +308,7 @@ function HistoryContent() {
                 paise={totalReceivedPaise}
                 positive
               />
-            </div>
+            </Card>
             <p className="-mt-2 text-[11px] text-muted-foreground">
               Totals include confirmed payments only.
             </p>
@@ -335,7 +321,7 @@ function HistoryContent() {
             />
 
             {queryState ?? (
-              <Card className="rounded-3xl py-0">
+              <Card className="gap-0 py-0">
                 {filteredPayments.length > 0 ? (
                   <ItemGroup className="gap-0">
                     {filteredPayments.map((p, i) => (
@@ -372,29 +358,16 @@ function TotalCard({
   positive?: boolean
 }) {
   return (
-    <Card size="sm" className="rounded-2xl">
-      <CardContent className="flex flex-col gap-1">
-        <div
-          className={cn(
-            "flex items-center gap-1.5 text-xs font-semibold",
-            positive ? "text-success" : "text-muted-foreground"
-          )}
-        >
-          <HugeiconsIcon
-            icon={icon}
-            className={cn(
-              "size-3.5",
-              positive ? "text-success" : "text-primary"
-            )}
-          />
-          <span>{label}</span>
-        </div>
-        <Amount
-          paise={paise}
-          className={cn("text-xl font-bold", positive && "text-success")}
-        />
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-1 px-4 py-3.5">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <HugeiconsIcon icon={icon} className="size-3.5" />
+        <span>{label}</span>
+      </div>
+      <Amount
+        paise={paise}
+        className={cn("text-lg font-semibold tabular-nums", positive && "text-success")}
+      />
+    </div>
   )
 }
 
@@ -403,14 +376,14 @@ function PaymentRow({ payment: p }: { payment: PaymentRecord }) {
   const state = PAYMENT_STATE[p.state]
   return (
     <Item
-      className="flex-nowrap rounded-none p-4 hover:bg-muted/50"
+      className="flex-nowrap rounded-none px-4 py-3.5 hover:bg-muted/50"
       render={<Link href={`/expenses/${p.expenseId}`} />}
     >
       <ItemMedia>
         <div
           className={cn(
-            "flex size-10 items-center justify-center rounded-2xl",
-            isSent ? "bg-secondary text-primary" : "bg-success/10 text-success"
+            "flex size-10 items-center justify-center rounded-md border",
+            isSent ? "text-muted-foreground" : "text-success"
           )}
         >
           <HugeiconsIcon
@@ -420,20 +393,20 @@ function PaymentRow({ payment: p }: { payment: PaymentRecord }) {
         </div>
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0.5">
-        <ItemTitle className="block w-full truncate text-xs font-bold sm:text-sm">
+        <ItemTitle className="block w-full truncate text-sm font-medium">
           {isSent
             ? `Paid to ${p.counterpart}`
             : `Received from ${p.counterpart}`}
         </ItemTitle>
         <ItemDescription className="truncate text-xs">{p.note}</ItemDescription>
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-[11px] text-muted-foreground">
           {formatWhen(p.time)}
         </span>
       </ItemContent>
       <ItemActions className="flex-col items-end gap-0">
         <div
           className={cn(
-            "text-sm font-extrabold tabular-nums sm:text-base",
+            "text-sm font-semibold tabular-nums",
             !isSent && "text-success",
             p.state !== "confirmed" && "opacity-70"
           )}
@@ -444,10 +417,11 @@ function PaymentRow({ payment: p }: { payment: PaymentRecord }) {
         </div>
         <span
           className={cn(
-            "text-[10px] font-bold tracking-wider uppercase",
+            "inline-flex items-center gap-1 text-[11px] font-medium",
             state.className
           )}
         >
+          <span aria-hidden className="size-1.5 rounded-full bg-current" />
           {state.label}
         </span>
       </ItemActions>

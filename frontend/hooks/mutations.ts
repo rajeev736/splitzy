@@ -4,7 +4,7 @@ import { useMutation, useQueryClient, type QueryClient, type QueryKey } from "@t
 
 import { useSession } from "@/components/providers/session-provider"
 import { AppError } from "@/lib/errors"
-import type { RpsMove } from "@/lib/games"
+import type { GameMove } from "@/lib/games"
 import { isFirebaseConfigured } from "@/lib/firebase/config"
 import { queryKeys } from "@/lib/query/keys"
 import { awaitRealtime } from "@/lib/query/realtime"
@@ -321,6 +321,17 @@ export const useReportPersonSettlement = createUserMutation({
   },
 })
 
+/** Settle for free with a won 100%-off game. */
+export const useSettleWithGameWaiver = createUserMutation({
+  run: async ({ user, cache }, input: Parameters<typeof settlementService.settleWithGameWaiver>[2]) =>
+    settlementService.settleWithGameWaiver(user, await cache.loadExpenses(), input),
+  apply: ({ cache }, result) => {
+    const updatedMap = new Map(result.updatedExpenses.map((e) => [e.id, e]))
+    cache.setExpenses((list) => list.map((e) => updatedMap.get(e.id) || e))
+  },
+  defaults: { successMessage: "Settled — your game win covered it all!" },
+})
+
 export const useConfirmPersonSettlement = createUserMutation({
   run: async ({ user, cache }, input: settlementService.ConfirmSettlementInput) =>
     settlementService.confirmPersonSettlement(user, await cache.loadExpenses(), input),
@@ -381,9 +392,23 @@ export const useCreateChallenge = createUserMutation({
 })
 
 export const useSubmitMove = createUserMutation({
-  run: ({ user }, v: { challenge: Challenge; move: RpsMove[] | number }) =>
+  run: ({ user }, v: { challenge: Challenge; move: GameMove }) =>
     challengeService.submitMove(user, v.challenge, v.move),
   apply: ({ cache }, challenge) => cache.setChallenges(upsertChallenge(challenge)),
+})
+
+/** Grid games: dig a tile. The challenge's `progress` updates locally right away (and via realtime). */
+export const useDigTile = createUserMutation({
+  run: ({ user }, v: { challenge: Challenge; cell: number }) => challengeService.digTile(user, v.challenge, v.cell),
+  apply: ({ cache, user }, _hit, { challenge, cell }) =>
+    cache.setChallenges((list) =>
+      list.map((c) => {
+        const dug = c.progress?.[user.uid] ?? []
+        return c.id !== challenge.id || dug.includes(cell)
+          ? c
+          : { ...c, progress: { ...c.progress, [user.uid]: [...dug, cell] } }
+      })
+    ),
 })
 
 export const useResolveChallenge = createUserMutation({

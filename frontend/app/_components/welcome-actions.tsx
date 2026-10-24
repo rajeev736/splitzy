@@ -24,8 +24,8 @@ export function WelcomeActions() {
     // Reserve the exact space so the page doesn't shift (CLS) when auth resolves
     return (
       <>
-        <Skeleton className="h-12 w-full rounded-lg" />
-        <Skeleton className="h-12 w-full rounded-lg" />
+        <Skeleton className="h-11 w-full rounded-md" />
+        <Skeleton className="h-11 w-full rounded-md" />
       </>
     )
   }
@@ -33,7 +33,7 @@ export function WelcomeActions() {
   if (user) {
     // Signed in but profile not finished yet
     return (
-      <ButtonLink href="/signup?step=profile" size="lg" className="h-12 w-full text-base">
+      <ButtonLink href="/signup?step=profile" size="lg" className="h-11 w-full text-sm">
         Complete your profile
         <HugeiconsIcon icon={ArrowRight01Icon} data-icon="inline-end" />
       </ButtonLink>
@@ -42,11 +42,11 @@ export function WelcomeActions() {
 
   return (
     <>
-      <ButtonLink href={seenOnboarding ? "/signup" : "/onboarding"} size="lg" className="h-12 w-full text-base">
+      <ButtonLink href={seenOnboarding ? "/signup" : "/onboarding"} size="lg" className="h-11 w-full text-sm">
         Get Started
         <HugeiconsIcon icon={ArrowRight01Icon} data-icon="inline-end" />
       </ButtonLink>
-      <ButtonLink href="/login" size="lg" variant="secondary" className="h-12 w-full text-base">
+      <ButtonLink href="/login" size="lg" variant="outline" className="h-11 w-full text-sm">
         I already have an account
       </ButtonLink>
     </>

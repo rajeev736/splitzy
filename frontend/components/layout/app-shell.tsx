@@ -17,11 +17,9 @@ const REDIRECT_KEY = "joysplit_redirect_to"
 export function FullScreenLoader({ label = "Loading JoySplit..." }: { label?: string }) {
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-3 p-4">
-      <div className="flex size-14 items-center justify-center rounded-2xl bg-secondary">
-        <JoySplitLogoIcon className="size-8" />
-      </div>
-      <p className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-        <Spinner className="size-4 text-primary" />
+      <JoySplitLogoIcon className="size-9" />
+      <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <Spinner className="size-3.5" />
         {label}
       </p>
     </div>
@@ -54,7 +52,7 @@ export function AppShell({ children, hideNav = false }: { children: React.ReactN
   return (
     <div className="flex min-h-svh flex-col md:flex-row">
       {!hideNav && <AppSidebar />}
-      <main className={cn("flex min-w-0 flex-1 flex-col", showBottomNav ? "pb-20 md:pb-8" : "md:pb-8")}>
+      <main className={cn("flex min-w-0 flex-1 flex-col", showBottomNav ? "pb-36 md:pb-8" : "md:pb-8")}>
         {children}
       </main>
       {showBottomNav && <BottomNav />}

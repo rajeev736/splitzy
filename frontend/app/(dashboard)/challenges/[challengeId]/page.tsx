@@ -8,8 +8,10 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { AppHeader } from "@/components/layout/app-header"
 import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
+import { CoinTossPicker, emptyCoinCalls, isCoinComplete } from "@/components/games/coin-toss-picker"
 import { LuckyNumberPicker } from "@/components/games/lucky-number-picker"
 import { emptyRpsMoves, isComplete, RpsPicker } from "@/components/games/rps-picker"
+import { TreasureGrid } from "@/components/games/treasure-picker"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { EmptyState } from "@/components/shared/empty-state"
 import { PersonSettlementDialog } from "@/components/shared/person-settlement-dialog"
@@ -17,14 +19,27 @@ import { ListSkeleton, QueryError } from "@/components/shared/query-state"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
-import { useCancelChallenge, useResolveChallenge, useSubmitMove } from "@/hooks/mutations"
+import { useCancelChallenge, useResolveChallenge, useSettleWithGameWaiver, useSubmitMove } from "@/hooks/mutations"
 import { useChallenges, useExpenses } from "@/hooks/queries"
 import { useLiveGameDiscounts } from "@/hooks/use-game-discounts"
 import { formatCountdown } from "@/hooks/use-now"
-import { activeDiscountPaise, allPlayed, DISCOUNT_WINDOW_MS, discountExpiresAt, GAMES } from "@/lib/games"
+import {
+  activeDiscountPaise,
+  allPlayed,
+  DISCOUNT_WINDOW_MS,
+  discountExpiresAt,
+  GAMES,
+  howToWin,
+  isForFun,
+  isGridGame,
+  stakeLabel,
+  type GameMove,
+} from "@/lib/games"
 import { calculatePersonNetBreakdown, formatPaise } from "@/lib/money"
 import type { Challenge } from "@/lib/types"
-import { LuckyResult, RpsResult } from "./_components/results"
+import { GridPlay } from "./_components/grid-play"
+import { GameResult } from "./_components/results"
+import { GameGlyph } from "@/components/games/game-glyph"
 
 export default function ChallengePage() {
   const { challengeId } = useParams<{ challengeId: string }>()
@@ -67,19 +82,31 @@ function ChallengeBody({ challenge, uid }: { challenge: Challenge; uid: string }
 
   return (
     <>
-      <Card className="rounded-3xl">
+      <Card>
         <CardContent className="flex items-center gap-3">
-          <span className="text-4xl" aria-hidden>
-            {game.emoji}
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-md border text-2xl" aria-hidden>
+            <GameGlyph game={challenge.game} />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold">{game.name}</p>
+            <p className="text-sm font-semibold">{game.name}</p>
             <p className="text-xs text-muted-foreground">
               {isHost ? "You're hosting" : `Hosted by ${challenge.hostName}`}
-              {challenge.expenseTitle && ` · for "${challenge.expenseTitle}"`}
+              {challenge.expenseTitle
+                ? ` · for "${challenge.expenseTitle}"`
+                : challenge.groupName
+                  ? ` · ${challenge.groupName}`
+                  : ""}
             </p>
           </div>
-          <span className="shrink-0 text-sm font-bold text-success">{challenge.discountPercent}% off</span>
+          <span
+            className={
+              isForFun(challenge)
+                ? "shrink-0 text-xs font-medium text-muted-foreground"
+                : "shrink-0 text-sm font-semibold tabular-nums text-success"
+            }
+          >
+            {stakeLabel(challenge)}
+          </span>
         </CardContent>
       </Card>
 
@@ -92,12 +119,16 @@ function ChallengeBody({ challenge, uid }: { challenge: Challenge; uid: string }
       ) : isHost ? (
         <HostWaiting challenge={challenge} />
       ) : challenge.moves[uid] === undefined ? (
-        <PlaySection challenge={challenge} />
+        isGridGame(challenge.game) ? (
+          <GridPlay challenge={challenge} uid={uid} />
+        ) : (
+          <PlaySection challenge={challenge} />
+        )
       ) : (
         <Card>
           <CardContent className="flex flex-col items-center gap-2 py-6 text-center">
             {resolve.isPending ? <Spinner className="size-6" /> : <HugeiconsIcon icon={Clock01Icon} className="size-8 text-muted-foreground" />}
-            <p className="text-sm font-bold">{resolve.isPending ? "Revealing the result…" : "You're locked in!"}</p>
+            <p className="text-sm font-semibold">{resolve.isPending ? "Revealing the result…" : "You're locked in!"}</p>
             <p className="text-xs text-muted-foreground">
               {allPlayed(challenge) ? "Everyone has played." : "Waiting for the others to play. You'll get a notification with the result."}
             </p>
@@ -117,40 +148,76 @@ function ChallengeBody({ challenge, uid }: { challenge: Challenge; uid: string }
 function PlaySection({ challenge }: { challenge: Challenge }) {
   const submit = useSubmitMove()
   const [moves, setMoves] = React.useState(emptyRpsMoves)
+  const [calls, setCalls] = React.useState(emptyCoinCalls)
+  const [box, setBox] = React.useState<number | null>(null)
   const [guess, setGuess] = React.useState(50)
-  const isRps = challenge.game === "rps"
+  const forFun = isForFun(challenge)
+  const disabled = submit.isPending
+
+  // The move for this game, or null while it isn't complete yet
+  const move: GameMove | null =
+    challenge.game === "rps"
+      ? isComplete(moves)
+        ? moves
+        : null
+      : challenge.game === "coin_toss"
+        ? isCoinComplete(calls)
+          ? calls
+          : null
+        : challenge.game === "treasure"
+          ? box
+          : guess
+
+  const intro = {
+    rps: `${challenge.hostName} has locked in 3 secret moves.`,
+    coin_toss: `${challenge.hostName} has locked in 5 secret coin flips. Call each one.`,
+    treasure: `${challenge.hostName} hid treasure in 3 of these 9 boxes. Open one.`,
+    lucky_number: `${challenge.hostName} picked a secret number between 1 and 100.`,
+    // Grid games have their own screen (GridPlay)
+    minefield: "",
+    gold_rush: "",
+  }[challenge.game]
 
   return (
-    <Card className="rounded-3xl">
+    <Card>
       <CardContent className="flex flex-col gap-5">
         <div>
-          <p className="text-base font-bold">Your turn</p>
+          <p className="text-sm font-semibold">Your turn</p>
           <p className="text-xs text-muted-foreground">
-            {isRps
-              ? `${challenge.hostName} has locked in 3 secret moves. Win more rounds to get ${challenge.discountPercent}% off.`
-              : `${challenge.hostName} picked a secret number from 1 to 100. Get closest to win ${challenge.discountPercent}% off.`}
+            {intro} {howToWin(challenge)}
+            {forFun ? "." : ` to get ${challenge.discountPercent}% off.`}
           </p>
         </div>
-        {isRps ? (
-          <RpsPicker value={moves} onChange={setMoves} disabled={submit.isPending} />
+        {challenge.game === "rps" ? (
+          <RpsPicker value={moves} onChange={setMoves} disabled={disabled} />
+        ) : challenge.game === "coin_toss" ? (
+          <CoinTossPicker value={calls} onChange={setCalls} disabled={disabled} />
+        ) : challenge.game === "treasure" ? (
+          <TreasureGrid value={box} onChange={setBox} disabled={disabled} />
         ) : (
-          <LuckyNumberPicker value={guess} onChange={setGuess} disabled={submit.isPending} />
+          <LuckyNumberPicker value={guess} onChange={setGuess} disabled={disabled} />
         )}
         <Button
           size="lg"
-          className="h-12 w-full text-base"
-          disabled={submit.isPending || (isRps && !isComplete(moves))}
-          onClick={() => {
-            if (!isRps) submit.mutate({ challenge, move: guess })
-            else if (isComplete(moves)) submit.mutate({ challenge, move: moves })
-          }}
+          className="h-11 w-full"
+          disabled={disabled || move === null}
+          onClick={() => move !== null && submit.mutate({ challenge, move })}
         >
           {submit.isPending && <Spinner />}
-          Lock in {isRps ? "my moves" : `${guess}`}
+          {challenge.game === "treasure"
+            ? box === null
+              ? "Pick a box"
+              : `Open box ${box + 1}`
+            : challenge.game === "lucky_number"
+              ? `Lock in ${guess}`
+              : challenge.game === "coin_toss"
+                ? "Lock in my calls"
+                : "Lock in my moves"}
         </Button>
         <p className="text-center text-[11px] text-muted-foreground">
-          You can&apos;t change it after locking in. Take your time: the {DISCOUNT_WINDOW_MS / 60000}-minute discount
-          timer only starts once the result is out.
+          You can&apos;t change it after locking in.
+          {!forFun &&
+            ` Take your time: the ${DISCOUNT_WINDOW_MS / 60000}-minute discount timer only starts once the result is out.`}
         </p>
       </CardContent>
     </Card>
@@ -165,21 +232,21 @@ function HostWaiting({ challenge }: { challenge: Challenge }) {
   const played = challenge.players.filter((p) => challenge.moves[p] !== undefined)
 
   return (
-    <Card className="rounded-3xl">
+    <Card>
       <CardContent className="flex flex-col gap-4">
         <div>
-          <p className="text-base font-bold">Waiting for players</p>
+          <p className="text-sm font-semibold">Waiting for players</p>
           <p className="text-xs text-muted-foreground">
             {played.length} of {challenge.players.length} played. The result is revealed automatically when everyone has.
           </p>
         </div>
-        <ul className="flex flex-col gap-1.5">
+        <ul className="flex flex-col divide-y border-y">
           {challenge.players.map((p) => (
-            <li key={p} className="flex items-center justify-between rounded-2xl border px-3 py-2 text-sm">
-              <span className="truncate font-semibold">{challenge.playerNames[p]}</span>
-              <span className="text-xs text-muted-foreground">
-                owes {formatPaise(challenge.bases[p] ?? 0)} ·{" "}
-                {challenge.moves[p] !== undefined ? <strong className="text-success">Played ✓</strong> : "Not yet"}
+            <li key={p} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+              <span className="min-w-0 truncate font-medium">{challenge.playerNames[p]}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {!isForFun(challenge) && <>owes {formatPaise(challenge.bases[p] ?? 0)} · </>}
+                {challenge.moves[p] !== undefined ? <span className="font-medium text-success">Played</span> : "Not yet"}
               </span>
             </li>
           ))}
@@ -201,7 +268,7 @@ function HostWaiting({ challenge }: { challenge: Challenge }) {
         onOpenChange={setConfirmCancel}
         destructive
         title="Cancel this game?"
-        description="Nobody will get a discount from it."
+        description={isForFun(challenge) ? "The players won't be able to play it." : "Nobody will get a discount from it."}
         confirmLabel="Cancel game"
         isPending={cancel.isPending}
         onConfirm={() => cancel.mutate(challenge, { onSuccess: () => setConfirmCancel(false) })}
@@ -214,6 +281,7 @@ function HostWaiting({ challenge }: { challenge: Challenge }) {
 function ResultSection({ challenge, uid }: { challenge: Challenge; uid: string }) {
   const { data: expenses } = useExpenses()
   const [payOpen, setPayOpen] = React.useState(false)
+  const waive = useSettleWithGameWaiver()
   const isHost = challenge.hostId === uid
   const won = challenge.result?.winners.includes(uid) ?? false
   const expiresAt = discountExpiresAt(challenge)
@@ -230,57 +298,96 @@ function ResultSection({ challenge, uid }: { challenge: Challenge; uid: string }
   const discount = paymentReported ? 0 : Math.min(activeDiscountPaise(challenge, uid, now), owedNow)
   const winnerNames = (challenge.result?.winners ?? []).map((w) => challenge.playerNames[w])
 
+  const forFun = isForFun(challenge)
   const headline = isHost
     ? winnerNames.length > 0
       ? `${winnerNames.join(", ")} won`
-      : "You won — no discount given"
+      : forFun
+        ? "Nobody beat you — you win!"
+        : "You won — no discount given"
     : won
-      ? "You won! 🎉"
-      : challenge.game === "rps" && challenge.result?.winners.length === 0
+      ? "You won!"
+      : challenge.result?.winners.length === 0
         ? "No luck this time"
         : "You didn't win this one"
 
   return (
     <>
-      <Card className="rounded-3xl">
+      <Card>
         <CardContent className="flex flex-col gap-4">
-          <p className="text-center text-xl font-black">{headline}</p>
-          {challenge.game === "rps" ? (
-            <RpsResult challenge={challenge} viewerId={uid} />
-          ) : (
-            <LuckyResult challenge={challenge} viewerId={uid} />
-          )}
+          <p className="text-center text-lg font-semibold">{headline}</p>
+          <GameResult challenge={challenge} viewerId={uid} />
         </CardContent>
       </Card>
 
-      {won && !isHost && (
-        <Card className="rounded-3xl border-success/40">
+      {won && !isHost && !forFun && (
+        <Card>
           <CardContent className="flex flex-col items-center gap-3 text-center">
-            {challenge.redeemed?.[uid] ? (
-              <p className="text-sm font-bold text-success">
-                ✓ Discount used — you saved {formatPaise(challenge.redeemed[uid])} on this game
+            {challenge.redeemed?.[uid] && challenge.discountPercent === 100 && owedNow > 0 && !paymentReported ? (
+              // Claimed, but the settle didn't go through (e.g. an earlier error): finish it, still free
+              <>
+                <p className="text-sm font-semibold">Your win is claimed — finish settling</p>
+                <p className="text-xs text-muted-foreground">
+                  The {formatPaise(owedNow)} you owe {challenge.hostName} is covered. Nothing to send.
+                </p>
+                <Button
+                  size="lg"
+                  variant="success"
+                  className="h-11 w-full"
+                  disabled={waive.isPending}
+                  onClick={() => waive.mutate({ creditorId: challenge.hostId, challengeId: challenge.id })}
+                >
+                  {waive.isPending && <Spinner />}
+                  Finish settling for free
+                </Button>
+              </>
+            ) : challenge.redeemed?.[uid] ? (
+              <p className="text-sm font-medium text-success">
+                {challenge.discountPercent === 100
+                  ? `Settled for free — your win covered ${formatPaise(challenge.redeemed[uid])}`
+                  : `Discount used — you saved ${formatPaise(challenge.redeemed[uid])} on this game`}
               </p>
             ) : !challenge.resolvedAt ? (
               // Result saved locally, server time not in yet: the timer hasn't started
               <p className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Spinner /> Starting your {DISCOUNT_WINDOW_MS / 60000}-minute discount…
               </p>
+            ) : discount > 0 && owedNow - discount <= 0 && challenge.discountPercent === 100 ? (
+              // The win covers everything: nothing to pay, just settle
+              <>
+                <p className="flex items-center justify-center gap-2 text-sm font-semibold">
+                  <Spinner />
+                  Settling your {formatPaise(owedNow)} with {challenge.hostName}…
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Your win covers all of it, so it settles by itself and {challenge.hostName} gets a message. Nothing
+                  to pay.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={waive.isPending}
+                  onClick={() => waive.mutate({ creditorId: challenge.hostId, challengeId: challenge.id })}
+                >
+                  Taking long? Settle now
+                </Button>
+              </>
             ) : discount > 0 ? (
               <>
-                <p className="text-sm font-bold">
+                <p className="text-sm font-semibold">
                   Pay {challenge.hostName} now and save {formatPaise(discount)}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {formatPaise(owedNow - discount)} instead of {formatPaise(owedNow)} · offer ends in{" "}
                   <strong className="tabular-nums text-foreground">{formatCountdown(expiresAt - now)}</strong>
                 </p>
-                <Button size="lg" variant="success" className="h-12 w-full text-base" onClick={() => setPayOpen(true)}>
+                <Button size="lg" variant="success" className="h-11 w-full" onClick={() => setPayOpen(true)}>
                   Pay {formatPaise(owedNow - discount)} now
                 </Button>
               </>
             ) : paymentReported ? (
               <p className="text-xs text-muted-foreground">
-                ✓ Payment reported — waiting for {challenge.hostName} to confirm.
+                Payment reported — waiting for {challenge.hostName} to confirm.
               </p>
             ) : owedNow === 0 ? (
               <p className="text-xs text-muted-foreground">You don&apos;t owe {challenge.hostName} anything right now.</p>

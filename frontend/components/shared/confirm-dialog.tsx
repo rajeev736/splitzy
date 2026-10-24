@@ -55,8 +55,8 @@ export function ConfirmDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           {icon && (
-            <AlertDialogMedia className={destructive ? "bg-destructive/10 text-destructive" : "bg-secondary text-primary"}>
-              <HugeiconsIcon icon={icon} />
+            <AlertDialogMedia className={destructive ? "border bg-transparent text-destructive" : "border bg-transparent text-muted-foreground"}>
+              <HugeiconsIcon icon={icon} className="size-5" />
             </AlertDialogMedia>
           )}
           <AlertDialogTitle>{title}</AlertDialogTitle>

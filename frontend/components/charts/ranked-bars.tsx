@@ -38,17 +38,17 @@ export function RankedBars({
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <div className="flex items-baseline justify-between gap-3">
               <div className="min-w-0">
-                <div className="truncate text-sm font-bold">{item.label}</div>
+                <div className="truncate text-sm font-medium">{item.label}</div>
                 {item.detail && <div className="truncate text-[11px] text-muted-foreground">{item.detail}</div>}
               </div>
               <div className="shrink-0 text-right">
-                <div className="text-sm font-bold tabular-nums">{formatValue(item.value)}</div>
+                <div className="text-sm font-semibold tabular-nums">{formatValue(item.value)}</div>
                 {item.trailing}
               </div>
             </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+            <div className="h-1.5 w-full overflow-hidden rounded-sm bg-muted">
               <div
-                className="h-full rounded-full"
+                className="h-full rounded-sm"
                 style={{ width: `${Math.max(2, (item.value / max) * 100)}%`, background: color }}
               />
             </div>

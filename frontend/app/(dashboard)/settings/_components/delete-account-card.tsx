@@ -7,7 +7,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useSession } from "@/components/providers/session-provider"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { useDeleteAccount } from "@/hooks/mutations"
@@ -43,23 +43,27 @@ export function DeleteAccountCard() {
 
   return (
     <>
-      <Card className="rounded-3xl border-destructive/30">
-        <CardContent className="flex flex-col gap-3">
-          <h3 className="text-xs font-bold tracking-wider text-destructive uppercase">Danger zone</h3>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <section className="flex flex-col gap-2">
+        <h2 className="px-1 text-sm font-semibold text-destructive">Danger zone</h2>
+        <Card className="py-0">
+          <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-0.5">
-              <p className="text-sm font-bold">Delete account</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm font-medium">Delete account</p>
+              <p className="text-xs leading-relaxed text-muted-foreground">
                 Permanently removes your profile, personal expenses, friends and notifications.
               </p>
             </div>
-            <Button variant="destructive" className="shrink-0" onClick={() => setOpen(true)}>
+            <Button
+              variant="outline"
+              className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setOpen(true)}
+            >
               <HugeiconsIcon icon={Delete02Icon} data-icon="inline-start" />
               Delete account
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </Card>
+      </section>
 
       <ConfirmDialog
         open={open}

@@ -2,7 +2,6 @@
 
 import { Amount } from "@/components/shared/amount"
 import { UserAvatar } from "@/components/shared/user-avatar"
-import { Badge } from "@/components/ui/badge"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item"
 import type { ExpenseShare } from "@/lib/types"
 
@@ -22,21 +21,19 @@ export function ShareRow({
         <UserAvatar src={share.userPhoto} name={share.userName} size="md" />
       </ItemMedia>
       <ItemContent className="min-w-0">
-        <ItemTitle className="text-xs font-bold">
+        <ItemTitle className="text-sm font-medium">
           <span className="truncate">{share.userName}</span>
-          {isMe && <span className="text-[10px] font-semibold text-primary">(You)</span>}
+          {isMe && <span className="text-xs font-normal text-muted-foreground">(you)</span>}
           {isPayer && (
-            <Badge variant="secondary" className="h-4 px-1.5 text-[9px] font-bold">
-              Payer
-            </Badge>
+            <span className="text-xs font-normal text-muted-foreground">· Payer</span>
           )}
         </ItemTitle>
-        <ItemDescription className="text-[11px] text-muted-foreground">
+        <ItemDescription className="text-xs text-muted-foreground">
           {isPayer ? "Paid full bill" : "Split participant"}
         </ItemDescription>
       </ItemContent>
       <ItemActions>
-        <Amount paise={share.amountPaise} className="text-xs font-bold sm:text-sm" />
+        <Amount paise={share.amountPaise} className="text-sm font-semibold tabular-nums" />
       </ItemActions>
     </Item>
   )

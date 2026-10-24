@@ -5,14 +5,12 @@ import Link from "next/link"
 import { useRouter } from "nextjs-toploader/app"
 import {
   Analytics01Icon,
+  ArrowDownLeft01Icon,
   ArrowRight01Icon,
-  ChartIncreaseIcon,
-  Copy01Icon,
+  ArrowUpRight01Icon,
   Invoice01Icon,
   PlusSignIcon,
   QrCodeIcon,
-  Share08Icon,
-  Tick02Icon,
   UserAdd01Icon,
   UserGroupIcon,
   UserMultipleIcon,
@@ -28,6 +26,7 @@ import { useSession } from "@/components/providers/session-provider"
 import { SettleExpensesDialog } from "@/components/settlement/settle-expenses-dialog"
 import { Amount } from "@/components/shared/amount"
 import { EmptyState } from "@/components/shared/empty-state"
+import { MyIdDialog } from "@/components/shared/my-id-dialog"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
@@ -39,12 +38,6 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
   Item,
   ItemActions,
   ItemContent,
@@ -54,7 +47,6 @@ import {
   ItemTitle,
 } from "@/components/ui/item"
 import { Separator } from "@/components/ui/separator"
-import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
 import {
   useExpenses,
   useFriends,
@@ -70,7 +62,6 @@ import { GameDiscountAmount, GameDiscountNote } from "@/components/games/game-di
 import { useDiscountedBalances, useLiveGameDiscounts } from "@/hooks/use-game-discounts"
 import { expensesInPeriod, mySpendPaise } from "@/lib/analytics"
 import { calculatePersonBalances, formatPaise } from "@/lib/money"
-import type { UserProfile } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 export default function HomePage() {
@@ -132,20 +123,13 @@ export default function HomePage() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           {/* Left column: net balance, quick actions, balance details */}
           <div className="flex flex-col gap-6 lg:col-span-7">
-            <Card className="relative gap-0 rounded-3xl bg-primary p-6 text-primary-foreground shadow-lg ring-0 sm:p-7">
-              <div className="pointer-events-none absolute -right-6 -bottom-6 size-36 rounded-full bg-primary-foreground/10 blur-2xl" />
-              <HugeiconsIcon
-                icon={ChartIncreaseIcon}
-                className="absolute top-4 right-4 size-20 opacity-20"
-              />
-
-              <div className="relative z-10">
-                <div className="text-xs font-medium opacity-80">
-                  Your Net Balance
-                </div>
+            {/* Net balance: one number that matters, the two that make it up, and the way to the detail */}
+            <Card className="gap-0 py-0">
+              <div className="flex flex-col gap-1 bg-linear-to-br from-primary/10 via-primary/[0.03] to-transparent p-5 sm:p-6">
+                <div className="text-xs font-medium tracking-wide text-primary uppercase">Net balance</div>
                 <div
                   className={cn(
-                    "my-1 text-3xl font-extrabold tracking-tight tabular-nums sm:text-4xl",
+                    "text-4xl font-bold tracking-tight tabular-nums sm:text-5xl",
                     balanceTone(netBalancePaise)
                   )}
                 >
@@ -155,71 +139,80 @@ export default function HomePage() {
                       ? `-${formatPaise(Math.abs(netBalancePaise))}`
                       : "₹0"}
                 </div>
-                <div className="text-xs font-semibold opacity-80">
+                <div className="text-sm text-muted-foreground">
                   {netBalancePaise > 0
                     ? "You will receive overall"
                     : netBalancePaise < 0
                       ? "You need to pay overall"
-                      : "All settled up!"}
+                      : "You're all settled up"}
                 </div>
                 <GameDiscountNote
-                  className="mt-2 bg-primary-foreground/20 text-primary-foreground"
+                  className="mt-1"
                   discountPaise={gameDiscountPaise}
                   endsAt={gameDiscountEndsAt}
                   now={now}
                 />
-                <div className="mt-4 grid grid-cols-2 gap-3 border-t border-primary-foreground/20 pt-3 text-xs">
-                  <div>
-                    <div className="opacity-80">You are owed</div>
-                    <div className="text-base font-bold tabular-nums text-emerald-300">
+              </div>
+
+              <div className="grid grid-cols-2 divide-x border-t">
+                <div className="flex items-center gap-3 px-5 py-3.5 sm:px-6">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-success/12 text-success">
+                    <HugeiconsIcon icon={ArrowDownLeft01Icon} className="size-4" strokeWidth={2} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-xs text-muted-foreground">You are owed</div>
+                    <div className="text-lg leading-tight font-bold tabular-nums text-success">
                       {formatPaise(totalOwedToYouPaise)}
                     </div>
                   </div>
-                  <div>
-                    <div className="opacity-80">You owe</div>
-                    <div className="text-base font-bold tabular-nums text-red-300">
+                </div>
+                <div className="flex items-center gap-3 px-5 py-3.5 sm:px-6">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-destructive/12 text-destructive">
+                    <HugeiconsIcon icon={ArrowUpRight01Icon} className="size-4" strokeWidth={2} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-xs text-muted-foreground">You owe</div>
+                    <div className="text-lg leading-tight font-bold tabular-nums text-destructive">
                       {formatPaise(totalYouOwePaise)}
                     </div>
                   </div>
                 </div>
-
-                <div className="mt-3.5 border-t border-primary-foreground/20 pt-3">
-                  <button
-                    type="button"
-                    onClick={() => router.push("/split-summary")}
-                    className="flex w-full items-center justify-between rounded-xl bg-primary-foreground/15 px-3 py-2 text-xs font-bold text-primary-foreground transition hover:bg-primary-foreground/25 active:scale-[0.99]"
-                  >
-                    <span>View Split Expense Summary</span>
-                    <span className="font-bold">→</span>
-                  </button>
-                </div>
               </div>
+
+              <button
+                type="button"
+                onClick={() => router.push("/split-summary")}
+                className="flex w-full items-center justify-between border-t px-5 py-3 text-sm font-medium transition-colors hover:bg-muted/60 sm:px-6"
+              >
+                <span className="text-primary">View split summary</span>
+                <HugeiconsIcon icon={ArrowRight01Icon} className="size-4 text-primary" />
+              </button>
             </Card>
 
             {/* PhonePe-style entry points: one tap per kind of split */}
-            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+            <div className="grid grid-cols-4 divide-x overflow-hidden rounded-lg border bg-card">
               <QuickAction
                 icon={UserGroupIcon}
-                label="Group split"
-                tone="bg-secondary text-primary"
+                label="Group"
+                tone="bg-primary/12 text-primary"
                 onClick={() => router.push("/expenses/new?tab=group")}
               />
               <QuickAction
                 icon={UserMultipleIcon}
-                label="Friend split"
-                tone="bg-success/10 text-success"
+                label="Friend"
+                tone="bg-success/12 text-success"
                 onClick={() => router.push("/expenses/new?tab=friend")}
               />
               <QuickAction
                 icon={Wallet01Icon}
                 label="Personal"
-                tone="bg-warning/10 text-warning"
+                tone="bg-warning/12 text-warning"
                 onClick={() => router.push("/expenses/new?tab=personal")}
               />
               <QuickAction
                 icon={QrCodeIcon}
                 label="My ID"
-                tone="bg-info/10 text-info"
+                tone="bg-violet-500/12 text-violet-600 dark:text-violet-400"
                 onClick={() => setShowIdModal(true)}
               />
             </div>
@@ -227,23 +220,21 @@ export default function HomePage() {
             <EnableNotificationsBanner />
             <HomeGamesCard />
             <MonthSnapshot spentPaise={monthSpentPaise} count={monthCount} />
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1 rounded-2xl" onClick={() => router.push("/groups/new")}>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" onClick={() => router.push("/groups/new")}>
                 <HugeiconsIcon icon={PlusSignIcon} data-icon="inline-start" />
                 New group
               </Button>
-              <Button variant="outline" className="flex-1 rounded-2xl" onClick={() => router.push("/friends/add")}>
+              <Button variant="outline" onClick={() => router.push("/friends/add")}>
                 <HugeiconsIcon icon={UserAdd01Icon} data-icon="inline-start" />
                 Add friend
               </Button>
             </div>
 
-            <Card className="rounded-3xl">
+            <Card>
               <CardHeader>
                 <CardTitle>
-                  <h2 className="text-base font-bold tracking-tight">
-                    Balance Details
-                  </h2>
+                  <h2 className="text-sm font-semibold">Balance details</h2>
                 </CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
@@ -280,8 +271,8 @@ export default function HomePage() {
 
           {/* Right column: recent groups, recent activity */}
           <div className="flex flex-col gap-6 lg:col-span-5">
-            <Card className="rounded-3xl">
-              <SectionHeader title="Recent Groups" href="/groups" />
+            <Card>
+              <SectionHeader title="Recent groups" href="/groups" />
               <CardContent>
                 {groupsQuery.isPending ? (
                   <ListSkeleton />
@@ -291,17 +282,15 @@ export default function HomePage() {
                     onRetry={groupsQuery.refetch}
                   />
                 ) : groups.length > 0 ? (
-                  <ItemGroup className="gap-3">
+                  <ItemGroup className="-mx-2 gap-0.5">
                     {groups.slice(0, 3).map((group) => (
                       <GroupListItem
                         key={group.id}
                         group={group}
+                        variant="default"
+                        className="px-2"
                         hasUnread={hasGroupUnreadExpenses(group.id)}
-                        action={
-                          <span className="text-xs font-bold text-primary">
-                            View
-                          </span>
-                        }
+                        action={<HugeiconsIcon icon={ArrowRight01Icon} className="size-4 text-muted-foreground" />}
                       />
                     ))}
                   </ItemGroup>
@@ -320,8 +309,8 @@ export default function HomePage() {
               </CardContent>
             </Card>
 
-            <Card className="rounded-3xl">
-              <SectionHeader title="Recent Expenses" href="/history" />
+            <Card>
+              <SectionHeader title="Recent expenses" href="/history" />
               <CardContent>
                 {expensesQuery.isPending ? (
                   <ListSkeleton />
@@ -331,12 +320,13 @@ export default function HomePage() {
                     onRetry={expensesQuery.refetch}
                   />
                 ) : recentExpenses.length > 0 ? (
-                  <ItemGroup className="gap-1">
+                  <ItemGroup className="-mx-2 gap-0.5">
                     {recentExpenses.map((exp) => (
                       <ExpenseListItem
                         key={exp.id}
                         expense={exp}
                         variant="default"
+                        className="px-2"
                         hasUnread={isExpenseUnread(exp.id)}
                         onClick={() => markSeen(exp.id)}
                         description={
@@ -348,9 +338,9 @@ export default function HomePage() {
                           <div className="flex flex-col items-end">
                             <Amount
                               paise={exp.amountPaise}
-                              className="text-xs font-bold"
+                              className="text-sm font-semibold"
                             />
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-[11px] text-muted-foreground">
                               {exp.date}
                             </span>
                           </div>
@@ -377,7 +367,7 @@ export default function HomePage() {
       </PageContainer>
 
       {user && (
-        <JoySplitIdDialog
+        <MyIdDialog
           user={user}
           open={showIdModal}
           onOpenChange={setShowIdModal}
@@ -404,18 +394,18 @@ function MonthSnapshot({ spentPaise, count }: { spentPaise: number; count: numbe
   return (
     <Link
       href="/insights"
-      className="flex items-center gap-3 rounded-3xl border bg-card p-4 transition-colors hover:border-primary/40"
+      className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3.5 transition-colors hover:bg-muted/50"
     >
-      <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-secondary text-primary">
-        <HugeiconsIcon icon={Analytics01Icon} className="size-5" />
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+        <HugeiconsIcon icon={Analytics01Icon} className="size-4.5" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-xs text-muted-foreground">Your spend in {month}</span>
-        <span className="block text-lg font-extrabold tabular-nums">{formatPaise(spentPaise)}</span>
+        <span className="block text-base font-semibold tabular-nums">{formatPaise(spentPaise)}</span>
       </span>
-      <span className="flex items-center gap-1 text-xs font-bold text-primary">
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
         {count} {count === 1 ? "expense" : "expenses"}
-        <HugeiconsIcon icon={ArrowRight01Icon} className="size-3.5" />
+        <HugeiconsIcon icon={ArrowRight01Icon} className="size-4" />
       </span>
     </Link>
   )
@@ -425,27 +415,21 @@ function SectionHeader({ title, href }: { title: string; href: string }) {
   return (
     <CardHeader>
       <CardTitle>
-        <h2 className="text-base font-bold tracking-tight">{title}</h2>
+        <h2 className="text-sm font-semibold">{title}</h2>
       </CardTitle>
       <CardAction>
-        <Link
-          href={href}
-          className="flex items-center gap-1 text-xs font-bold text-primary hover:underline"
-        >
-          See all <HugeiconsIcon icon={ArrowRight01Icon} className="size-3.5" />
+        <Link href={href} className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
+          See all
         </Link>
       </CardAction>
     </CardHeader>
   )
 }
 
-/**
- * Green / red for amounts shown on the blue balance card. Uses the light
- * 300 shades: the regular success/destructive tokens are unreadable on blue.
- */
+/** Green when you're owed, red when you owe, neutral when settled. */
 function balanceTone(signedPaise: number) {
-  if (signedPaise > 0) return "text-emerald-300"
-  if (signedPaise < 0) return "text-red-300"
+  if (signedPaise > 0) return "text-success"
+  if (signedPaise < 0) return "text-destructive"
   return undefined
 }
 
@@ -461,21 +445,16 @@ function QuickAction({
   onClick: () => void
 }) {
   return (
-    <Button
-      variant="outline"
+    <button
+      type="button"
       onClick={onClick}
-      className="h-auto flex-col gap-1.5 rounded-2xl bg-card px-1 py-3 whitespace-normal shadow-xs hover:border-primary/40 hover:shadow-md sm:gap-2 sm:p-3.5"
+      className="flex flex-col items-center justify-center gap-2 px-1 py-4 text-foreground transition-colors hover:bg-muted/60 active:bg-muted"
     >
-      <span
-        className={cn(
-          "flex size-10 items-center justify-center rounded-2xl sm:size-11",
-          tone
-        )}
-      >
-        <HugeiconsIcon icon={icon} className="size-5" strokeWidth={2.2} />
+      <span className={cn("flex size-10 items-center justify-center rounded-lg", tone)}>
+        <HugeiconsIcon icon={icon} className="size-5" strokeWidth={1.9} />
       </span>
-      <span className="text-center text-[11px] leading-tight font-bold sm:text-xs">{label}</span>
-    </Button>
+      <span className="text-center text-xs leading-tight font-medium">{label}</span>
+    </button>
   )
 }
 
@@ -502,23 +481,21 @@ function FriendBalanceSection({
   const gameDiscounts = useLiveGameDiscounts()
   return (
     <div className="flex flex-col gap-2">
-      <div className="text-xs font-bold tracking-wider text-muted-foreground uppercase">
-        {title}
-      </div>
+      <div className="text-xs font-medium text-muted-foreground">{title}</div>
       {rows.length > 0 ? (
-        <ItemGroup className="gap-1">
+        <ItemGroup className="-mx-2 gap-0.5">
           {rows.map(({ userId, name, photoURL, subtitle, upiId, netBalancePaise }) => (
             <Item
               key={userId}
               size="sm"
               onClick={() => onSelectPerson?.(userId)}
-              className="flex-nowrap cursor-pointer transition-colors hover:bg-muted/60"
+              className="cursor-pointer flex-nowrap px-2 transition-colors hover:bg-muted/60"
             >
               <ItemMedia>
                 <UserAvatar src={photoURL} name={name} size="sm" />
               </ItemMedia>
               <ItemContent className="min-w-0 gap-0">
-                <ItemTitle className="text-xs font-bold">{name}</ItemTitle>
+                <ItemTitle className="text-sm font-medium">{name}</ItemTitle>
                 <ItemDescription className="font-mono text-[11px]">
                   {subtitle}
                 </ItemDescription>
@@ -531,10 +508,8 @@ function FriendBalanceSection({
                     now={gameDiscounts.now}
                     prefix={netBalancePaise > 0 ? "+" : "-"}
                     className={cn(
-                      "text-sm font-black leading-tight sm:text-base",
-                      netBalancePaise > 0
-                        ? "text-emerald-600 dark:text-emerald-400"
-                        : "text-destructive"
+                      "text-lg leading-tight font-bold tracking-tight",
+                      netBalancePaise > 0 ? "text-success" : "text-destructive"
                     )}
                   />
                   <PaymentDisputeLine personId={userId} personName={name} />
@@ -561,101 +536,8 @@ function FriendBalanceSection({
           ))}
         </ItemGroup>
       ) : (
-        <div className="rounded-2xl bg-muted/50 p-4 text-center text-xs text-muted-foreground">
-          {emptyText}
-        </div>
+        <p className="py-1 text-xs text-muted-foreground">{emptyText}</p>
       )}
     </div>
-  )
-}
-
-function JoySplitIdDialog({
-  user,
-  open,
-  onOpenChange,
-}: {
-  user: UserProfile
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  const { copied, copy } = useCopyToClipboard()
-
-  const handleShareId = () => {
-    if (typeof navigator.share === "function") {
-      navigator
-        .share({
-          title: "Add me on JoySplit",
-          text: `Hey! Add me on JoySplit using my JoySplit ID: ${user.splitzyId} to split expenses easily!`,
-        })
-        .catch(() => {})
-    } else {
-      copy(user.splitzyId)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>My JoySplit ID</DialogTitle>
-        </DialogHeader>
-
-        <div className="flex flex-col items-center gap-4 py-2 text-center">
-          <UserAvatar
-            src={user.photoURL}
-            name={user.displayName}
-            size="lg"
-            className="ring-2 ring-border"
-          />
-          <div>
-            <h4 className="text-base font-bold">{user.displayName}</h4>
-            <p className="text-xs text-muted-foreground">{user.email}</p>
-          </div>
-
-          <div className="flex w-full items-center justify-between rounded-2xl border bg-muted/50 p-4">
-            <div className="text-left">
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase">
-                Your JoySplit ID
-              </span>
-              <div className="font-mono text-lg font-bold tracking-wider text-primary">
-                {user.splitzyId}
-              </div>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              title="Copy ID"
-              aria-label="Copy ID"
-              onClick={() => copy(user.splitzyId)}
-            >
-              <HugeiconsIcon
-                icon={copied ? Tick02Icon : Copy01Icon}
-                className={cn("size-5", copied && "text-success")}
-              />
-            </Button>
-          </div>
-
-          <p className="max-w-xs text-xs text-muted-foreground">
-            Share this code with friends so they can add you to their friend
-            list and groups instantly.
-          </p>
-
-          <div className="flex w-full flex-col gap-2">
-            <Button size="lg" className="h-11 w-full" onClick={handleShareId}>
-              <HugeiconsIcon icon={Share08Icon} data-icon="inline-start" />
-              Share My JoySplit ID
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="h-11 w-full"
-              onClick={() => onOpenChange(false)}
-            >
-              Done
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
   )
 }

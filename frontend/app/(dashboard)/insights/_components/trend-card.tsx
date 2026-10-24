@@ -50,17 +50,17 @@ export function TrendCard({
       {!hasData ? (
         <SectionEmpty>No spending in this period yet.</SectionEmpty>
       ) : asTable ? (
-        <div className="max-h-72 overflow-auto rounded-2xl border">
+        <div className="max-h-72 overflow-auto">
           <table className="w-full text-xs tabular-nums">
-            <thead className="sticky top-0 bg-muted text-muted-foreground">
+            <thead className="sticky top-0 border-b bg-card text-muted-foreground">
               <tr>
-                <th className="px-3 py-2 text-left font-semibold">{daily ? "Day" : "Month"}</th>
+                <th className="py-2 pr-3 text-left font-medium">{daily ? "Day" : "Month"}</th>
                 {series.map((s) => (
-                  <th key={s.key} className="px-3 py-2 text-right font-semibold">
+                  <th key={s.key} className="px-3 py-2 text-right font-medium">
                     {s.label}
                   </th>
                 ))}
-                <th className="px-3 py-2 text-right font-semibold">Total</th>
+                <th className="py-2 pl-3 text-right font-medium">Total</th>
               </tr>
             </thead>
             <tbody>
@@ -68,13 +68,13 @@ export function TrendCard({
                 .filter((b) => b.total > 0)
                 .map((b) => (
                   <tr key={b.key} className="border-t">
-                    <td className="px-3 py-2 font-semibold">{b.fullLabel}</td>
+                    <td className="py-2 pr-3 font-medium">{b.fullLabel}</td>
                     {series.map((s) => (
                       <td key={s.key} className="px-3 py-2 text-right">
                         {formatPaise(b.values[s.key as keyof TrendBucket["values"]])}
                       </td>
                     ))}
-                    <td className="px-3 py-2 text-right font-bold">{formatPaise(b.total)}</td>
+                    <td className="py-2 pl-3 text-right font-semibold">{formatPaise(b.total)}</td>
                   </tr>
                 ))}
             </tbody>

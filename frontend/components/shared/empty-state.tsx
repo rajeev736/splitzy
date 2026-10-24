@@ -36,32 +36,32 @@ export function EmptyState({
       <EmptyHeader>
         {imageSrc ? (
           <EmptyMedia>
-            <div className="relative size-40 overflow-hidden rounded-3xl shadow-sm">
+            <div className="relative size-40 overflow-hidden rounded-lg">
               <Image src={imageSrc} alt={title} fill className="object-cover" />
             </div>
           </EmptyMedia>
         ) : icon ? (
           <EmptyMedia
             className={cn(
-              "size-16 rounded-full",
-              tone === "error" ? "bg-destructive/10 text-destructive" : "bg-secondary text-primary"
+              "size-11 rounded-lg",
+              tone === "error" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"
             )}
           >
-            <HugeiconsIcon icon={icon} className="size-8" />
+            <HugeiconsIcon icon={icon} className="size-5" />
           </EmptyMedia>
         ) : null}
-        <EmptyTitle className="text-lg font-bold">{title}</EmptyTitle>
+        <EmptyTitle className="text-base font-semibold">{title}</EmptyTitle>
         {description ? <EmptyDescription>{description}</EmptyDescription> : null}
       </EmptyHeader>
       {(action || secondaryAction) && (
         <EmptyContent>
           {action && (
-            <Button className="w-full" size="lg" onClick={action.onClick}>
+            <Button className="w-full" onClick={action.onClick}>
               {action.label}
             </Button>
           )}
           {secondaryAction && (
-            <Button className="w-full" size="lg" variant="outline" onClick={secondaryAction.onClick}>
+            <Button className="w-full" variant="outline" onClick={secondaryAction.onClick}>
               {secondaryAction.label}
             </Button>
           )}

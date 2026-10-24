@@ -3,14 +3,13 @@
 import { Tick02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item"
 import type { AppNotification } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { NotificationIcon } from "./notification-icon"
 
-/** A notification in the list; payment reports get inline confirm / dispute buttons or status badge once resolved. */
+/** A notification in the list; payment reports get inline confirm / dispute buttons (on a second line) or a status once resolved. */
 export function NotificationRow({
   notif,
   expenseShareStatus,
@@ -44,7 +43,7 @@ export function NotificationRow({
       }}
       className={cn(
         "cursor-pointer flex-nowrap items-start rounded-none p-4",
-        isUnread ? "bg-primary/5 hover:bg-primary/10" : "hover:bg-muted"
+        isUnread ? "bg-muted/40 hover:bg-muted/70" : "hover:bg-muted/50"
       )}
     >
       <ItemMedia className="mt-0.5">
@@ -52,9 +51,9 @@ export function NotificationRow({
       </ItemMedia>
 
       <ItemContent className="min-w-0 gap-0.5">
-        <ItemTitle className="line-clamp-none text-xs font-bold sm:text-sm">{notif.title}</ItemTitle>
+        <ItemTitle className="line-clamp-none text-sm font-medium">{notif.title}</ItemTitle>
         <ItemDescription className="line-clamp-none text-xs leading-relaxed">{notif.message}</ItemDescription>
-        <span className="mt-1 block text-[10px] text-muted-foreground">
+        <span className="mt-1 block text-[11px] text-muted-foreground">
           {new Date(notif.createdAt).toLocaleString([], {
             day: "numeric",
             month: "short",
@@ -62,31 +61,32 @@ export function NotificationRow({
             minute: "2-digit",
           })}
         </span>
-      </ItemContent>
-
-      <ItemActions className="shrink-0 self-center">
         {notif.type === "PAYMENT_REPORTED" && (
           isConfirmed ? (
-            <Badge className="bg-success/15 font-bold text-success border border-success/30 text-[11px] py-1 px-2.5">
-              <HugeiconsIcon icon={Tick02Icon} className="mr-1 size-3.5" />
+            <span className="mt-1.5 flex items-center gap-1 text-xs font-medium text-success">
+              <HugeiconsIcon icon={Tick02Icon} className="size-3.5" />
               Received
-            </Badge>
+            </span>
           ) : isDisputed ? (
-            <Badge variant="destructive" className="font-bold text-[11px] py-1 px-2.5">
+            <span className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-destructive">
+              <span aria-hidden className="size-1.5 rounded-full bg-current" />
               Declined
-            </Badge>
+            </span>
           ) : (
-            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <div className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
               <Button size="sm" variant="success" disabled={isBusy} onClick={onConfirm}>
-                Yes, Received
+                Yes, received
               </Button>
-              <Button size="sm" variant="destructive" disabled={isBusy} onClick={onDispute}>
+              <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" disabled={isBusy} onClick={onDispute}>
                 No
               </Button>
             </div>
           )
         )}
-        {isUnread && <span className="size-2.5 shrink-0 rounded-full bg-primary" aria-label="Unread" />}
+      </ItemContent>
+
+      <ItemActions className="shrink-0 self-start pt-1.5">
+        {isUnread && <span className="size-2 shrink-0 rounded-full bg-primary" aria-label="Unread" />}
       </ItemActions>
     </Item>
   )

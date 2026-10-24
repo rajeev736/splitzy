@@ -7,7 +7,6 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useSession } from "@/components/providers/session-provider"
 import { Amount } from "@/components/shared/amount"
 import { EmptyState } from "@/components/shared/empty-state"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ItemGroup, ItemSeparator } from "@/components/ui/item"
@@ -40,8 +39,8 @@ export function MembersTab({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm font-bold">Group Members</CardTitle>
-        <CardDescription className="text-xs">Authoritative group membership and balances</CardDescription>
+        <CardTitle className="text-sm font-semibold">Members</CardTitle>
+        <CardDescription className="text-xs">Group membership and balances</CardDescription>
         <CardAction>
           <Button size="sm" variant="outline" onClick={onInvite}>
             <HugeiconsIcon icon={UserAdd01Icon} data-icon="inline-start" />
@@ -77,22 +76,20 @@ export function MembersTab({
                   splitzyId={memberSplitzyId || mId}
                   isCreator={mId === group.createdBy}
                   isAdmin={info?.role === "admin"}
-                  actions={
+                  footer={
                     <>
                       {isCurrent ? (
-                        <Badge variant="secondary" className="font-bold">
-                          You
-                        </Badge>
+                        <span className="text-xs text-muted-foreground">You</span>
                       ) : isFriend ? (
-                        <Badge className="bg-success/10 font-bold text-success">
-                          <HugeiconsIcon icon={Tick02Icon} data-icon="inline-start" />
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
+                          <HugeiconsIcon icon={Tick02Icon} className="size-3.5" />
                           Friends
-                        </Badge>
+                        </span>
                       ) : outgoingReq ? (
-                        <Badge className="bg-primary/10 font-bold text-primary">Request Sent</Badge>
+                        <span className="text-xs text-muted-foreground">Friend request sent</span>
                       ) : incomingReq ? (
                         <Button
-                          size="sm"
+                          size="xs"
                           disabled={acceptFriendRequest.isPending && acceptFriendRequest.variables === incomingReq.id}
                           onClick={() => acceptFriendRequest.mutate(incomingReq.id)}
                         >
@@ -103,7 +100,7 @@ export function MembersTab({
                         </Button>
                       ) : (
                         <Button
-                          size="sm"
+                          size="xs"
                           variant="outline"
                           disabled={sendFriendRequest.isPending && sendFriendRequest.variables === target}
                           onClick={() => sendFriendRequest.mutate(target)}
@@ -116,15 +113,16 @@ export function MembersTab({
                           Add Friend
                         </Button>
                       )}
-
-                      <div className="min-w-16 text-right">
-                        {balance.netPaise !== 0 ? (
-                          <Amount paise={balance.netPaise} signed className="text-xs font-bold" />
-                        ) : (
-                          <span className="text-xs font-medium text-muted-foreground">Settled</span>
-                        )}
-                      </div>
                     </>
+                  }
+                  actions={
+                    <div className="text-right">
+                      {balance.netPaise !== 0 ? (
+                        <Amount paise={balance.netPaise} signed className="text-sm font-semibold tabular-nums" />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Settled</span>
+                      )}
+                    </div>
                   }
                 />
               </Fragment>
@@ -140,20 +138,20 @@ export function MembersTab({
             title="No other members yet"
             description="Invite friends or search by JoySplit ID to split expenses together."
             action={{ label: "Invite Members", onClick: onInvite }}
-            className="rounded-xl border border-dashed bg-muted/30 py-6"
+            className="border-t py-6"
           />
         )}
 
         {formerMembers.length > 0 && (
           <div className="flex flex-col gap-3 border-t pt-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold tracking-wider text-muted-foreground uppercase">
-                Former Members ({formerMembers.length})
+              <span className="text-sm font-semibold">
+                Former members <span className="font-normal text-muted-foreground">({formerMembers.length})</span>
               </span>
               <span className="text-[11px] text-muted-foreground">Past activity preserved</span>
             </div>
 
-            <ItemGroup className="gap-0 rounded-xl border bg-muted/40 px-3">
+            <ItemGroup className="gap-0">
               {formerMembers.map((mId, i) => {
                 const info = group.formerMemberDetails?.[mId] || group.memberDetails?.[mId]
                 return (
@@ -166,9 +164,7 @@ export function MembersTab({
                       size="sm"
                       muted
                       actions={
-                        <Badge variant="secondary" className="font-semibold text-muted-foreground">
-                          Left Group
-                        </Badge>
+                        <span className="text-xs text-muted-foreground">Left group</span>
                       }
                     />
                   </Fragment>

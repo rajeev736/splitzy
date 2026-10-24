@@ -113,9 +113,9 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
 
       <PageContainer className="max-w-2xl">
         {isDeleted && (
-          <Alert className="border-destructive/30 bg-destructive/5">
+          <Alert>
             <HugeiconsIcon icon={Delete02Icon} className="text-destructive" />
-            <AlertTitle className="font-bold">This expense was deleted</AlertTitle>
+            <AlertTitle className="font-semibold text-destructive">This expense was deleted</AlertTitle>
             <AlertDescription className="text-xs">
               Deleted on {new Date(expense.deletedAt!).toLocaleString()}. It is kept for history only and no longer
               counts towards any balance.
@@ -124,7 +124,7 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
         )}
 
         {/* Hero banner */}
-        <div className="relative h-44 overflow-hidden rounded-3xl border shadow-sm sm:h-52">
+        <div className="relative h-44 overflow-hidden rounded-lg border sm:h-52">
           <Image
             src={expense.groupIcon || DEFAULT_GROUP_ICON}
             alt={expense.title}
@@ -133,21 +133,21 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
             className="object-cover"
           />
           <div className="absolute inset-0 flex flex-col justify-end bg-linear-to-t from-black/70 via-black/20 to-transparent p-5 text-white">
-            <h1 className="text-2xl font-extrabold tracking-tight">{expense.title}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">{expense.title}</h1>
             <p className="mt-0.5 text-xs text-white/80">
-              {expense.groupName || "Personal Split"} • {expense.date}
+              {expense.groupName || "Personal Split"} · {expense.date}
             </p>
           </div>
         </div>
 
         {/* Expense overview / details */}
-        <Card className="rounded-3xl">
+        <Card>
           <CardHeader>
-            <CardDescription className="text-xs font-semibold">
+            <CardDescription className="text-xs">
               {isPayer
                 ? "You paid this bill"
                 : myShare
-                  ? "Your Share in this bill"
+                  ? "Your share in this bill"
                   : "Total Bill"}
             </CardDescription>
             <CardTitle>
@@ -159,14 +159,14 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
                       ? myShare.amountPaise
                       : expense.amountPaise
                 }
-                className="text-3xl font-extrabold tracking-tight sm:text-4xl text-foreground"
+                className="text-3xl font-semibold tracking-tight tabular-nums text-foreground"
               />
             </CardTitle>
             <CardDescription className="text-xs">
               {isPayer ? (
                 <>Split between {expense.shares.length} participants · Paid on {expense.date}</>
               ) : myShare ? (
-                <>Total bill <Amount paise={expense.amountPaise} className="font-semibold" /> · Paid by {expense.payerName}</>
+                <>Total bill <Amount paise={expense.amountPaise} className="font-medium text-foreground" /> · Paid by {expense.payerName}</>
               ) : (
                 <>Paid by {expense.payerName} · Split between {expense.shares.length} participants</>
               )}
@@ -175,10 +175,10 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
         </Card>
 
         {game && !isDeleted && (
-          <Card className="rounded-3xl">
-            <CardContent className="flex items-center gap-3">
+          <Card>
+            <CardContent className="flex flex-col items-start gap-3 min-[420px]:flex-row min-[420px]:items-center">
               <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
-                <p className="text-sm font-bold">
+                <p className="text-sm font-medium">
                   {game.role === "winner"
                     ? `You won a game on this bill — pay ${gameOtherName} less`
                     : `${gameOtherName} won your game on this bill`}
@@ -193,11 +193,11 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
         )}
 
         {/* Participants & shares */}
-        <Card className="rounded-3xl">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-bold">Participants &amp; Shares</CardTitle>
+            <CardTitle className="text-sm font-semibold">Participants &amp; shares</CardTitle>
             <CardAction className="text-xs text-muted-foreground">
-              {expense.shares.length} people • {expense.splitType.toLowerCase()} split
+              {expense.shares.length} people · {expense.splitType.toLowerCase()} split
             </CardAction>
           </CardHeader>
           <CardContent className="flex flex-col">
@@ -215,23 +215,23 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
         </Card>
 
         {/* Bill metadata */}
-        <Card className="rounded-3xl">
+        <Card>
           <CardContent className="flex flex-col gap-2 text-xs">
             <DetailRow icon={UserIcon} label="Paid by">
-              <span className="font-bold">{expense.payerName}</span>
+              <span className="font-medium">{expense.payerName}</span>
             </DetailRow>
             <Separator />
             {expense.recipientId && expense.recipientId !== expense.payerId && (
               <>
                 <DetailRow icon={Invoice01Icon} label="Reimburse to">
-                  <span className="font-bold">{expense.recipientName}</span>
+                  <span className="font-medium">{expense.recipientName}</span>
                 </DetailRow>
                 <Separator />
               </>
             )}
             <DetailRow icon={AtIcon} label="UPI ID">
               <div className="flex min-w-0 items-center gap-1">
-                <span className="truncate font-mono font-bold text-primary">{expense.recipientUpiId}</span>
+                <span className="truncate font-mono font-medium">{expense.recipientUpiId}</span>
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -245,7 +245,7 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
             </DetailRow>
             <Separator />
             <DetailRow icon={Calendar03Icon} label="Date">
-              <span className="font-semibold">{expense.date}</span>
+              <span className="font-medium">{expense.date}</span>
             </DetailRow>
             {expense.notes && (
               <p className="pt-1 text-muted-foreground italic">Note: &quot;{expense.notes}&quot;</p>

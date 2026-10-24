@@ -39,12 +39,12 @@ export function GroupInviteCard({
   const busy = accept.isPending || decline.isPending
 
   return (
-    <Item variant="outline" className={cn("flex-wrap border-primary/30 bg-primary/5", className)}>
+    <Item variant="outline" className={cn("flex-wrap bg-card", className)}>
       <ItemMedia>
         <GroupIcon src={group.icon} alt={group.name} size="md" />
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0.5">
-        <ItemTitle className="block w-full truncate font-bold">{group.name}</ItemTitle>
+        <ItemTitle className="block w-full truncate font-semibold">{group.name}</ItemTitle>
         <ItemDescription className="text-xs">
           {inviterName ? `${inviterName} invited you` : "You're invited"} · {group.members.length} members
         </ItemDescription>
@@ -52,7 +52,7 @@ export function GroupInviteCard({
           <span className="text-[11px] font-medium text-primary">Also sent you a friend request</span>
         )}
       </ItemContent>
-      <ItemActions>
+      <ItemActions className="w-full pl-[3.625rem] sm:w-auto sm:pl-0">
         <Button
           size="sm"
           variant="secondary"
@@ -73,7 +73,7 @@ export function GroupInviteCard({
         </Button>
       </ItemActions>
       {linkedRequest && (
-        <ItemFooter className="justify-end">
+        <ItemFooter className="pl-[3.625rem] sm:justify-end sm:pl-0">
           <Button
             size="sm"
             disabled={busy}

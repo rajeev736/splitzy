@@ -8,7 +8,7 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 import { AppHeader } from "@/components/layout/app-header"
 import { NotificationSettings } from "@/components/shared/enable-notifications"
 import { PageContainer } from "@/components/layout/app-shell"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { isFirebaseConfigured } from "@/lib/firebase/config"
 import { cn } from "@/lib/utils"
@@ -26,32 +26,43 @@ const noopSubscribe = () => () => {}
 /** next-themes only knows the theme after mount; avoid a hydration mismatch. */
 const useIsClient = () => React.useSyncExternalStore(noopSubscribe, () => true, () => false)
 
-function SettingsCard({
+/** A titled group of settings: label above, one flat card of rows below. */
+function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="px-1 text-sm font-semibold">{title}</h2>
+      <Card className="gap-0 divide-y py-0">{children}</Card>
+    </section>
+  )
+}
+
+/** One settings row: icon, label + description, and an optional control. */
+function SettingsRow({
   icon,
-  iconClassName,
   title,
   description,
   children,
+  stacked,
 }: {
   icon: IconSvgElement
-  iconClassName: string
   title: string
-  description: string
-  children: React.ReactNode
+  description?: React.ReactNode
+  children?: React.ReactNode
+  stacked?: boolean
 }) {
   return (
-    <Card className="rounded-3xl">
-      <CardHeader className="flex items-center gap-3">
-        <div className={cn("flex size-10 shrink-0 items-center justify-center rounded-2xl", iconClassName)}>
-          <HugeiconsIcon icon={icon} className="size-5" />
+    <div className={cn("flex gap-3 px-4 py-3.5", stacked ? "flex-col" : "items-center")}>
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <HugeiconsIcon icon={icon} className="size-4" />
+        </span>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <p className="text-sm font-medium">{title}</p>
+          {description && <div className="text-xs leading-relaxed text-muted-foreground">{description}</div>}
         </div>
-        <div className="flex flex-col gap-0.5">
-          <CardTitle className="text-sm font-bold">{title}</CardTitle>
-          <CardDescription className="text-xs">{description}</CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
+      </div>
+      {children}
+    </div>
   )
 }
 
@@ -65,66 +76,70 @@ export default function SettingsPage() {
 
       <PageContainer className="max-w-xl pb-20">
         {/* Appearance & theme */}
-        <SettingsCard
-          icon={Sun03Icon}
-          iconClassName="bg-secondary text-primary"
-          title="Appearance"
-          description="Choose your preferred theme"
-        >
-          <ToggleGroup
-            variant="outline"
-            spacing={2.5}
-            className="grid w-full grid-cols-3"
-            value={isClient && theme ? [theme] : []}
-            onValueChange={(value: string[]) => {
-              if (value[0]) setTheme(value[0])
-            }}
-          >
-            {THEME_OPTIONS.map((opt) => (
-              <ToggleGroupItem
-                key={opt.value}
-                value={opt.value}
-                aria-label={opt.label}
-                className="group/theme h-auto flex-col gap-2 rounded-2xl p-3.5 text-xs font-bold text-muted-foreground aria-pressed:border-primary aria-pressed:bg-secondary aria-pressed:text-primary aria-pressed:ring-2 aria-pressed:ring-primary/20"
-              >
-                <span className="rounded-xl bg-muted p-2 group-aria-pressed/theme:bg-primary group-aria-pressed/theme:text-primary-foreground">
-                  <HugeiconsIcon icon={opt.icon} />
-                </span>
-                {opt.label}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </SettingsCard>
+        <SettingsSection title="Appearance">
+          <SettingsRow icon={Sun03Icon} title="Theme" description="Choose your preferred theme" stacked>
+            <ToggleGroup
+              variant="outline"
+              spacing={2}
+              className="grid w-full grid-cols-3"
+              value={isClient && theme ? [theme] : []}
+              onValueChange={(value: string[]) => {
+                if (value[0]) setTheme(value[0])
+              }}
+            >
+              {THEME_OPTIONS.map((opt) => (
+                <ToggleGroupItem
+                  key={opt.value}
+                  value={opt.value}
+                  aria-label={opt.label}
+                  className="h-9 gap-1.5 rounded-md text-xs font-medium text-muted-foreground aria-pressed:border-foreground/40 aria-pressed:bg-muted aria-pressed:text-foreground"
+                >
+                  <HugeiconsIcon icon={opt.icon} className="size-4" />
+                  {opt.label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </SettingsRow>
+        </SettingsSection>
 
         {/* Notification-bar alerts */}
-        <SettingsCard
-          icon={Notification01Icon}
-          iconClassName="bg-secondary text-primary"
-          title="Notifications"
-          description="Alerts in your phone's notification bar"
-        >
-          <NotificationSettings />
-        </SettingsCard>
+        <SettingsSection title="Notifications">
+          <SettingsRow icon={Notification01Icon} title="Notification bar alerts" stacked>
+            <div className="pl-11">
+              <NotificationSettings />
+            </div>
+          </SettingsRow>
+        </SettingsSection>
 
         {/* PWA install */}
-        <SettingsCard
-          icon={SmartPhone01Icon}
-          iconClassName="bg-secondary text-primary"
-          title="Install JoySplit App"
-          description="Add JoySplit to your home screen"
-        >
-          <div className="rounded-2xl bg-muted/60 p-3.5 text-xs leading-relaxed text-muted-foreground">
-            On iPhone: Tap the <strong>Share</strong> button in Safari, then tap <strong>Add to Home Screen</strong>.
-            <br />
-            On Android: Tap the menu (three dots) in Chrome, then tap <strong>Install app</strong>.
-          </div>
-        </SettingsCard>
+        <SettingsSection title="Install JoySplit app">
+          <SettingsRow
+            icon={SmartPhone01Icon}
+            title="On iPhone"
+            description={
+              <>
+                Tap the <strong className="font-medium text-foreground">Share</strong> button in Safari, then tap{" "}
+                <strong className="font-medium text-foreground">Add to Home Screen</strong>.
+              </>
+            }
+          />
+          <SettingsRow
+            icon={SmartPhone01Icon}
+            title="On Android"
+            description={
+              <>
+                Tap the menu (three dots) in Chrome, then tap{" "}
+                <strong className="font-medium text-foreground">Install app</strong>.
+              </>
+            }
+          />
+        </SettingsSection>
 
         {isFirebaseConfigured && <DeleteAccountCard />}
 
         {/* About */}
-        <div className="flex flex-col gap-1 text-center text-xs text-muted-foreground">
-          <p className="font-bold text-foreground">JoySplit v1.0.0</p>
+        <div className="flex flex-col gap-0.5 text-center text-xs text-muted-foreground">
+          <p className="font-medium text-foreground">JoySplit v1.0.0</p>
           <p>Split bills. Keep friendships.</p>
         </div>
       </PageContainer>

@@ -98,7 +98,6 @@ function GroupsContent() {
           <ButtonLink
             href="/groups/new"
             size="icon-lg"
-            className="rounded-full shadow-sm"
             aria-label="Create Group"
           >
             <HugeiconsIcon
@@ -111,7 +110,7 @@ function GroupsContent() {
       />
 
       <PageContainer className="max-w-4xl gap-5">
-        <InputGroup className="h-11 rounded-2xl bg-card">
+        <InputGroup className="h-11 rounded-lg bg-card">
           <InputGroupAddon>
             <HugeiconsIcon icon={Search01Icon} />
           </InputGroupAddon>
@@ -146,7 +145,7 @@ function GroupsContent() {
                 key={group.id}
                 group={group}
                 hasUnread={hasGroupUnreadExpenses(group.id)}
-                className="rounded-3xl p-4"
+                className="rounded-lg p-4"
                 action={
                   <div className="flex items-center gap-2.5">
                     {balance.allSettled ? (
@@ -156,11 +155,11 @@ function GroupsContent() {
                     ) : (
                       <span className="flex flex-col items-end gap-0.5">
                         {balance.netPaise > 0 ? (
-                          <span className="text-sm font-black tabular-nums text-emerald-600 dark:text-emerald-400 sm:text-base">
+                          <span className="text-sm font-semibold tabular-nums text-success">
                             +{formatPaise(balance.netPaise)}
                           </span>
                         ) : (
-                          <span className="text-sm font-black tabular-nums text-destructive sm:text-base">
+                          <span className="text-sm font-semibold tabular-nums text-destructive">
                             -{formatPaise(Math.abs(balance.netPaise))}
                           </span>
                         )}
@@ -169,7 +168,7 @@ function GroupsContent() {
                     )}
                     <HugeiconsIcon
                       icon={ArrowRight01Icon}
-                      className="size-5 text-muted-foreground/70"
+                      className="size-4 text-muted-foreground"
                     />
                   </div>
                 }
