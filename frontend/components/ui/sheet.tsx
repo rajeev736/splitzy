@@ -8,8 +8,84 @@ import { Button } from "@/components/ui/button"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Cancel01Icon } from "@hugeicons/core-free-icons"
 
-function Sheet({ ...props }: SheetPrimitive.Root.Props) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+import { useModalRoot } from "@/hooks/use-back-to-close"
+
+const SheetCloseContext = React.createContext<() => void>(() => {})
+
+/**
+ * Bottom sheets close when dragged down with a finger. The drag starts only
+ * when nothing inside is scrolled, so swiping first scrolls the content back up.
+ */
+function useSwipeDownToClose(enabled: boolean) {
+  const close = React.useContext(SheetCloseContext)
+  // The latest close, read at gesture end, so the listeners don't re-attach every render
+  const closeRef = React.useRef(close)
+  React.useEffect(() => {
+    closeRef.current = close
+  })
+  return React.useCallback(
+    (el: HTMLDivElement | null) => {
+      if (!el || !enabled) return
+      let drag: { startY: number; startT: number; dy: number; active: boolean } | null = null
+
+      const onStart = (e: TouchEvent) => {
+        const target = e.target as HTMLElement
+        if (e.touches.length !== 1 || target.closest("input[type=range], [data-no-swipe]")) return
+        for (let node: HTMLElement | null = target; node && node !== el; node = node.parentElement) {
+          if (node.scrollTop > 0) return
+        }
+        drag = { startY: e.touches[0].clientY, startT: Date.now(), dy: 0, active: false }
+      }
+      const onMove = (e: TouchEvent) => {
+        if (!drag) return
+        const dy = e.touches[0].clientY - drag.startY
+        if (!drag.active) {
+          if (dy < -6) drag = null // scrolling up: leave it to the content
+          if (!drag || dy < 6) return
+          drag.active = true
+          el.style.transition = "none"
+        }
+        e.preventDefault() // no page scroll / pull-to-refresh while dragging
+        drag.dy = Math.max(0, dy)
+        el.style.transform = `translateY(${drag.dy}px)`
+      }
+      const onEnd = () => {
+        const d = drag
+        drag = null
+        if (!d?.active) return
+        const speed = d.dy / Math.max(1, Date.now() - d.startT)
+        el.style.transition = "transform 200ms ease-out"
+        if (d.dy > Math.min(140, el.offsetHeight * 0.3) || speed > 0.6) {
+          el.style.transform = "translateY(100%)"
+          closeRef.current()
+        } else {
+          el.style.transform = ""
+        }
+      }
+
+      el.addEventListener("touchstart", onStart, { passive: true })
+      el.addEventListener("touchmove", onMove, { passive: false })
+      el.addEventListener("touchend", onEnd)
+      el.addEventListener("touchcancel", onEnd)
+      return () => {
+        el.removeEventListener("touchstart", onStart)
+        el.removeEventListener("touchmove", onMove)
+        el.removeEventListener("touchend", onEnd)
+        el.removeEventListener("touchcancel", onEnd)
+      }
+    },
+    [enabled]
+  )
+}
+
+/** Phone back closes the sheet instead of leaving the page. */
+function Sheet(props: SheetPrimitive.Root.Props) {
+  const { rootProps, close } = useModalRoot(props)
+  return (
+    <SheetCloseContext.Provider value={close}>
+      <SheetPrimitive.Root data-slot="sheet" {...rootProps} />
+    </SheetCloseContext.Provider>
+  )
 }
 
 function SheetTrigger({ ...props }: SheetPrimitive.Trigger.Props) {
@@ -47,10 +123,12 @@ function SheetContent({
   side?: "top" | "right" | "bottom" | "left"
   showCloseButton?: boolean
 }) {
+  const swipeRef = useSwipeDownToClose(side === "bottom")
   return (
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Popup
+        ref={swipeRef}
         data-slot="sheet-content"
         data-side={side}
         className={cn(

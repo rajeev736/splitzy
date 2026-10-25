@@ -5,9 +5,12 @@ import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog
 import { cn } from "cn"
 
 import { Button } from "@/components/ui/button"
+import { useModalRoot } from "@/hooks/use-back-to-close"
 
-function AlertDialog({ ...props }: AlertDialogPrimitive.Root.Props) {
-  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
+/** Phone back closes the dialog instead of leaving the page. */
+function AlertDialog(props: AlertDialogPrimitive.Root.Props) {
+  const { rootProps } = useModalRoot(props)
+  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...rootProps} />
 }
 
 function AlertDialogTrigger({ ...props }: AlertDialogPrimitive.Trigger.Props) {

@@ -10,7 +10,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { AppSidebar } from "./app-sidebar"
 import { BottomNav } from "./bottom-nav"
-import { isBottomNavPage } from "./nav-items"
+import { isBottomNavPage, showsAddExpenseFab } from "./nav-items"
 
 const REDIRECT_KEY = "joysplit_redirect_to"
 
@@ -52,7 +52,13 @@ export function AppShell({ children, hideNav = false }: { children: React.ReactN
   return (
     <div className="flex min-h-svh flex-col md:flex-row">
       {!hideNav && <AppSidebar />}
-      <main className={cn("flex min-w-0 flex-1 flex-col", showBottomNav ? "pb-36 md:pb-8" : "md:pb-8")}>
+      {/* Room for the bottom nav, plus the floating add button where there is one */}
+      <main
+        className={cn(
+          "flex min-w-0 flex-1 flex-col",
+          showBottomNav ? (showsAddExpenseFab(pathname) ? "pb-36 md:pb-8" : "pb-20 md:pb-8") : "md:pb-8"
+        )}
+      >
         {children}
       </main>
       {showBottomNav && <BottomNav />}

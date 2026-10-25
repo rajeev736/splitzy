@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import QRCode from "qrcode"
 import { Copy01Icon, QrCodeIcon, Share08Icon, Tick02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
@@ -14,18 +15,62 @@ import { addFriendLink } from "@/lib/joysplit-id"
 import type { UserProfile } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-/** Share the add-me link (falls back to copying the ID). */
-export function useShareMyId(user: Pick<UserProfile, "splitzyId">) {
+/** A shareable picture: the QR code with the JoySplit ID and name under it. */
+async function qrImageFile(splitzyId: string, name: string): Promise<File | null> {
+  const size = 560
+  const qr = new Image()
+  qr.src = await QRCode.toDataURL(addFriendLink(splitzyId), {
+    width: size,
+    margin: 2,
+    errorCorrectionLevel: "M",
+    color: { dark: "#09090b", light: "#ffffff" },
+  })
+  await qr.decode()
+  const canvas = document.createElement("canvas")
+  canvas.width = size
+  canvas.height = size + 120
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return null
+  ctx.fillStyle = "#ffffff"
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(qr, 0, 0, size, size)
+  ctx.textAlign = "center"
+  ctx.fillStyle = "#09090b"
+  ctx.font = "600 36px ui-monospace, SFMono-Regular, Menlo, monospace"
+  ctx.fillText(splitzyId, size / 2, size + 44)
+  ctx.fillStyle = "#71717a"
+  ctx.font = "400 22px system-ui, -apple-system, sans-serif"
+  ctx.fillText(`Add ${name} on JoySplit`, size / 2, size + 86)
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"))
+  return blob ? new File([blob], `joysplit-${splitzyId}.png`, { type: "image/png" }) : null
+}
+
+/**
+ * Share your JoySplit ID with its QR picture (where the phone can share
+ * images), else the add-me link, else copy the ID. The picture is made ahead
+ * of time so sharing stays within the tap.
+ */
+export function useShareMyId(user: Pick<UserProfile, "splitzyId" | "displayName">) {
   const { copied, copy } = useCopyToClipboard()
+  const [file, setFile] = React.useState<File | null>(null)
+
+  React.useEffect(() => {
+    let cancelled = false
+    qrImageFile(user.splitzyId, user.displayName)
+      .then((f) => !cancelled && setFile(f))
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [user.splitzyId, user.displayName])
+
   const share = () => {
-    if (typeof navigator.share === "function") {
-      navigator
-        .share({
-          title: "Add me on JoySplit",
-          text: `Hey! Add me on JoySplit — my JoySplit ID is ${user.splitzyId}`,
-          url: addFriendLink(user.splitzyId),
-        })
-        .catch(() => {})
+    const link = addFriendLink(user.splitzyId)
+    const text = `Hey! Add me on JoySplit — my JoySplit ID is ${user.splitzyId}`
+    if (file && navigator.canShare?.({ files: [file] })) {
+      navigator.share({ title: "Add me on JoySplit", text: `${text}\n${link}`, files: [file] }).catch(() => {})
+    } else if (typeof navigator.share === "function") {
+      navigator.share({ title: "Add me on JoySplit", text, url: link }).catch(() => {})
     } else {
       copy(user.splitzyId)
     }

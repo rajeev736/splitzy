@@ -8,8 +8,12 @@ import { Button } from "@/components/ui/button"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Cancel01Icon } from "@hugeicons/core-free-icons"
 
-function Dialog({ ...props }: DialogPrimitive.Root.Props) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+import { useModalRoot } from "@/hooks/use-back-to-close"
+
+/** Phone back closes the dialog instead of leaving the page. */
+function Dialog(props: DialogPrimitive.Root.Props) {
+  const { rootProps } = useModalRoot(props)
+  return <DialogPrimitive.Root data-slot="dialog" {...rootProps} />
 }
 
 function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {

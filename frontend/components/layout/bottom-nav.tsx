@@ -11,7 +11,7 @@ import { UserAvatar } from "@/components/shared/user-avatar"
 import { useGamesYourTurn } from "@/hooks/queries"
 import { useUnreadTracking } from "@/hooks/use-unread-tracking"
 import { cn } from "@/lib/utils"
-import { isNavActive, MOBILE_NAV_ITEMS as MOBILE_ITEMS } from "./nav-items"
+import { isNavActive, MOBILE_NAV_ITEMS as MOBILE_ITEMS, showsAddExpenseFab } from "./nav-items"
 
 /** Set while the current tab was opened from Home, so going "Home" can just step back. */
 const FROM_HOME_KEY = "joysplit_tab_from_home"
@@ -63,7 +63,7 @@ export function BottomNav() {
   return (
     <>
       {/* Mobile counterpart of the sidebar's "Add Expense" button. Split summary has its own full-width one. */}
-      {pathname !== "/split-summary" && (
+      {showsAddExpenseFab(pathname) && (
         <Link
           href="/expenses/new"
           aria-label="Add expense"

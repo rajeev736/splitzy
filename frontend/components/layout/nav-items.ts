@@ -44,5 +44,12 @@ export const MOBILE_NAV_ITEMS = NAV_ITEMS.filter((i) => i.mobile)
  */
 export const isBottomNavPage = (pathname: string) => MOBILE_NAV_ITEMS.some((i) => i.href === pathname)
 
+/**
+ * Tab pages that show the floating add-expense button. Split summary has its
+ * own full-width one; Profile keeps Log out just above the nav instead.
+ */
+export const showsAddExpenseFab = (pathname: string) =>
+  isBottomNavPage(pathname) && pathname !== "/split-summary" && pathname !== "/profile"
+
 export const isNavActive = (pathname: string, href: string) =>
   pathname === href || (href !== "/home" && pathname.startsWith(href))
