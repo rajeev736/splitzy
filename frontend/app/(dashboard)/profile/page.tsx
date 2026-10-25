@@ -116,35 +116,33 @@ export default function ProfilePage() {
       {/* Fills the screen between the header and the bottom nav, with Log out at the bottom */}
       <PageContainer className="max-w-xl min-h-[calc(100svh-8.875rem-env(safe-area-inset-bottom,0px))] gap-4 py-4 md:min-h-0 md:py-6">
         {/* You: photo, name, email, UPI — one edit button for all of it */}
-        <Card className="gap-0 py-0">
-          <div className="flex items-center gap-3.5 p-4">
-            <UserAvatar src={user.photoURL} name={user.displayName} size="lg" className="size-14 border" />
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-base font-semibold">{user.displayName}</h1>
-              <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-              <p className="mt-1 flex min-w-0 items-center gap-1 text-xs">
-                <HugeiconsIcon icon={AtIcon} className="size-3.5 shrink-0 text-muted-foreground" />
-                {user.upiId ? (
-                  <span className="truncate font-medium">{user.upiId}</span>
-                ) : (
-                  <button type="button" onClick={openEdit} className="font-medium text-primary">
-                    Add UPI ID
-                  </button>
-                )}
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="-mt-6 -mr-1 self-start text-muted-foreground"
-              aria-label="Edit profile"
-              title="Edit profile"
-              onClick={openEdit}
-            >
-              <HugeiconsIcon icon={PencilEdit02Icon} />
-            </Button>
+        <section className="flex items-center gap-3.5 px-1">
+          <UserAvatar src={user.photoURL} name={user.displayName} size="lg" className="size-16 border" />
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-lg leading-tight font-semibold">{user.displayName}</h1>
+            <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+            <p className="mt-1 flex min-w-0 items-center gap-1 text-xs">
+              <HugeiconsIcon icon={AtIcon} className="size-3.5 shrink-0 text-muted-foreground" />
+              {user.upiId ? (
+                <span className="truncate font-medium">{user.upiId}</span>
+              ) : (
+                <button type="button" onClick={openEdit} className="font-medium text-primary">
+                  Add UPI ID
+                </button>
+              )}
+            </p>
           </div>
-        </Card>
+          <Button
+            variant="outline"
+            size="icon"
+            className="shrink-0 rounded-full text-muted-foreground"
+            aria-label="Edit profile"
+            title="Edit profile"
+            onClick={openEdit}
+          >
+            <HugeiconsIcon icon={PencilEdit02Icon} className="size-4" />
+          </Button>
+        </section>
 
         {/* Your JoySplit ID and QR: tap the code to show it big */}
         <IdCard
