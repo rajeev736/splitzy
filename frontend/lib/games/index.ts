@@ -125,27 +125,48 @@ function randomInt(n: number) {
 
 export const RPS_MOVES = ["rock", "paper", "scissors"] as const
 export type RpsMove = (typeof RPS_MOVES)[number]
+/**
+ * A player's move in a round: a real move, or "none" when their round timer
+ * ran out — which always loses that round. Hosts always pick real moves.
+ */
+export const RPS_TIMEOUT = "none"
+export type RpsPlay = RpsMove | typeof RPS_TIMEOUT
 export const RPS_ROUNDS = 3
-export const RPS_LABEL: Record<RpsMove, { name: string; emoji: string }> = {
+/** Seconds a player has to pick each round. */
+export const RPS_ROUND_SECONDS = 10
+export const RPS_LABEL: Record<RpsPlay, { name: string; emoji: string }> = {
   rock: { name: "Stone", emoji: "✊" },
   paper: { name: "Paper", emoji: "✋" },
   scissors: { name: "Scissors", emoji: "✌️" },
+  none: { name: "Time's up", emoji: "⏱️" },
 }
 
-export const beats = (a: RpsMove, b: RpsMove) =>
-  (a === "rock" && b === "scissors") || (a === "paper" && b === "rock") || (a === "scissors" && b === "paper")
+/** Does `a` win against `b`? Running out of time loses to any move. */
+export const beats = (a: RpsPlay, b: RpsPlay) =>
+  a !== RPS_TIMEOUT &&
+  (b === RPS_TIMEOUT ||
+    (a === "rock" && b === "scissors") ||
+    (a === "paper" && b === "rock") ||
+    (a === "scissors" && b === "paper"))
 
+/** The host's 3 secret moves (never a timeout). */
 export const isRpsMoves = (v: unknown): v is RpsMove[] =>
   Array.isArray(v) && v.length === RPS_ROUNDS && v.every((m) => (RPS_MOVES as readonly string[]).includes(m))
 
+/** A player's 3 moves: real moves, or timeouts for rounds they didn't pick in time. */
+export const isRpsPlays = (v: unknown): v is RpsPlay[] =>
+  Array.isArray(v) &&
+  v.length === RPS_ROUNDS &&
+  v.every((m) => m === RPS_TIMEOUT || (RPS_MOVES as readonly string[]).includes(m))
+
 export interface RpsRound {
   host: RpsMove
-  player: RpsMove
+  player: RpsPlay
   outcome: "player" | "host" | "draw"
 }
 
 /** Rounds and totals; the player wins with more round wins than the host. */
-export function scoreRps(hostMoves: RpsMove[], playerMoves: RpsMove[]) {
+export function scoreRps(hostMoves: RpsMove[], playerMoves: RpsPlay[]) {
   const rounds: RpsRound[] = hostMoves.map((host, i) => {
     const player = playerMoves[i]
     return { host, player, outcome: beats(player, host) ? "player" : beats(host, player) ? "host" : "draw" }
@@ -271,7 +292,7 @@ export function scoreLuckyNumber(secret: number, guesses: Record<string, number>
 /* ── Moves, secrets & results ─────────────────────────────────────────── */
 
 /** RPS moves, coin calls, a box, a guess — or, in grid games, the list of digs. */
-export type GameMove = RpsMove[] | CoinSide[] | number[] | number
+export type GameMove = RpsPlay[] | CoinSide[] | number[] | number
 
 /** The host's hidden side of the game, stored in challenges/{id}/secret/value. */
 export interface GameSecret {
@@ -284,7 +305,7 @@ export interface GameSecret {
 }
 
 export function isValidMove(game: GameId, move: unknown): move is GameMove {
-  if (game === "rps") return isRpsMoves(move)
+  if (game === "rps") return isRpsPlays(move)
   if (game === "coin_toss") return isCoinCalls(move)
   if (game === "treasure") return isTreasurePick(move)
   if (isGridGame(game)) return isValidDigs(game, move)
@@ -324,7 +345,7 @@ export function newSecretFor(game: GameId, host: GameSecret = {}): GameSecret {
 function beatsSecret(c: Pick<Challenge, "game">, secret: GameSecret, move: GameMove) {
   switch (c.game) {
     case "rps":
-      return scoreRps(secret.moves as RpsMove[], move as RpsMove[]).playerWon
+      return scoreRps(secret.moves as RpsMove[], move as RpsPlay[]).playerWon
     case "coin_toss":
       return scoreCoin(secret.flips as CoinSide[], move as CoinSide[]).won
     case "treasure":

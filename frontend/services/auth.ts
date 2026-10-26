@@ -132,7 +132,7 @@ export async function signupWithEmail(input: {
     }
   }
 
-  const splitzyId =
+  let splitzyId =
     preferredSplitzyId && /^(JOY|SPL)-[A-Z0-9]{6}$/.test(preferredSplitzyId)
       ? preferredSplitzyId
       : generateRandomSplitzyId()
@@ -149,13 +149,21 @@ export async function signupWithEmail(input: {
 
   const firestore = getDb()
   if (firestore) {
-    try {
-      await setDoc(doc(firestore, "splitzyIds", splitzyId), {
-        uid,
-        createdAt: newUser.createdAt,
-      })
-    } catch (sErr) {
-      console.warn("Could not reserve splitzyId:", sErr)
+    // The profile needs an ID reserved by this user: if it's taken (by someone
+    // else), try fresh random ones instead of failing the signup
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const ref = doc(firestore, "splitzyIds", splitzyId)
+      try {
+        await setDoc(ref, { uid, createdAt: newUser.createdAt })
+        break
+      } catch (sErr) {
+        // Already ours (e.g. a retried signup): keep it
+        const existing = await getDoc(ref).catch(() => null)
+        if (existing?.data()?.uid === uid) break
+        console.warn("JoySplit ID taken, trying another:", sErr)
+        splitzyId = generateRandomSplitzyId()
+        newUser.splitzyId = splitzyId
+      }
     }
     await setDoc(doc(firestore, "users", uid), toStoredProfile(newUser), { merge: true })
   }

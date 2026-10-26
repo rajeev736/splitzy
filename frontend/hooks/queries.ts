@@ -203,6 +203,8 @@ export function useGroupExpenses(groupId: string | undefined) {
     queryFn: () => (isFirebaseConfigured ? awaitRealtime<Expense[]>(queryClient, key) : Promise.resolve([])),
     enabled: !!uid && !!groupId,
     staleTime: Infinity,
+    // Keep a group's expenses around between visits so reopening it is instant
+    gcTime: 30 * 60 * 1000,
     retry: false,
     meta: { errorMessage: false },
   })

@@ -6,6 +6,8 @@ import {
   DISCOUNT_WINDOW_MS,
   gameStats,
   isCoinCalls,
+  isRpsMoves,
+  isRpsPlays,
   isValidCells,
   isValidDigs,
   newSecretFor,
@@ -33,6 +35,12 @@ s = scoreRps(["rock", "paper", "scissors"], ["paper", "scissors", "scissors"])
 assert(s.playerWins === 2 && s.playerWon, "2 round wins beat the host")
 s = scoreRps(["paper", "paper", "paper"], ["rock", "rock", "scissors"])
 assert(s.hostWins === 2 && s.playerWins === 1 && !s.playerWon, "host wins 2–1")
+// A round the player ran out of time on always goes to the host
+s = scoreRps(["rock", "rock", "rock"], ["paper", "none", "none"])
+assert(s.playerWins === 1 && s.hostWins === 2 && !s.playerWon, "timed-out rounds are lost")
+s = scoreRps(["rock", "rock", "rock"], ["paper", "paper", "none"])
+assert(s.playerWins === 2 && s.playerWon, "two wins beat one timeout")
+assert(isRpsPlays(["none", "rock", "none"]) && !isRpsMoves(["none", "rock", "paper"]), "only players can time out")
 console.log("✓ Stone Paper Scissors scoring")
 
 // Lucky number: closest wins, ties share

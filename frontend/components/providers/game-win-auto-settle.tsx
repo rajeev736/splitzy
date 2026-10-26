@@ -26,13 +26,18 @@ export function GameWinAutoSettle() {
     for (const c of challenges) {
       if (tried.current.has(c.id)) continue
       if (c.status !== "DONE" || c.discountPercent !== 100 || c.hostId === uid) continue
-      if (!c.result?.winners.includes(uid)) continue
+      if (!c.result?.winners.includes(uid) || c.redeemed?.[uid]) continue
 
-      const breakdown = calculatePersonNetBreakdown(uid, c.hostId, expenses.data)
+      const breakdown = calculatePersonNetBreakdown(
+        uid,
+        c.hostId,
+        expenses.data,
+        c.groupId ? { type: "group", groupId: c.groupId } : undefined
+      )
       const open = breakdown.aOwesBLines.filter((l) => l.status !== "PAYMENT_REPORTED")
       if (breakdown.netPayablePaise <= 0 || open.length === 0) continue
       // Only what the game covers: the amount when it was set up, from splits made before it
-      const covers = c.redeemed?.[uid] ?? c.bases?.[uid] ?? 0
+      const covers = c.bases?.[uid] ?? 0
       if (covers < breakdown.netPayablePaise) continue
       if (breakdown.aOwesBLines.some((l) => l.expense.createdAt > c.createdAt)) continue
 

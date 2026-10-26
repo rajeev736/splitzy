@@ -11,6 +11,7 @@ import { useSession } from "@/components/providers/session-provider"
 import { CoinTossPicker, emptyCoinCalls, isCoinComplete } from "@/components/games/coin-toss-picker"
 import { LuckyNumberPicker } from "@/components/games/lucky-number-picker"
 import { emptyRpsMoves, isComplete, RpsPicker } from "@/components/games/rps-picker"
+import { RpsTimedPlay } from "@/components/games/rps-timed-play"
 import { TreasureGrid } from "@/components/games/treasure-picker"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { EmptyState } from "@/components/shared/empty-state"
@@ -34,6 +35,7 @@ import {
   isGridGame,
   stakeLabel,
   type GameMove,
+  type RpsPlay,
 } from "@/lib/games"
 import { calculatePersonNetBreakdown, formatPaise } from "@/lib/money"
 import type { Challenge } from "@/lib/types"
@@ -122,7 +124,11 @@ function ChallengeBody({ challenge, uid }: { challenge: Challenge; uid: string }
         isGridGame(challenge.game) ? (
           <GridPlay challenge={challenge} uid={uid} />
         ) : (
-          <PlaySection challenge={challenge} />
+          challenge.game === "rps" ? (
+            <RpsPlaySection challenge={challenge} />
+          ) : (
+            <PlaySection challenge={challenge} />
+          )
         )
       ) : (
         <Card>
@@ -145,6 +151,37 @@ function ChallengeBody({ challenge, uid }: { challenge: Challenge; uid: string }
 }
 
 /** A player's turn: pick moves / a guess and lock in. */
+/** Stone Paper Scissors, played one timed round at a time; the moves lock in after round 3. */
+function RpsPlaySection({ challenge }: { challenge: Challenge }) {
+  const submit = useSubmitMove()
+  const forFun = isForFun(challenge)
+  const onComplete = React.useCallback(
+    (moves: RpsPlay[]) => submit.mutate({ challenge, move: moves }),
+    // The game doesn't change while playing; submit's identity is stable enough
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [challenge.id]
+  )
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4">
+        <div>
+          <p className="text-sm font-semibold">Your turn</p>
+          <p className="text-xs text-muted-foreground">
+            {howToWin(challenge)}
+            {forFun ? "." : ` to get ${challenge.discountPercent}% off.`}
+          </p>
+        </div>
+        <RpsTimedPlay hostName={challenge.hostName} disabled={submit.isPending} onComplete={onComplete} />
+        {submit.isError && submit.variables && (
+          <Button variant="outline" onClick={() => submit.variables && submit.mutate(submit.variables)}>
+            Couldn&apos;t save your moves — try again
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 function PlaySection({ challenge }: { challenge: Challenge }) {
   const submit = useSubmitMove()
   const [moves, setMoves] = React.useState(emptyRpsMoves)
@@ -324,23 +361,10 @@ function ResultSection({ challenge, uid }: { challenge: Challenge; uid: string }
         <Card>
           <CardContent className="flex flex-col items-center gap-3 text-center">
             {challenge.redeemed?.[uid] && challenge.discountPercent === 100 && owedNow > 0 && !paymentReported ? (
-              // Claimed, but the settle didn't go through (e.g. an earlier error): finish it, still free
-              <>
-                <p className="text-sm font-semibold">Your win is claimed — finish settling</p>
-                <p className="text-xs text-muted-foreground">
-                  The {formatPaise(owedNow)} you owe {challenge.hostName} is covered. Nothing to send.
-                </p>
-                <Button
-                  size="lg"
-                  variant="success"
-                  className="h-11 w-full"
-                  disabled={waive.isPending}
-                  onClick={() => waive.mutate({ creditorId: challenge.hostId, challengeId: challenge.id })}
-                >
-                  {waive.isPending && <Spinner />}
-                  Finish settling for free
-                </Button>
-              </>
+              // A win settles once; anything owed since then is paid the usual way
+              <p className="text-xs text-muted-foreground">
+                This win has already been used. You owe {challenge.hostName} {formatPaise(owedNow)} for other splits.
+              </p>
             ) : challenge.redeemed?.[uid] ? (
               <p className="text-sm font-medium text-success">
                 {challenge.discountPercent === 100

@@ -42,7 +42,8 @@ service cloud.firestore {
     // Unique ID reservations. Immutable once claimed; freed only by the owner
     // (account deletion).
     match /splitzyIds/{splitzyId} {
-      allow read: if signedIn();
+      // One ID at a time (lookups); the whole index can't be listed
+      allow get: if signedIn();
       allow create: if signedIn() &&
                     isValidJoySplitId(splitzyId) &&
                     request.resource.data.uid == uid() &&
@@ -55,7 +56,8 @@ service cloud.firestore {
     // Public profile (name, JoySplit ID, photo, UPI) — needed for friend
     // discovery and payments. Email is never stored here.
     match /users/{userId} {
-      allow read: if signedIn();
+      // One profile at a time; the user base can't be listed or dumped
+      allow get: if signedIn();
       allow create: if signedIn() && uid() == userId &&
                     request.resource.data.uid == userId &&
                     !('email' in request.resource.data) &&
@@ -65,7 +67,9 @@ service cloud.firestore {
       allow update: if signedIn() && uid() == userId &&
                     request.resource.data.get('uid', userId) == userId &&
                     request.resource.data.get('splitzyId', '') == resource.data.get('splitzyId', '') &&
-                    request.resource.data.get('photoURL', '').size() < 500000;
+                    request.resource.data.get('photoURL', '').size() < 500000 &&
+                    request.resource.data.get('displayName', '').size() <= 100 &&
+                    request.resource.data.get('upiId', '').size() <= 100;
       allow delete: if signedIn() && uid() == userId;
     }
 
@@ -88,10 +92,15 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if signedIn() &&
                     uid() in request.resource.data.users &&
+                    request.resource.data.users.size() == 2 &&
+                    (friendshipId == request.resource.data.users[0] + '_' + request.resource.data.users[1] ||
+                     friendshipId == request.resource.data.users[1] + '_' + request.resource.data.users[0]) &&
                     (request.resource.data.status == 'REMOVED' ||
                      (request.resource.data.status == 'ACTIVE' && isAcceptedRequestActivation(friendshipId)));
       allow update: if signedIn() &&
                     uid() in resource.data.users &&
+                    // Same two people: nobody can be added to someone else's friendship
+                    request.resource.data.users.size() == 2 &&
                     request.resource.data.users.hasAll(resource.data.users) &&
                     (request.resource.data.status == 'REMOVED' ||
                      (request.resource.data.status == 'ACTIVE' &&
@@ -105,11 +114,16 @@ service cloud.firestore {
                   (resource.data.senderId == uid() || resource.data.receiverId == uid());
       allow create: if signedIn() &&
                     request.resource.data.senderId == uid() &&
+                    request.resource.data.receiverId is string &&
                     request.resource.data.receiverId != uid() &&
-                    request.resource.data.status == 'PENDING';
+                    request.resource.data.status == 'PENDING' &&
+                    request.resource.data.get('senderSplitzyId', '') ==
+                      get(/databases/$(database)/documents/users/$(uid())).data.get('splitzyId', '');
       // Receiver accepts/rejects, sender cancels — status only
       allow update: if signedIn() &&
                     onlyChanges(['status', 'updatedAt']) &&
+                    // Only an open request can be accepted, rejected or cancelled
+                    resource.data.status == 'PENDING' &&
                     ((resource.data.receiverId == uid() &&
                       request.resource.data.status in ['ACCEPTED', 'REJECTED']) ||
                      (resource.data.senderId == uid() &&
@@ -213,7 +227,7 @@ service cloud.firestore {
       return after == before ||
              (after.userId == before.userId &&
               after.amountPaise == before.amountPaise &&
-              (payee == uid() ||
+              ((payee == uid() && (before.status != 'PAID' || after.status == 'PAID')) ||
                (before.userId == uid() &&
                 after.get('offsetApprovedBy', '') in [approval, ''] &&
                 (after.status == before.status ||
@@ -230,11 +244,16 @@ service cloud.firestore {
      */
     function gameWaiverOk(challengeId, payee) {
       let c = getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data;
+      let before = get(/databases/$(database)/documents/challenges/$(challengeId)).data;
       return c.status == 'DONE' &&
              c.hostId == payee &&
              c.discountPercent == 100 &&
              uid() in c.result.winners &&
+             // Claimed in this very batch: one win settles once, never again later
              uid() in c.get('redeemed', {}) &&
+             !(uid() in before.get('redeemed', {})) &&
+             // A group game only covers that group's splits
+             (c.get('groupId', '') == '' || resource.data.get('groupId', '') == c.groupId) &&
              resource.data.createdAt <= c.createdAt;
     }
 
@@ -252,22 +271,107 @@ service cloud.firestore {
              shareOk(45) && shareOk(46) && shareOk(47) && shareOk(48) && shareOk(49);
     }
 
+    /** A new expense's share i: a participant, whole paise, and PAID only for the payer's own share. */
+    function newShareOk(i) {
+      let d = request.resource.data;
+      return i >= d.shares.size() ||
+             (d.shares[i].userId is string &&
+              d.shares[i].userId in d.participantUids &&
+              d.shares[i].amountPaise is int &&
+              d.shares[i].amountPaise >= 0 &&
+              d.shares[i].status == (d.shares[i].userId == d.payerId ? 'PAID' : 'PENDING') &&
+              d.shares[i].keys().hasOnly(['userId', 'userName', 'userPhoto', 'amountPaise', 'status']));
+    }
+
+    function newSharesOk() {
+      return newShareOk(0) && newShareOk(1) && newShareOk(2) && newShareOk(3) && newShareOk(4) &&
+             newShareOk(5) && newShareOk(6) && newShareOk(7) && newShareOk(8) && newShareOk(9) &&
+             newShareOk(10) && newShareOk(11) && newShareOk(12) && newShareOk(13) && newShareOk(14) &&
+             newShareOk(15) && newShareOk(16) && newShareOk(17) && newShareOk(18) && newShareOk(19) &&
+             newShareOk(20) && newShareOk(21) && newShareOk(22) && newShareOk(23) && newShareOk(24) &&
+             newShareOk(25) && newShareOk(26) && newShareOk(27) && newShareOk(28) && newShareOk(29) &&
+             newShareOk(30) && newShareOk(31) && newShareOk(32) && newShareOk(33) && newShareOk(34) &&
+             newShareOk(35) && newShareOk(36) && newShareOk(37) && newShareOk(38) && newShareOk(39) &&
+             newShareOk(40) && newShareOk(41) && newShareOk(42) && newShareOk(43) && newShareOk(44) &&
+             newShareOk(45) && newShareOk(46) && newShareOk(47) && newShareOk(48) && newShareOk(49);
+    }
+
+    function newShareAmount(i) {
+      return i < request.resource.data.shares.size() ? request.resource.data.shares[i].amountPaise : 0;
+    }
+
+    /** The shares add up to the expense total. */
+    function newSharesSum() {
+      return newShareAmount(0) + newShareAmount(1) + newShareAmount(2) + newShareAmount(3) + newShareAmount(4) +
+             newShareAmount(5) + newShareAmount(6) + newShareAmount(7) + newShareAmount(8) + newShareAmount(9) +
+             newShareAmount(10) + newShareAmount(11) + newShareAmount(12) + newShareAmount(13) + newShareAmount(14) +
+             newShareAmount(15) + newShareAmount(16) + newShareAmount(17) + newShareAmount(18) + newShareAmount(19) +
+             newShareAmount(20) + newShareAmount(21) + newShareAmount(22) + newShareAmount(23) + newShareAmount(24) +
+             newShareAmount(25) + newShareAmount(26) + newShareAmount(27) + newShareAmount(28) + newShareAmount(29) +
+             newShareAmount(30) + newShareAmount(31) + newShareAmount(32) + newShareAmount(33) + newShareAmount(34) +
+             newShareAmount(35) + newShareAmount(36) + newShareAmount(37) + newShareAmount(38) + newShareAmount(39) +
+             newShareAmount(40) + newShareAmount(41) + newShareAmount(42) + newShareAmount(43) + newShareAmount(44) +
+             newShareAmount(45) + newShareAmount(46) + newShareAmount(47) + newShareAmount(48) + newShareAmount(49);
+    }
+
+    /** Participant i of a direct split is you or an active friend of yours. */
+    function directFriendOk(p, i) {
+      return i >= p.size() || p[i] == uid() ||
+             get(/databases/$(database)/documents/friendships/$(uid() < p[i] ? uid() + '_' + p[i] : p[i] + '_' + uid())).data.get('status', 'ACTIVE') == 'ACTIVE';
+    }
+
+    function directParticipantsOk(p) {
+      return p.size() <= 10 &&
+             directFriendOk(p, 0) && directFriendOk(p, 1) && directFriendOk(p, 2) && directFriendOk(p, 3) &&
+             directFriendOk(p, 4) && directFriendOk(p, 5) && directFriendOk(p, 6) && directFriendOk(p, 7) &&
+             directFriendOk(p, 8) && directFriendOk(p, 9);
+    }
+
+    /** Share i isn't someone else's payment that was already made or reported. */
+    function shareUnsettled(i) {
+      return i >= resource.data.shares.size() ||
+             resource.data.shares[i].userId == resource.data.payerId ||
+             !(resource.data.shares[i].status in ['PAID', 'PAYMENT_REPORTED']);
+    }
+
+    function noPaymentsYet() {
+      return shareUnsettled(0) && shareUnsettled(1) && shareUnsettled(2) && shareUnsettled(3) && shareUnsettled(4) &&
+             shareUnsettled(5) && shareUnsettled(6) && shareUnsettled(7) && shareUnsettled(8) && shareUnsettled(9) &&
+             shareUnsettled(10) && shareUnsettled(11) && shareUnsettled(12) && shareUnsettled(13) && shareUnsettled(14) &&
+             shareUnsettled(15) && shareUnsettled(16) && shareUnsettled(17) && shareUnsettled(18) && shareUnsettled(19) &&
+             shareUnsettled(20) && shareUnsettled(21) && shareUnsettled(22) && shareUnsettled(23) && shareUnsettled(24) &&
+             shareUnsettled(25) && shareUnsettled(26) && shareUnsettled(27) && shareUnsettled(28) && shareUnsettled(29) &&
+             shareUnsettled(30) && shareUnsettled(31) && shareUnsettled(32) && shareUnsettled(33) && shareUnsettled(34) &&
+             shareUnsettled(35) && shareUnsettled(36) && shareUnsettled(37) && shareUnsettled(38) && shareUnsettled(39) &&
+             shareUnsettled(40) && shareUnsettled(41) && shareUnsettled(42) && shareUnsettled(43) && shareUnsettled(44) &&
+             shareUnsettled(45) && shareUnsettled(46) && shareUnsettled(47) && shareUnsettled(48) && shareUnsettled(49);
+    }
+
     match /expenses/{expenseId} {
       allow read: if signedIn() &&
                   (isInvolved(resource.data) || inGroupOf(resource.data));
 
+      // You record what you paid (so the repayment UPI is yours too), split with
+      // your group or your friends, with shares that add up to the total
       allow create: if signedIn() &&
                     request.resource.data.createdBy == uid() &&
+                    request.resource.data.payerId == uid() &&
+                    request.resource.data.get('recipientId', uid()) == uid() &&
+                    request.resource.data.createdAt is string &&
                     request.resource.data.amountPaise is int &&
                     request.resource.data.amountPaise > 0 &&
                     request.resource.data.shares is list &&
                     request.resource.data.shares.size() >= 1 &&
                     request.resource.data.shares.size() <= 50 &&
+                    request.resource.data.participantUids is list &&
+                    request.resource.data.participantUids.size() <= request.resource.data.shares.size() &&
                     !('deletedAt' in request.resource.data) &&
+                    newSharesOk() &&
+                    newSharesSum() == request.resource.data.amountPaise &&
                     (request.resource.data.get('groupId', '') != ''
-                      ? isGroupMember(request.resource.data.groupId)
-                      : (uid() in request.resource.data.get('participantUids', []) ||
-                         request.resource.data.payerId == uid()));
+                      ? isGroupMember(request.resource.data.groupId) &&
+                        groupDoc(request.resource.data.groupId).members.hasAll(request.resource.data.participantUids)
+                      : directParticipantsOk(request.resource.data.participantUids));
 
       allow update: if signedIn() &&
                     (isInvolved(resource.data) ||
@@ -275,10 +379,13 @@ service cloud.firestore {
                     onlyChanges(['shares', 'updatedAt', 'deletedAt', 'deletedBy',
                                  'groupName', 'groupIcon', 'payerName', 'recipientName']) &&
                     (!changes('shares') || sharesOk()) &&
-                    // Soft delete: creator or payer, recorded as themselves
+                    // Soft delete: creator or payer, recorded as themselves, and only
+                    // before anyone has paid or reported paying it (debts can't be erased)
                     (!changes('deletedAt') ||
                      ((resource.data.createdBy == uid() || resource.data.payerId == uid()) &&
-                      request.resource.data.deletedBy == uid())) &&
+                      request.resource.data.deletedBy == uid() &&
+                      noPaymentsYet())) &&
+                    (!changes('deletedBy') || changes('deletedAt')) &&
                     (!changes('payerName') || resource.data.payerId == uid()) &&
                     (!changes('recipientName') || resource.data.get('recipientId', '') == uid());
 
@@ -288,7 +395,10 @@ service cloud.firestore {
                     resource.data.createdBy == uid() &&
                     (resource.data.get('expenseType', '') == 'personal' ||
                      resource.data.get('isPersonal', false) == true ||
-                     resource.data.get('participantUids', ['_']).hasOnly([uid()]));
+                     resource.data.get('participantUids', ['_']).hasOnly([uid()])) &&
+                    // Only ever your own share in it
+                    resource.data.shares.size() == 1 &&
+                    resource.data.shares[0].userId == uid();
     }
 
     // ───────────────────────── Challenges (games) ─────────────────────────
@@ -327,12 +437,21 @@ service cloud.firestore {
       return c.moves.keys().hasAll(c.players);
     }
 
+    /** The host's 3 secret Stone Paper Scissors moves. */
+    function validRpsSecret(moves) {
+      return moves is list && moves.size() == 3 &&
+             moves[0] in ['rock', 'paper', 'scissors'] &&
+             moves[1] in ['rock', 'paper', 'scissors'] &&
+             moves[2] in ['rock', 'paper', 'scissors'];
+    }
+
     function validMove(game, move) {
+      // A player's round can be 'none': their timer ran out, and it loses
       return game == 'rps'
         ? move is list && move.size() == 3 &&
-          move[0] in ['rock', 'paper', 'scissors'] &&
-          move[1] in ['rock', 'paper', 'scissors'] &&
-          move[2] in ['rock', 'paper', 'scissors']
+          move[0] in ['rock', 'paper', 'scissors', 'none'] &&
+          move[1] in ['rock', 'paper', 'scissors', 'none'] &&
+          move[2] in ['rock', 'paper', 'scissors', 'none']
         : game == 'coin_toss'
           ? move is list && move.size() == 5 &&
             move[0] in ['H', 'T'] && move[1] in ['H', 'T'] && move[2] in ['H', 'T'] &&
@@ -345,7 +464,7 @@ service cloud.firestore {
     /** The host's secret has the right shape for the game. */
     function validSecret(game, s) {
       return game == 'rps'
-        ? validMove('rps', s.get('moves', null))
+        ? validRpsSecret(s.get('moves', null))
         : game == 'coin_toss'
           ? validMove('coin_toss', s.get('flips', null))
           : game == 'treasure'
@@ -377,8 +496,11 @@ service cloud.firestore {
              !(now[old.size()] in old);
     }
 
+    /** Does a beat b? A timed-out round ('none') loses to any move. Mirrors `beats` in lib/games. */
     function rpsBeats(a, b) {
-      return (a == 'rock' && b == 'scissors') || (a == 'paper' && b == 'rock') || (a == 'scissors' && b == 'paper');
+      return a != 'none' &&
+             (b == 'none' ||
+              (a == 'rock' && b == 'scissors') || (a == 'paper' && b == 'rock') || (a == 'scissors' && b == 'paper'));
     }
 
     function roundWin(a, b) {
@@ -487,6 +609,8 @@ service cloud.firestore {
                     request.resource.data.discountPercent >= 0 &&
                     request.resource.data.discountPercent <= 100 &&
                     request.resource.data.players.size() >= 1 &&
+                    request.resource.data.players.toSet().size() == request.resource.data.players.size() &&
+                    request.resource.data.bases.keys().hasOnly(request.resource.data.players) &&
                     !(uid() in request.resource.data.players) &&
                     request.resource.data.participants.size() == request.resource.data.players.size() + 1 &&
                     request.resource.data.participants.hasAll(request.resource.data.players) &&
@@ -563,6 +687,8 @@ service cloud.firestore {
                       (everyonePlayed(challengeDoc(challengeId)) ||
                        challengeDoc(challengeId).status == 'DONE')));
         allow create: if signedIn() && docId == 'value' &&
+                      // Only in the batch that creates the game
+                      !exists(/databases/$(database)/documents/challenges/$(challengeId)) &&
                       getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.hostId == uid() &&
                       validSecret(getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.game,
                                   request.resource.data);
@@ -579,6 +705,7 @@ service cloud.firestore {
                       (int(tile) in challengeDoc(challengeId).get('progress', {}).get(uid(), []) ||
                        challengeDoc(challengeId).status == 'DONE')));
         allow create: if signedIn() &&
+                      !exists(/databases/$(database)/documents/challenges/$(challengeId)) &&
                       getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.hostId == uid() &&
                       isGridGame(getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.game) &&
                       tile in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'] &&
@@ -598,7 +725,14 @@ service cloud.firestore {
                     request.resource.data.userId is string &&
                     request.resource.data.userId != uid() &&
                     request.resource.data.get('data', {}).get('actorId', '') == uid() &&
-                    request.resource.data.read == false;
+                    request.resource.data.read == false &&
+                    request.resource.data.type in [
+                      'FRIEND_REQUEST', 'FRIEND_ACCEPTED', 'FRIEND_REMOVED', 'GROUP_INVITE',
+                      'GROUP_INVITE_ACCEPTED', 'GROUP_ACCEPTED', 'GROUP_MEMBER_LEFT', 'NEW_EXPENSE',
+                      'EXPENSE_DELETED', 'PAYMENT_REPORTED', 'PAYMENT_CONFIRMED', 'PAYMENT_DISPUTED',
+                      'PAYMENT_REMINDER', 'CHALLENGE_RECEIVED', 'CHALLENGE_RESULT'] &&
+                    request.resource.data.title is string && request.resource.data.title.size() <= 200 &&
+                    request.resource.data.message is string && request.resource.data.message.size() <= 1000;
       // Recipient marks read / records the action taken
       allow update: if signedIn() &&
                     resource.data.userId == uid() &&

@@ -1,14 +1,4 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  setDoc,
-  updateDoc,
-  where,
-  type Firestore,
-} from "firebase/firestore"
+import { doc, getDoc, setDoc, updateDoc, type Firestore } from "firebase/firestore"
 
 import { db, isFirebaseConfigured } from "@/lib/firebase/config"
 import { AppError } from "@/lib/errors"
@@ -75,19 +65,16 @@ export async function fetchUserProfile(uid: string): Promise<UserProfile | null>
   return snap.exists() ? (snap.data() as UserProfile) : null
 }
 
-/** Exact JoySplit-ID lookup: `splitzyIds` index first, then a `users` query fallback. */
+/** Exact JoySplit-ID lookup through the `splitzyIds` index. */
 export async function fetchUserBySplitzyId(splitzyId: string): Promise<UserProfile | null> {
   const firestore = getDb()
   if (!firestore) return null
   const cleanId = splitzyId.trim().toUpperCase()
 
+  // Profiles can only be read one at a time (they can't be searched or listed),
+  // so the splitzyIds index is the way from an ID to a person
   const idDoc = await getDoc(doc(firestore, "splitzyIds", cleanId))
-  if (idDoc.exists()) {
-    return fetchUserProfile(idDoc.data().uid)
-  }
-
-  const snap = await getDocs(query(collection(firestore, "users"), where("splitzyId", "==", cleanId)))
-  return snap.empty ? null : (snap.docs[0].data() as UserProfile)
+  return idDoc.exists() ? fetchUserProfile(idDoc.data().uid) : null
 }
 
 /** Use the cached copy when present, otherwise read the document once. */

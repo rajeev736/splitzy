@@ -19,7 +19,9 @@ export function buildUPILink({
   note = "JoySplit Expense",
   app = "default",
 }: UPITransactionParams): string {
-  const cleanUPI = upiId.trim();
+  // The UPI ID comes from the other person's profile: keep only characters a
+  // VPA can have, so it can't smuggle extra parameters (e.g. "&am=…&pa=…") into the link
+  const cleanUPI = upiId.trim().replace(/[^a-zA-Z0-9._\-@]/g, "");
   const cleanName = encodeURIComponent(payeeName.trim());
   const amountRupees = (amountPaise / 100).toFixed(2);
   const cleanNote = encodeURIComponent(note.trim());

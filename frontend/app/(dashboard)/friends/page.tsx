@@ -13,6 +13,7 @@ import {
   Invoice01Icon,
   MoreVerticalIcon,
   Notification01Icon,
+  QrCodeIcon,
   Search01Icon,
   UserAdd01Icon,
   UserCheck01Icon,
@@ -29,6 +30,7 @@ import { useSession } from "@/components/providers/session-provider"
 import { ButtonLink } from "@/components/shared/button-link"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { PayPersonButton } from "@/components/shared/pay-person-button"
+import { QrScannerDialog } from "@/components/shared/qr-scanner-dialog"
 import { ChallengeButton } from "@/components/games/challenge-button"
 import { ChallengeInviteStrip } from "@/components/games/challenge-invite"
 import {
@@ -62,11 +64,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@/components/ui/input-group"
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group"
 import {
   Item,
   ItemContent,
@@ -117,6 +115,7 @@ export default function FriendsPage() {
   const gameDiscounts = useLiveGameDiscounts()
 
   const [searchQuery, setSearchQuery] = React.useState("")
+  const [scanning, setScanning] = React.useState(false)
   const [profileFriend, setProfileFriend] = React.useState<UserProfile | null>(
     null
   )
@@ -426,7 +425,18 @@ export default function FriendsPage() {
             }}
             placeholder="Search name or JoySplit ID"
           />
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton
+              size="icon-sm"
+              aria-label="Scan a QR code"
+              title="Scan a QR code"
+              onClick={() => setScanning(true)}
+            >
+              <HugeiconsIcon icon={QrCodeIcon} className="size-4.5" />
+            </InputGroupButton>
+          </InputGroupAddon>
         </InputGroup>
+        <QrScannerDialog open={scanning} onOpenChange={setScanning} />
 
         {/* A JoySplit ID that isn't one of your friends: show the person with Add Friend */}
         {lookupId &&

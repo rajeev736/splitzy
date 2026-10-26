@@ -34,7 +34,10 @@ import { ChallengeInviteStrip } from "@/components/games/challenge-invite"
 import { PaymentDisputeLine, PaymentReceivedOr } from "@/components/shared/payment-received-prompt"
 import { GameDiscountAmount, GameDiscountNote } from "@/components/games/game-discount-amount"
 import { useDiscountedBalances, useLiveGameDiscounts } from "@/hooks/use-game-discounts"
+import { useSwipeTabs } from "@/hooks/use-swipe-tabs"
 import { cn } from "@/lib/utils"
+
+const SUMMARY_TABS = ["groups", "people"] as const
 
 function SplitSummaryContent() {
   const gameDiscounts = useLiveGameDiscounts()
@@ -44,9 +47,10 @@ function SplitSummaryContent() {
   const groupsQuery = useGroups()
   const friendsQuery = useFriends()
 
-  const expenses = expensesQuery.data || []
-  const groups = groupsQuery.data || []
-  const friends = friendsQuery.data || []
+  // Stable references (never `|| []`), so the balance calculations below only rerun when data changes
+  const expenses = expensesQuery.data
+  const groups = groupsQuery.data
+  const friends = friendsQuery.data
 
   const [activeTab, setActiveTab] = useQueryTab<"groups" | "people">({
     defaultValue: "groups",
@@ -54,6 +58,7 @@ function SplitSummaryContent() {
   })
   const [selectedPersonId, setSelectedPersonId] = React.useState<string | null>(null)
   const [selectedGroupId, setSelectedGroupId] = React.useState<string | null>(null)
+  const swipeRef = useSwipeTabs(SUMMARY_TABS, activeTab, setActiveTab)
 
   // Overall combined net balances across all groups and direct splits
   // (with any live game discount applied for its 10 minutes)
@@ -261,7 +266,11 @@ function SplitSummaryContent() {
           </div>
 
           {/* Scrollable Container for Tab Items */}
-          <main className="flex-1 min-h-0 overflow-y-auto px-4 py-3.5 overscroll-contain sm:px-6 sm:py-6 md:overflow-visible md:flex-initial">
+          {/* Swipe left for People, right for Groups */}
+          <main
+            ref={swipeRef}
+            className="flex-1 min-h-0 overflow-y-auto px-4 py-3.5 overscroll-contain sm:px-6 sm:py-6 md:overflow-visible md:flex-initial"
+          >
             <div className="pb-28 sm:pb-8">
               {/* Tab 1: Groups Content */}
               {activeTab === "groups" && (

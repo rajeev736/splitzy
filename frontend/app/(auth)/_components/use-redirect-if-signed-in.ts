@@ -12,7 +12,15 @@ function consumeRedirectTarget() {
   try {
     const saved = sessionStorage.getItem(REDIRECT_KEY)
     sessionStorage.removeItem(REDIRECT_KEY)
-    if (saved && saved.startsWith("/") && !saved.startsWith("/login") && !saved.startsWith("/signup")) {
+    // Same-site paths only ("//host" or "/\host" would leave the site)
+    if (
+      saved &&
+      saved.startsWith("/") &&
+      !saved.startsWith("//") &&
+      !saved.startsWith("/\\") &&
+      !saved.startsWith("/login") &&
+      !saved.startsWith("/signup")
+    ) {
       return saved
     }
   } catch {

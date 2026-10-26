@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter as useNextRouter } from "next/navigation"
 import { useRouter } from "nextjs-toploader/app"
 
 import { useSession } from "@/components/providers/session-provider"
@@ -10,7 +10,10 @@ import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { AppSidebar } from "./app-sidebar"
 import { BottomNav } from "./bottom-nav"
-import { isBottomNavPage, showsAddExpenseFab } from "./nav-items"
+import { isBottomNavPage, NAV_ITEMS, showsAddExpenseFab } from "./nav-items"
+
+/** Screens opened often from the tabs, warmed up along with the tabs themselves. */
+const WARM_ROUTES = ["/expenses/new", "/friends/add", "/friends/requests", "/groups/new", "/history"]
 
 const REDIRECT_KEY = "joysplit_redirect_to"
 
@@ -43,6 +46,20 @@ export function AppShell({ children, hideNav = false }: { children: React.ReactN
     }
     router.replace("/login")
   }, [isLoading, user, router, pathname])
+
+  // Once signed in, prefetch every tab and the screens they open, so moving
+  // between them renders straight from the router cache instead of waiting on
+  // the server. (Links only prefetch while visible, and phones never hover.)
+  const nextRouter = useNextRouter()
+  const signedIn = !!user
+  React.useEffect(() => {
+    if (!signedIn) return
+    const warm = () => [...NAV_ITEMS.map((i) => i.href), ...WARM_ROUTES].forEach((href) => nextRouter.prefetch(href))
+    warm()
+    // Refresh the warm-up before the cached entries go stale (see staleTimes in next.config.ts)
+    const timer = window.setInterval(warm, 50 * 60 * 1000)
+    return () => window.clearInterval(timer)
+  }, [signedIn, nextRouter])
 
   if (isLoading) return <FullScreenLoader />
   if (!user) return null

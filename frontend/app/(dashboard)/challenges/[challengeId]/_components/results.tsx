@@ -15,6 +15,7 @@ import {
   type CoinSide,
   type GridGameId,
   type RpsMove,
+  type RpsPlay,
 } from "@/lib/games"
 import type { Challenge } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -74,7 +75,7 @@ function RpsResult({ challenge, viewerId }: { challenge: Challenge; viewerId: st
   if (!hostMoves) return null
   const viewerIsHost = viewerId === challenge.hostId
   const focus = viewerIsHost ? (challenge.players.length === 1 ? challenge.players[0] : null) : viewerId
-  const focusMoves = focus ? (challenge.moves[focus] as RpsMove[] | undefined) : undefined
+  const focusMoves = focus ? (challenge.moves[focus] as RpsPlay[] | undefined) : undefined
 
   return (
     <div className="flex flex-col gap-4">
@@ -88,7 +89,7 @@ function RpsResult({ challenge, viewerId }: { challenge: Challenge; viewerId: st
           </p>
           <ul className="flex flex-col divide-y border-y">
             {played(challenge).map((p) => {
-              const s = scoreRps(hostMoves, challenge.moves[p] as RpsMove[])
+              const s = scoreRps(hostMoves, challenge.moves[p] as RpsPlay[])
               return (
                 <PlayerRow key={p} name={nameOf(challenge, p, viewerId)} won={challenge.result?.winners.includes(p) ?? false}>
                   <span className="text-xs text-muted-foreground tabular-nums">
@@ -116,7 +117,7 @@ function RpsRounds({
   player: string
   viewerIsHost: boolean
 }) {
-  const { rounds, playerWins, hostWins } = scoreRps(hostMoves, challenge.moves[player] as RpsMove[])
+  const { rounds, playerWins, hostWins } = scoreRps(hostMoves, challenge.moves[player] as RpsPlay[])
   const you = viewerIsHost ? challenge.hostName : challenge.playerNames[player]
   const them = viewerIsHost ? challenge.playerNames[player] : challenge.hostName
 

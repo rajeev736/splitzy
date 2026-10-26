@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { ArrowRight01Icon, GameController03Icon, PlusSignIcon } from "@hugeicons/core-free-icons"
+import { GameController03Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { NewChallengeSheet } from "@/components/games/new-challenge-sheet"
@@ -16,9 +16,10 @@ import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { useChallenges, useFriends } from "@/hooks/queries"
-import { GAME_IDS, GAMES, isForFun, type GameId } from "@/lib/games"
+import { GAMES, isForFun, type GameId } from "@/lib/games"
 import { formatPaise } from "@/lib/money"
 import type { Challenge } from "@/lib/types"
+import { useSwipeTabs } from "@/hooks/use-swipe-tabs"
 import { cn } from "@/lib/utils"
 import { GameGlyph } from "@/components/games/game-glyph"
 
@@ -33,6 +34,7 @@ const GAME_TONE: Record<GameId, string> = {
 }
 
 type Tab = "discount" | "fun"
+const TAB_ORDER = ["discount", "fun"] as const
 const TABS: { value: Tab; label: string; blurb: string }[] = [
   {
     value: "discount",
@@ -46,7 +48,9 @@ const TABS: { value: Tab; label: string; blurb: string }[] = [
   },
 ]
 
-const HISTORY_PAGE = 10
+const HISTORY_PAGE = 5
+/** Incoming challenges shown before "Show all", so history never gets pushed far down. */
+const INCOMING_PAGE = 4
 
 /** What this game needs from you right now, for the row status. */
 function statusFor(c: Challenge, uid: string): { label: string; tone: string } {
@@ -92,6 +96,7 @@ function ChallengesContent() {
   const uid = user?.uid ?? ""
   const [sheet, setSheet] = React.useState<{ open: boolean; game: GameId }>({ open: false, game: "rps" })
   const [historyShown, setHistoryShown] = React.useState(HISTORY_PAGE)
+  const [incomingShown, setIncomingShown] = React.useState(INCOMING_PAGE)
 
   const all = [...challenges.data].sort(newestFirst)
   const isYourTurn = (c: Challenge) => c.status === "OPEN" && c.hostId !== uid && c.moves[uid] === undefined
@@ -108,20 +113,18 @@ function ChallengesContent() {
   const waiting = inTab.filter((c) => c.status === "OPEN" && !isYourTurn(c))
   const history = inTab.filter((c) => c.status !== "OPEN")
   const openSheet = (game: GameId) => setSheet({ open: true, game })
+  const switchTab = (t: Tab) => {
+    setPicked(t)
+    setHistoryShown(HISTORY_PAGE)
+    setIncomingShown(INCOMING_PAGE)
+  }
+  // Swipe left for Just for fun, right for Discounted
+  const swipeRef = useSwipeTabs(TAB_ORDER, tab, switchTab)
 
   return (
     <>
-      <AppHeader
-        title="Games"
-        showBack
-        rightAction={
-          <Button size="sm" onClick={() => openSheet("rps")}>
-            <HugeiconsIcon icon={PlusSignIcon} data-icon="inline-start" />
-            Challenge
-          </Button>
-        }
-      />
-      <PageContainer className="max-w-2xl gap-6 pb-24">
+      <AppHeader title="Games" showBack />
+      <PageContainer ref={swipeRef} className="max-w-2xl gap-5 pb-24">
         {/* Discounted | Just for fun */}
         <div className="flex flex-col gap-2">
           <div role="tablist" aria-label="Kind of game" className="grid grid-cols-2 border-b">
@@ -134,10 +137,7 @@ function ChallengesContent() {
                   type="button"
                   role="tab"
                   aria-selected={active}
-                  onClick={() => {
-                    setPicked(t.value)
-                    setHistoryShown(HISTORY_PAGE)
-                  }}
+                  onClick={() => switchTab(t.value)}
                   className={cn(
                     "relative flex items-center justify-center gap-2 pb-2.5 text-sm font-medium transition-colors",
                     active
@@ -164,6 +164,12 @@ function ChallengesContent() {
           <p className="text-xs text-muted-foreground">{blurb}</p>
         </div>
 
+        {/* One way in: the sheet picks the game, who plays and the stakes */}
+        <Button size="lg" className="h-11 w-full" onClick={() => openSheet("rps")}>
+          <HugeiconsIcon icon={GameController03Icon} data-icon="inline-start" />
+          {tab === "discount" ? "Challenge someone who owes you" : "New challenge"}
+        </Button>
+
         {challenges.isPending ? (
           <ListSkeleton rows={3} />
         ) : challenges.isError ? (
@@ -180,45 +186,19 @@ function ChallengesContent() {
                     : "No fun challenges waiting. Send one to a friend!"}
                 </p>
               ) : (
-                <Card className="gap-0 divide-y py-0">
-                  {yourTurn.map((c) => (
-                    <IncomingRow key={c.id} challenge={c} uid={uid} />
-                  ))}
-                </Card>
+                <>
+                  <Card className="gap-0 divide-y py-0">
+                    {yourTurn.slice(0, incomingShown).map((c) => (
+                      <IncomingRow key={c.id} challenge={c} uid={uid} />
+                    ))}
+                  </Card>
+                  {yourTurn.length > incomingShown && (
+                    <Button variant="ghost" size="sm" onClick={() => setIncomingShown(yourTurn.length)}>
+                      Show all {yourTurn.length}
+                    </Button>
+                  )}
+                </>
               )}
-            </section>
-
-            {/* Every game: tap to challenge a friend or a group */}
-            <section className="flex flex-col gap-2">
-              <SectionTitle title={tab === "discount" ? "Challenge someone who owes you" : "Start a game"} />
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {GAME_IDS.map((id) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => openSheet(id)}
-                    className="group flex flex-col gap-3 rounded-lg border bg-card p-3.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/40"
-                  >
-                    <span
-                      className={cn("flex size-11 items-center justify-center rounded-lg text-2xl", GAME_TONE[id])}
-                      aria-hidden
-                    >
-                      <GameGlyph game={id} />
-                    </span>
-                    <span className="flex flex-col gap-0.5">
-                      <span className="text-sm font-semibold">{GAMES[id].name}</span>
-                      <span className="line-clamp-2 text-xs text-muted-foreground">{GAMES[id].tagline}</span>
-                    </span>
-                    <span className="mt-auto flex items-center gap-1 text-xs font-medium text-primary">
-                      Challenge
-                      <HugeiconsIcon
-                        icon={ArrowRight01Icon}
-                        className="size-3.5 transition-transform group-hover:translate-x-0.5"
-                      />
-                    </span>
-                  </button>
-                ))}
-              </div>
             </section>
 
             {waiting.length > 0 && (
@@ -243,8 +223,8 @@ function ChallengesContent() {
                 <>
                   <ChallengeList items={history.slice(0, historyShown)} uid={uid} />
                   {history.length > historyShown && (
-                    <Button variant="outline" size="sm" onClick={() => setHistoryShown((n) => n + HISTORY_PAGE)}>
-                      Show more
+                    <Button variant="ghost" size="sm" onClick={() => setHistoryShown((n) => n + 10)}>
+                      Show more ({history.length - historyShown})
                     </Button>
                   )}
                 </>

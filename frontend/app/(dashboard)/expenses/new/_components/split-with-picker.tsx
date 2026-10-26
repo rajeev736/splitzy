@@ -2,13 +2,15 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { PlusSignIcon, Search01Icon, Tick02Icon } from "@hugeicons/core-free-icons"
+import { PlusSignIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { GroupIcon } from "@/components/shared/group-icon"
+import { PickerDrawer, PickerTrigger } from "@/components/shared/picker-drawer"
 import { UserAvatar } from "@/components/shared/user-avatar"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
+import { Input } from "@/components/ui/input"
 import type { Group, UserProfile } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { PERSONAL_CATEGORIES, type ExpenseDraft, type ExpenseMode } from "./use-expense-draft"
@@ -19,12 +21,9 @@ const MODES: { value: ExpenseMode; label: string }[] = [
   { value: "personal", label: "Just me" },
 ]
 
-/** Past this many friends, a search box helps find the right one. */
-const SEARCH_FROM = 8
-
 /**
- * "Split with": three tabs — Group, Friends, Just me — and the choices for the
- * open tab right under them. Switching is one tap; nothing hides in a sheet.
+ * "Split with": three tabs — Group, Friends, Just me — and for the open tab one
+ * field that opens a drawer with search to pick from, however long the list.
  */
 export function SplitWithPicker({
   draft,
@@ -52,7 +51,9 @@ export function SplitWithPicker({
                 onClick={() => draft.setExpenseMode(m.value)}
                 className={cn(
                   "rounded-[5px] px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors",
-                  mode === m.value ? "bg-background text-foreground ring-1 ring-border" : "text-muted-foreground hover:text-foreground"
+                  mode === m.value
+                    ? "bg-background text-foreground ring-1 ring-border"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 {m.label}
@@ -61,106 +62,214 @@ export function SplitWithPicker({
           </div>
         </div>
 
-        {mode === "group" && <GroupChoices draft={draft} groups={groups} />}
-        {mode === "friend" && <FriendChoices draft={draft} friends={friends} />}
-        {mode === "personal" && <CategoryChoices draft={draft} />}
+        {mode === "group" && <GroupChoice draft={draft} groups={groups} />}
+        {mode === "friend" && <FriendChoice draft={draft} friends={friends} />}
+        {mode === "personal" && <CategoryChoice draft={draft} />}
       </CardContent>
     </Card>
   )
 }
 
-function GroupChoices({ draft, groups }: { draft: ExpenseDraft; groups: Group[] }) {
+function GroupChoice({ draft, groups }: { draft: ExpenseDraft; groups: Group[] }) {
+  const [open, setOpen] = React.useState(false)
   if (groups.length === 0) {
     return <EmptyChoice text="No groups yet." href="/groups/new" cta="Create a group" />
   }
+  const current = draft.currentGroup
   return (
-    <div className="flex max-h-44 flex-wrap gap-2 overflow-y-auto">
-      {groups.map((g) => (
-        <Chip key={g.id} selected={draft.currentGroup.id === g.id} onClick={() => draft.setSelectedGroupId(g.id)}>
-          <GroupIcon src={g.icon} alt={g.name} size="sm" className="size-6" />
-          <span className="truncate">{g.name}</span>
-        </Chip>
-      ))}
-      <Link
-        href="/groups/new"
-        className="flex h-9 items-center gap-1.5 rounded-md border border-dashed px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
-      >
-        <HugeiconsIcon icon={PlusSignIcon} className="size-4" />
-        New group
-      </Link>
-    </div>
+    <>
+      <PickerTrigger
+        placeholder="Choose a group"
+        media={current ? <GroupIcon src={current.icon} alt={current.name} size="sm" className="size-8" /> : undefined}
+        label={current?.name}
+        sublabel={current ? `${current.members.length} members` : undefined}
+        onClick={() => setOpen(true)}
+      />
+      <PickerDrawer
+        open={open}
+        onOpenChange={setOpen}
+        title="Choose a group"
+        searchPlaceholder="Search groups"
+        items={groups.map((g) => ({
+          id: g.id,
+          label: g.name,
+          sublabel: `${g.members.length} members`,
+          media: <GroupIcon src={g.icon} alt={g.name} size="sm" className="size-8" />,
+        }))}
+        selected={current ? [current.id] : []}
+        onSelect={draft.setSelectedGroupId}
+        top={
+          <Link
+            href="/groups/new"
+            className="flex items-center gap-3 rounded-lg border border-dashed px-3 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/5"
+          >
+            <span className="flex size-8 items-center justify-center rounded-md bg-primary/10">
+              <HugeiconsIcon icon={PlusSignIcon} className="size-4" />
+            </span>
+            Create a new group
+          </Link>
+        }
+      />
+    </>
   )
 }
 
-function FriendChoices({ draft, friends }: { draft: ExpenseDraft; friends: UserProfile[] }) {
-  const [search, setSearch] = React.useState("")
+function FriendChoice({ draft, friends }: { draft: ExpenseDraft; friends: UserProfile[] }) {
+  const [open, setOpen] = React.useState(false)
   if (friends.length === 0) {
     return <EmptyChoice text="No friends yet." href="/friends/add" cta="Add a friend" />
   }
-
-  const q = search.trim().toLowerCase()
-  const shown = q
-    ? friends.filter((f) => f.displayName.toLowerCase().includes(q) || f.splitzyId.toLowerCase().includes(q))
-    : friends
-  const picked = draft.selectedFriendIds.length
+  const picked = friends.filter((f) => draft.selectedFriendIds.includes(f.uid))
+  const names = picked.map((f) => f.displayName.split(" ")[0])
 
   return (
-    <div className="flex flex-col gap-2.5">
-      {friends.length > SEARCH_FROM && (
-        <InputGroup className="h-9">
-          <InputGroupAddon>
-            <HugeiconsIcon icon={Search01Icon} className="size-4" />
-          </InputGroupAddon>
-          <InputGroupInput
-            aria-label="Search friends"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search friends"
-            className="text-sm"
-          />
-        </InputGroup>
-      )}
-      <div className="flex max-h-44 flex-wrap gap-2 overflow-y-auto">
-        {shown.map((f) => {
-          const selected = draft.selectedFriendIds.includes(f.uid)
-          return (
-            <Chip key={f.uid} selected={selected} onClick={() => draft.toggleFriendSelection(f.uid)}>
-              {selected ? (
-                <span className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                  <HugeiconsIcon icon={Tick02Icon} className="size-3.5" />
-                </span>
-              ) : (
-                <UserAvatar src={f.photoURL} name={f.displayName} size="xs" className="size-6" />
-              )}
-              <span className="truncate">{f.displayName}</span>
-            </Chip>
-          )
-        })}
-        {shown.length === 0 && <p className="py-2 text-xs text-muted-foreground">No friend matches &quot;{search}&quot;.</p>}
-      </div>
-      <p className="text-[11px] text-muted-foreground">
-        {picked === 1 ? "Tap more friends to split with several." : `${picked} friends selected`}
-      </p>
-    </div>
+    <>
+      <PickerTrigger
+        placeholder="Choose friends"
+        media={
+          picked.length > 0 ? (
+            <span className="flex shrink-0 -space-x-2">
+              {picked.slice(0, 3).map((f) => (
+                <UserAvatar
+                  key={f.uid}
+                  src={f.photoURL}
+                  name={f.displayName}
+                  size="sm"
+                  className="size-8 ring-2 ring-card"
+                />
+              ))}
+            </span>
+          ) : undefined
+        }
+        label={
+          picked.length === 0
+            ? undefined
+            : picked.length <= 2
+              ? names.join(" & ")
+              : `${names.slice(0, 2).join(", ")} +${picked.length - 2}`
+        }
+        sublabel={picked.length > 0 ? `${picked.length} ${picked.length === 1 ? "friend" : "friends"} · tap to change` : undefined}
+        onClick={() => setOpen(true)}
+      />
+      <PickerDrawer
+        open={open}
+        onOpenChange={setOpen}
+        title="Split with friends"
+        description="Pick one or more friends."
+        searchPlaceholder="Search name or JoySplit ID"
+        multiple
+        items={friends.map((f) => ({
+          id: f.uid,
+          label: f.displayName,
+          sublabel: f.splitzyId,
+          keywords: f.splitzyId,
+          media: <UserAvatar src={f.photoURL} name={f.displayName} size="sm" className="size-8" />,
+        }))}
+        selected={draft.selectedFriendIds}
+        onSelect={draft.toggleFriendSelection}
+        bottom={
+          <Link href="/friends/add" className="text-center text-xs font-medium text-primary hover:underline">
+            Add a new friend
+          </Link>
+        }
+      />
+    </>
   )
 }
 
-function CategoryChoices({ draft }: { draft: ExpenseDraft }) {
+/** Your own categories, kept on this device. */
+const CUSTOM_KEY = "joysplit_custom_categories"
+function loadCustom(): string[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(CUSTOM_KEY) || "[]")
+    return Array.isArray(list) ? list.filter((c): c is string => typeof c === "string").slice(0, 20) : []
+  } catch {
+    return []
+  }
+}
+function saveCustom(list: string[]) {
+  try {
+    localStorage.setItem(CUSTOM_KEY, JSON.stringify(list))
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+function CategoryChoice({ draft }: { draft: ExpenseDraft }) {
+  const [open, setOpen] = React.useState(false)
+  const [custom, setCustom] = React.useState<string[]>(() => (typeof window === "undefined" ? [] : loadCustom()))
+  const [newName, setNewName] = React.useState("")
+
+  const preset = PERSONAL_CATEGORIES.find((c) => c.id === draft.personalCategory)
+  const items = [
+    ...PERSONAL_CATEGORIES.map((c) => ({ id: c.id as string, label: c.label as string, icon: c.icon as string })),
+    ...custom.map((c) => ({ id: c, label: c, icon: "🏷️" })),
+  ]
+  const current = items.find((i) => i.id === draft.personalCategory)
+
+  const addCustom = () => {
+    const name = newName.trim().slice(0, 40)
+    if (!name) return
+    const existing = items.find((i) => i.label.toLowerCase() === name.toLowerCase())
+    if (existing) {
+      draft.setPersonalCategory(existing.id)
+    } else {
+      const next = [...custom, name]
+      setCustom(next)
+      saveCustom(next)
+      draft.setPersonalCategory(name)
+    }
+    setNewName("")
+    setOpen(false)
+  }
+
   return (
     <div className="flex flex-col gap-2">
       <p className="text-[11px] text-muted-foreground">Private to you · pick a category</p>
-      <div className="flex flex-wrap gap-2">
-        {PERSONAL_CATEGORIES.map((cat) => (
-          <Chip
-            key={cat.id}
-            selected={draft.personalCategory === cat.id}
-            onClick={() => draft.setPersonalCategory(cat.id)}
+      <PickerTrigger
+        placeholder="Choose a category"
+        media={
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-lg">
+            {preset?.icon ?? current?.icon ?? "🏷️"}
+          </span>
+        }
+        label={current?.label ?? draft.personalCategory}
+        onClick={() => setOpen(true)}
+      />
+      <PickerDrawer
+        open={open}
+        onOpenChange={setOpen}
+        title="Category"
+        searchPlaceholder="Search categories"
+        items={items.map((c) => ({
+          id: c.id,
+          label: c.label,
+          media: <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-lg">{c.icon}</span>,
+        }))}
+        selected={[draft.personalCategory]}
+        onSelect={draft.setPersonalCategory}
+        bottom={
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault()
+              addCustom()
+            }}
           >
-            <span className="flex size-6 items-center justify-center text-base">{cat.icon}</span>
-            {cat.label}
-          </Chip>
-        ))}
-      </div>
+            <Input
+              aria-label="New category"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Add your own category"
+              maxLength={40}
+            />
+            <Button type="submit" variant="outline" disabled={!newName.trim()}>
+              <HugeiconsIcon icon={PlusSignIcon} data-icon="inline-start" />
+              Add
+            </Button>
+          </form>
+        }
+      />
     </div>
   )
 }
@@ -173,31 +282,5 @@ function EmptyChoice({ text, href, cta }: { text: string; href: string; cta: str
         {cta}
       </Link>
     </div>
-  )
-}
-
-function Chip({
-  selected,
-  onClick,
-  children,
-}: {
-  selected: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={onClick}
-      className={cn(
-        "flex h-9 max-w-52 min-w-0 items-center gap-2 rounded-md border pr-3 pl-1.5 text-sm font-medium whitespace-nowrap transition-colors",
-        selected
-          ? "border-primary bg-primary/10 text-foreground"
-          : "border-border bg-card text-foreground hover:border-foreground/30"
-      )}
-    >
-      {children}
-    </button>
   )
 }

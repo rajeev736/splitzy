@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "nextjs-toploader/app"
 import {
   ArrowRight01Icon,
   PlusSignIcon,
@@ -51,6 +52,7 @@ const SETTLED = {
 const NO_GAME = { discountPaise: 0, endsAt: 0 }
 
 function GroupsContent() {
+  const router = useRouter()
   const { user } = useSession()
   const groupsQuery = useGroups()
   const expensesQuery = useExpenses()
@@ -189,7 +191,7 @@ function GroupsContent() {
                 ? undefined
                 : {
                     label: "Create Group",
-                    onClick: () => (window.location.href = "/groups/new"),
+                    onClick: () => router.push("/groups/new"),
                   }
             }
           />

@@ -52,6 +52,9 @@ export async function createExpense(user: UserProfile, data: CreateExpenseInput)
         : "group"
 
   const expenseId = data.clientId || newExpenseId()
+  if (expenseType === "friend" && new Set((data.shares ?? []).map((s) => s.userId)).size > 10) {
+    throw new AppError("Split directly with up to 9 friends at a time — make a group for more")
+  }
 
   // Construct and validate typed, sanitized Firestore document
   const { expenseDoc, firestorePayload } = buildFirestoreExpense(expenseId, {

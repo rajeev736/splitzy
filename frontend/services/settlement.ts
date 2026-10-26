@@ -1,4 +1,4 @@
-import { doc, getDoc, updateDoc, writeBatch } from "firebase/firestore"
+import { doc, getDoc, writeBatch, type Firestore, type WriteBatch } from "firebase/firestore"
 
 import { AppError } from "@/lib/errors"
 import { activeDiscountPaise } from "@/lib/games"
@@ -67,12 +67,18 @@ function shareEditor(expenses: Expense[]) {
   }
 }
 
-async function commitShares(updated: Expense[], now: string) {
+async function commitShares(
+  updated: Expense[],
+  now: string,
+  /** Extra write for the first batch, committed atomically with it (e.g. a game discount claim). */
+  withFirst?: (batch: WriteBatch, firestore: Firestore) => void
+) {
   const firestore = getDb()
   if (!firestore || updated.length === 0) return
   // Firestore batches cap at 500 writes
   for (let i = 0; i < updated.length; i += 450) {
     const batch = writeBatch(firestore)
+    if (i === 0) withFirst?.(batch, firestore)
     for (const exp of updated.slice(i, i + 450)) {
       batch.update(doc(firestore, "expenses", exp.id), { shares: exp.shares.map(stripUndefined), updatedAt: now })
     }
@@ -141,9 +147,24 @@ export async function reportPersonSettlement(
   }
 
   const updatedExpenses = editor.result()
-  // Claim the discount first: the server rejects it once the 10 minutes are up
-  if (discountPaise > 0 && input.challengeId) await redeemGameDiscount(user.uid, input.challengeId, discountPaise)
-  await commitShares(updatedExpenses, now)
+  // The discount claim rides in the first batch with the shares: the server rejects it once
+  // the 10 minutes are up, and then nothing is written — the discount is never lost
+  const challengeId = input.challengeId
+  try {
+    await commitShares(
+      updatedExpenses,
+      now,
+      discountPaise > 0 && challengeId
+        ? (batch, firestore) =>
+            batch.update(doc(firestore, "challenges", challengeId), { [`redeemed.${user.uid}`]: discountPaise })
+        : undefined
+    )
+  } catch (e) {
+    if (discountPaise > 0 && (e as { code?: string })?.code === "permission-denied") {
+      throw new AppError("Your game discount has expired or was already used — pay the full amount instead.")
+    }
+    throw e
+  }
 
   const contextLabel =
     input.scope?.type === "group" && input.scope.groupName
@@ -187,17 +208,14 @@ export async function reportPersonSettlement(
  * discount covers everything you owe them here. Claiming the discount and
  * closing both sides — your shares (marked with the game, which the security
  * rules check) and theirs owed to you that were netted in — is one atomic
- * write, so a rejected settle never burns the discount. If the discount was
- * already claimed (e.g. an earlier attempt), this just finishes the settle.
+ * write, so a rejected settle never burns the discount, and a win settles
+ * once. A group game covers only that group's splits.
  */
 export async function settleWithGameWaiver(
   user: UserProfile,
   expenses: Expense[],
   input: { creditorId: string; challengeId: string; scope?: SettlementScope }
 ): Promise<SettlementResult> {
-  const breakdown = calculatePersonNetBreakdown(user.uid, input.creditorId, expenses, input.scope)
-  if (breakdown.netPayablePaise <= 0) throw new AppError("You don't owe them anything here.")
-
   const firestore = getDb()
   if (!firestore) throw new AppError("Settling needs an internet connection")
   const snap = await getDoc(doc(firestore, "challenges", input.challengeId))
@@ -207,9 +225,14 @@ export async function settleWithGameWaiver(
   if (challenge.hostId !== input.creditorId || !challenge.result?.winners.includes(user.uid)) {
     throw new AppError("There's no game win for you here.")
   }
-  // Already claimed in time: finish settling with it; otherwise claim it now (within its 10 minutes)
-  const alreadyClaimed = challenge.redeemed?.[user.uid] ?? 0
-  const discount = alreadyClaimed > 0 ? alreadyClaimed : await gameDiscountFor(user.uid, input.creditorId, input.challengeId)
+  if (challenge.redeemed?.[user.uid]) throw new AppError("This game win has already been used.")
+
+  const scope: SettlementScope | undefined = challenge.groupId
+    ? { type: "group", groupId: challenge.groupId, groupName: challenge.groupName }
+    : input.scope
+  const breakdown = calculatePersonNetBreakdown(user.uid, input.creditorId, expenses, scope)
+  if (breakdown.netPayablePaise <= 0) throw new AppError("You don't owe them anything here.")
+  const discount = await gameDiscountFor(user.uid, input.creditorId, input.challengeId)
   if (discount < breakdown.netPayablePaise) {
     throw new AppError(`Your game covers ${formatPaise(discount)} — pay the remaining amount instead.`)
   }
@@ -247,11 +270,9 @@ export async function settleWithGameWaiver(
   const updatedExpenses = editor.result()
   // One batch: the claim and the closed shares land together or not at all
   const batch = writeBatch(firestore)
-  if (alreadyClaimed === 0) {
-    batch.update(doc(firestore, "challenges", input.challengeId), {
-      [`redeemed.${user.uid}`]: Math.min(discount, breakdown.netPayablePaise),
-    })
-  }
+  batch.update(doc(firestore, "challenges", input.challengeId), {
+    [`redeemed.${user.uid}`]: Math.min(discount, breakdown.netPayablePaise),
+  })
   for (const exp of updatedExpenses) {
     batch.update(doc(firestore, "expenses", exp.id), { shares: exp.shares.map(stripUndefined), updatedAt: now })
   }
@@ -259,11 +280,7 @@ export async function settleWithGameWaiver(
     await batch.commit()
   } catch (e) {
     if ((e as { code?: string })?.code === "permission-denied") {
-      throw new AppError(
-        alreadyClaimed === 0
-          ? "Couldn't settle with your game win — it may have expired. Nothing was changed."
-          : "Couldn't finish settling with your game win. Nothing was changed."
-      )
+      throw new AppError("Couldn't settle with your game win. Nothing was changed.")
     }
     throw e
   }
@@ -572,18 +589,4 @@ export async function recheckDisputedSettlement(
   })
 
   return { updatedExpenses, allocatedAmountPaise: input.amountPaise }
-}
-
-/** Records the discount on the game (once). Security rules check it against server time. */
-async function redeemGameDiscount(uid: string, challengeId: string, discountPaise: number) {
-  const firestore = getDb()
-  if (!firestore) return
-  try {
-    await updateDoc(doc(firestore, "challenges", challengeId), { [`redeemed.${uid}`]: discountPaise })
-  } catch (e) {
-    if ((e as { code?: string })?.code === "permission-denied") {
-      throw new AppError("Your game discount has expired or was already used — pay the full amount instead.")
-    }
-    throw e
-  }
 }

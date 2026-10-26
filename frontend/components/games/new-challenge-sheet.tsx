@@ -2,19 +2,13 @@
 
 import * as React from "react"
 import { useRouter } from "nextjs-toploader/app"
-import { Search01Icon, Tick02Icon } from "@hugeicons/core-free-icons"
-import { HugeiconsIcon } from "@hugeicons/react"
 
 import { useSession } from "@/components/providers/session-provider"
 import { BottomSheet } from "@/components/shared/bottom-sheet"
+import { PickerDrawer, PickerTrigger } from "@/components/shared/picker-drawer"
 import { GroupIcon } from "@/components/shared/group-icon"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@/components/ui/input-group"
 import { Spinner } from "@/components/ui/spinner"
 import { useCreateChallenge } from "@/hooks/mutations"
 import {
@@ -106,7 +100,9 @@ export function NewChallengeSheet({
   const [flips, setFlips] = React.useState(emptyCoinCalls)
   const [boxes, setBoxes] = React.useState<number[]>([])
   const [secretNumber, setSecretNumber] = React.useState(50)
-  const [search, setSearch] = React.useState("")
+  const [drawer, setDrawer] = React.useState<
+    "game" | "friend" | "group" | null
+  >(null)
 
   // Opening again (e.g. from another game card) starts from that card's choices
   const [lastOpen, setLastOpen] = React.useState(false)
@@ -122,7 +118,7 @@ export function NewChallengeSheet({
       setFlips(emptyCoinCalls())
       setBoxes([])
       setSecretNumber(50)
-      setSearch("")
+      setDrawer(null)
     }
   }
 
@@ -305,19 +301,11 @@ export function NewChallengeSheet({
     )
   }
 
-  const q = search.trim().toLowerCase()
-  const shownFriends = friends
-    .filter(
-      (f) =>
-        !q ||
-        f.displayName.toLowerCase().includes(q) ||
-        f.splitzyId.toLowerCase().includes(q)
-    )
-    .sort(
-      (a, b) =>
-        (owedBy.get(b.uid) ?? 0) - (owedBy.get(a.uid) ?? 0) ||
-        a.displayName.localeCompare(b.displayName)
-    )
+  const sortedFriends = [...friends].sort(
+    (a, b) =>
+      (owedBy.get(b.uid) ?? 0) - (owedBy.get(a.uid) ?? 0) ||
+      a.displayName.localeCompare(b.displayName)
+  )
   const playableGroups = groups.filter((g) => g.members.length > 1)
 
   return (
@@ -345,38 +333,41 @@ export function NewChallengeSheet({
       }
     >
       <div className="flex flex-col gap-6 pb-2">
-        {/* 1. Game */}
+        {/* 1. Game: one field, the full list in a drawer (room for many more games) */}
         <section className="flex flex-col gap-2">
           <h3 className="text-sm font-semibold">Game</h3>
-          <div className="grid grid-cols-2 gap-2">
-            {GAME_IDS.map((id) => (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={game === id}
-                onClick={() => setGame(id)}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-md border p-2.5 text-left transition-colors",
-                  game === id
-                    ? "border-primary bg-primary/10 ring-1 ring-primary"
-                    : "bg-card hover:bg-muted/60"
-                )}
-              >
-                <span className="text-xl leading-none" aria-hidden>
+          <PickerTrigger
+            placeholder="Choose a game"
+            media={
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-xl">
+                <GameGlyph game={game} />
+              </span>
+            }
+            label={GAMES[game].name}
+            sublabel={`${GAMES[game].howToWin[mode]}.`}
+            onClick={() => setDrawer("game")}
+          />
+          <PickerDrawer
+            open={drawer === "game"}
+            onOpenChange={(o) => setDrawer(o ? "game" : null)}
+            title="Choose a game"
+            searchPlaceholder="Search games"
+            items={GAME_IDS.map((id) => ({
+              id,
+              label: GAMES[id].name,
+              sublabel: GAMES[id].tagline,
+              media: (
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-xl">
                   <GameGlyph game={id} />
                 </span>
-                <span className="min-w-0 text-xs leading-tight font-medium">
-                  {GAMES[id].name}
-                </span>
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {GAMES[game].howToWin[mode]}.
-          </p>
+              ),
+            }))}
+            selected={[game]}
+            onSelect={(id) => setGame(id as GameId)}
+          />
         </section>
 
-        {/* 2. Who plays */}
+        {/* 2. Who plays: a friend or a group, each picked from a drawer with search */}
         <section className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-sm font-semibold">Play with</h3>
@@ -397,63 +388,58 @@ export function NewChallengeSheet({
               </p>
             ) : (
               <>
-                {friends.length > 6 && (
-                  <InputGroup className="h-9">
-                    <InputGroupAddon>
-                      <HugeiconsIcon icon={Search01Icon} className="size-4" />
-                    </InputGroupAddon>
-                    <InputGroupInput
-                      aria-label="Search friends"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Search friends"
-                      className="text-sm"
-                    />
-                  </InputGroup>
-                )}
-                <ul
-                  className="flex max-h-56 flex-col divide-y overflow-y-auto rounded-md border"
-                  role="radiogroup"
-                >
-                  {shownFriends.map((f) => {
+                <PickerTrigger
+                  placeholder="Choose a friend"
+                  media={
+                    friend ? (
+                      <UserAvatar
+                        src={friend.photoURL}
+                        name={friend.displayName}
+                        size="sm"
+                      />
+                    ) : undefined
+                  }
+                  label={friend?.displayName}
+                  sublabel={
+                    friend
+                      ? friendOwes > 0
+                        ? `Owes you ${formatPaise(friendOwes)}`
+                        : friend.splitzyId
+                      : undefined
+                  }
+                  onClick={() => setDrawer("friend")}
+                />
+                <PickerDrawer
+                  open={drawer === "friend"}
+                  onOpenChange={(o) => setDrawer(o ? "friend" : null)}
+                  title="Challenge a friend"
+                  searchPlaceholder="Search name or JoySplit ID"
+                  items={sortedFriends.map((f) => {
                     const owes = owedBy.get(f.uid) ?? 0
-                    return (
-                      <PickRow
-                        key={f.uid}
-                        selected={friendId === f.uid}
-                        onSelect={() => setFriendId(f.uid)}
-                      >
+                    return {
+                      id: f.uid,
+                      label: f.displayName,
+                      keywords: f.splitzyId,
+                      sublabel:
+                        owes > 0 ? (
+                          <span className="text-success">
+                            Owes you {formatPaise(owes)}
+                          </span>
+                        ) : (
+                          f.splitzyId
+                        ),
+                      media: (
                         <UserAvatar
                           src={f.photoURL}
                           name={f.displayName}
                           size="sm"
                         />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium">
-                            {f.displayName}
-                          </span>
-                          <span
-                            className={cn(
-                              "block truncate text-xs",
-                              owes > 0
-                                ? "text-success"
-                                : "text-muted-foreground"
-                            )}
-                          >
-                            {owes > 0
-                              ? `Owes you ${formatPaise(owes)}`
-                              : f.splitzyId}
-                          </span>
-                        </span>
-                      </PickRow>
-                    )
+                      ),
+                    }
                   })}
-                  {shownFriends.length === 0 && (
-                    <li className="px-3 py-3 text-xs text-muted-foreground">
-                      No friend matches &quot;{search}&quot;.
-                    </li>
-                  )}
-                </ul>
+                  selected={friendId ? [friendId] : []}
+                  onSelect={setFriendId}
+                />
               </>
             )
           ) : playableGroups.length === 0 ? (
@@ -461,34 +447,49 @@ export function NewChallengeSheet({
               You need a group with at least one other member.
             </p>
           ) : (
-            <ul
-              className="flex max-h-56 flex-col divide-y overflow-y-auto rounded-md border"
-              role="radiogroup"
-            >
-              {playableGroups.map((g) => (
-                <PickRow
-                  key={g.id}
-                  selected={groupId === g.id}
-                  onSelect={() => setGroupId(g.id)}
-                >
-                  <GroupIcon
-                    src={g.icon}
-                    alt={g.name}
-                    size="sm"
-                    className="size-8"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">
-                      {g.name}
-                    </span>
-                    <span className="block text-xs text-muted-foreground">
-                      {g.members.length - 1}{" "}
-                      {g.members.length === 2 ? "player" : "players"}
-                    </span>
-                  </span>
-                </PickRow>
-              ))}
-            </ul>
+            <>
+              <PickerTrigger
+                placeholder="Choose a group"
+                media={
+                  group ? (
+                    <GroupIcon
+                      src={group.icon}
+                      alt={group.name}
+                      size="sm"
+                      className="size-8"
+                    />
+                  ) : undefined
+                }
+                label={group?.name}
+                sublabel={
+                  group
+                    ? `${group.members.length - 1} ${group.members.length === 2 ? "player" : "players"}`
+                    : undefined
+                }
+                onClick={() => setDrawer("group")}
+              />
+              <PickerDrawer
+                open={drawer === "group"}
+                onOpenChange={(o) => setDrawer(o ? "group" : null)}
+                title="Challenge a group"
+                searchPlaceholder="Search groups"
+                items={playableGroups.map((g) => ({
+                  id: g.id,
+                  label: g.name,
+                  sublabel: `${g.members.length - 1} ${g.members.length === 2 ? "player" : "players"}`,
+                  media: (
+                    <GroupIcon
+                      src={g.icon}
+                      alt={g.name}
+                      size="sm"
+                      className="size-8"
+                    />
+                  ),
+                }))}
+                selected={groupId ? [groupId] : []}
+                onSelect={setGroupId}
+              />
+            </>
           )}
           {tooMany && (
             <p className="text-xs text-destructive">
@@ -663,49 +664,6 @@ function Segmented<T extends string>({
         </button>
       ))}
     </div>
-  )
-}
-
-function PickRow({
-  selected,
-  onSelect,
-  children,
-}: {
-  selected: boolean
-  onSelect: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <li>
-      <button
-        type="button"
-        role="radio"
-        aria-checked={selected}
-        onClick={onSelect}
-        className={cn(
-          "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-          selected ? "bg-primary/10" : "hover:bg-muted/60"
-        )}
-      >
-        {children}
-        <span
-          className={cn(
-            "flex size-5 shrink-0 items-center justify-center rounded-full border",
-            selected
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-muted-foreground/40"
-          )}
-        >
-          {selected && (
-            <HugeiconsIcon
-              icon={Tick02Icon}
-              className="size-3"
-              strokeWidth={3}
-            />
-          )}
-        </span>
-      </button>
-    </li>
   )
 }
 

@@ -58,6 +58,11 @@ const nextConfig: NextConfig = {
   turbopack: { root: import.meta.dirname },
   poweredByHeader: false,
   experimental: {
+    // Keep visited / prefetched routes in the client router cache, so switching
+    // tabs doesn't wait on the server again after the default 5 minutes. Safe for
+    // freshness: every page reads its data on the client from Firestore's
+    // realtime listeners, not from the route payload.
+    staleTimes: { dynamic: 300, static: 3600 },
     // Icon/component barrels: only bundle the modules actually imported
     optimizePackageImports: ["@hugeicons/core-free-icons", "@hugeicons/react", "@base-ui/react"],
   },
