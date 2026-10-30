@@ -17,6 +17,8 @@ export interface ReportSettlementInput {
   note?: string
   /** A game you won against the creditor; its discount applies if still active. */
   challengeId?: string
+  /** The UPI transaction reference (12 digits) of the payment, for the creditor to match. */
+  utr?: string
 }
 
 export interface ConfirmSettlementInput {
@@ -129,13 +131,23 @@ export async function reportPersonSettlement(
   const settlementId = newSettlementId()
   const now = nowIso()
   const note = input.note || `JoySplit settlement to ${input.creditorName || breakdown.userBName}`
+  const utr = input.utr?.replace(/\s/g, "")
+  if (utr && !/^\d{12}$/.test(utr)) throw new AppError("A UTR has 12 digits — check the payment details in your UPI app.")
+  const utrLabel = utr ? ` (UTR ${utr})` : ""
   const editor = shareEditor(expenses)
 
   for (const line of breakdown.aOwesBLines) {
     editor.edit(
       line.expense.id,
       (exp, s) => s.userId === user.uid && s.status !== "PAID" && payeeOf(exp, s.userId) === input.creditorId,
-      (s) => ({ ...s, status: "PAYMENT_REPORTED", reportedAt: now, paymentProofNote: note, settlementId })
+      (s) => ({
+        ...s,
+        status: "PAYMENT_REPORTED",
+        reportedAt: now,
+        paymentProofNote: note,
+        settlementId,
+        ...(utr ? { utr } : {}),
+      })
     )
   }
   for (const line of breakdown.bOwesALines) {
@@ -182,8 +194,8 @@ export async function reportPersonSettlement(
     message:
       net > 0
         ? discountPaise > 0
-          ? `${user.displayName} marked ₹${rupees(paid)} as paid to settle your ₹${rupees(net)} balance${contextLabel} — ${formatPaise(discountPaise)} off for winning your game. Did you receive ₹${rupees(paid)}?`
-          : `${user.displayName} marked ₹${rupees(net)} as paid to settle your balance${contextLabel}. Did you receive it?`
+          ? `${user.displayName} paid ₹${rupees(paid)}${utrLabel} to settle your ₹${rupees(net)} balance${contextLabel} — ${formatPaise(discountPaise)} off for winning your game. Did you receive ₹${rupees(paid)}?`
+          : `${user.displayName} paid ₹${rupees(net)}${utrLabel} to settle your balance${contextLabel}. Did you receive it?`
         : `${user.displayName} cancelled out your mutual splits${contextLabel} (₹${rupees(breakdown.offsetPaise)} each way). Please confirm.`,
     type: "PAYMENT_REPORTED",
     data: {
@@ -194,6 +206,7 @@ export async function reportPersonSettlement(
       settlementId,
       amountPaise: paid,
       offsetPaise: breakdown.offsetPaise,
+      ...(utr ? { utr } : {}),
       ...(discountPaise > 0 ? { challengeId: input.challengeId, discountPaise } : {}),
       ...(input.scope?.type === "group" ? { groupId: input.scope.groupId } : {}),
     },
@@ -555,6 +568,7 @@ export async function recheckDisputedSettlement(
 ): Promise<SettlementResult> {
   const now = nowIso()
   const editor = shareEditor(expenses)
+  let utr: string | undefined
 
   for (const exp of expenses) {
     editor.edit(
@@ -564,7 +578,10 @@ export async function recheckDisputedSettlement(
         s.settlementId === input.settlementId &&
         s.status === "DISPUTED" &&
         payeeOf(e, s.userId) === input.otherId,
-      (s) => ({ ...s, status: "PAYMENT_REPORTED", reportedAt: now })
+      (s) => {
+        utr = utr ?? s.utr
+        return { ...s, status: "PAYMENT_REPORTED", reportedAt: now }
+      }
     )
   }
 
@@ -584,6 +601,8 @@ export async function recheckDisputedSettlement(
       creditorId: input.otherId,
       settlementId: input.settlementId,
       amountPaise: input.amountPaise,
+      // The same payment: show its UTR again so they can match it
+      ...(utr ? { utr } : {}),
     },
     createdAt: now,
   })

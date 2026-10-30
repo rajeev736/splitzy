@@ -258,6 +258,8 @@ export interface AppNotification {
     challengeId?: string;
     /** Game discount applied to a reported settlement. */
     discountPaise?: number;
+    /** UPI transaction reference the payer gave for a reported payment. */
+    utr?: string;
   };
   read: boolean;
   actionTaken?: "CONFIRMED" | "DISPUTED";

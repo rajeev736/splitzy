@@ -15,6 +15,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
 
 import { UpiAppSheet } from "@/app/(dashboard)/expenses/[expenseId]/pay/_components/upi-app-sheet"
+import { PaymentDoneDialog } from "@/components/settlement/payment-done-dialog"
 import { useSession } from "@/components/providers/session-provider"
 import { useLiveGameDiscounts } from "@/hooks/use-game-discounts"
 import { formatCountdown, useNow } from "@/hooks/use-now"
@@ -97,6 +98,8 @@ export function PersonSettlementDialog({
   })
 
   const [showAppChooser, setShowAppChooser] = React.useState(false)
+  // Back from the UPI app (or "I already paid"): confirm with the UTR before they're told
+  const [confirmPaidOpen, setConfirmPaidOpen] = React.useState(false)
   const [showBreakdown, setShowBreakdown] = React.useState(false)
 
   // Find friend profile if available for freshest UPI ID / avatar
@@ -177,7 +180,7 @@ export function PersonSettlementDialog({
     breakdown.aOwesBLines.every((l) => l.status === "PAYMENT_REPORTED")
   const isAllSettled = netPayablePaise === 0 && !canCancelOut
 
-  const handleReport = () => {
+  const handleReport = (utr?: string) => {
     if (awaitingConfirmation) {
       toast.info(`Already reported — waiting for ${targetName} to confirm.`)
       return
@@ -189,10 +192,12 @@ export function PersonSettlementDialog({
         amountPaise: payPaise,
         scope: resolvedScope,
         note: paymentNote,
+        ...(utr ? { utr } : {}),
         ...(discountPaise > 0 ? { challengeId: activeGame?.challengeId } : {}),
       },
       {
         onSuccess: () => {
+          setConfirmPaidOpen(false)
           onSettled?.()
         },
       }
@@ -219,10 +224,8 @@ export function PersonSettlementDialog({
     setShowAppChooser(false)
     window.location.href = upiUri
 
-    // Suggest reporting the settlement
-    setTimeout(() => {
-      handleReport()
-    }, 1500)
+    // Waiting when they come back from the UPI app; nothing is reported until they say it went through
+    setConfirmPaidOpen(true)
   }
 
   const contextTitle =
@@ -557,10 +560,9 @@ export function PersonSettlementDialog({
                 variant="outline"
                 className="w-full"
                 disabled={reportSettlement.isPending}
-                onClick={handleReport}
+                onClick={() => setConfirmPaidOpen(true)}
               >
-                {reportSettlement.isPending && <Spinner />}I already paid
-                (report settlement)
+                I already paid
               </Button>
 
               <div className="flex items-center justify-center gap-1.5 pt-1 text-[11px] text-muted-foreground">
@@ -576,7 +578,7 @@ export function PersonSettlementDialog({
               size="lg"
               className="h-11 w-full"
               disabled={reportSettlement.isPending}
-              onClick={handleReport}
+              onClick={() => handleReport()}
             >
               {reportSettlement.isPending && <Spinner />}
               Cancel out mutual splits ({formatPaise(
@@ -596,6 +598,15 @@ export function PersonSettlementDialog({
           )}
         </div>
       </BottomSheet>
+
+      <PaymentDoneDialog
+        open={confirmPaidOpen}
+        onOpenChange={setConfirmPaidOpen}
+        amountPaise={payPaise}
+        payeeName={targetName}
+        isPending={reportSettlement.isPending}
+        onConfirm={(utr) => handleReport(utr)}
+      />
 
       <UpiAppSheet
         open={showAppChooser}

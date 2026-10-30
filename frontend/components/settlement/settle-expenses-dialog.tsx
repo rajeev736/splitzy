@@ -13,6 +13,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
 
 import { UpiAppSheet } from "@/app/(dashboard)/expenses/[expenseId]/pay/_components/upi-app-sheet"
+import { PaymentDoneDialog } from "./payment-done-dialog"
 import { useSession } from "@/components/providers/session-provider"
 import { AwaitingConfirmationBadge } from "@/components/shared/awaiting-confirmation-badge"
 import { ChallengeButton } from "@/components/games/challenge-button"
@@ -84,6 +85,8 @@ export function SettleExpensesDialog({
   })
 
   const [showAppChooser, setShowAppChooser] = React.useState(false)
+  // Back from the UPI app: "Did you pay?" — only a yes (with the UTR) tells them
+  const [confirmPaidOpen, setConfirmPaidOpen] = React.useState(false)
 
   // Find friend profile if available
   const friendProfile = React.useMemo(
@@ -231,7 +234,7 @@ export function SettleExpensesDialog({
       )?.key
     : undefined
 
-  const handleReport = (noteText?: string) => {
+  const handleReport = (noteText?: string, utr?: string) => {
     if (!user || selectedKeys.length === 0) return
     const amountToSettle = netPayablePaise > 0 ? payPaise : netReceivablePaise
     if (amountToSettle <= 0) {
@@ -253,12 +256,14 @@ export function SettleExpensesDialog({
           contextKeys: selectedKeys,
         },
         note,
+        ...(utr ? { utr } : {}),
         ...(gameDiscount?.role === "winner" && payOff > 0
           ? { challengeId: gameDiscount.challengeId }
           : {}),
       },
       {
         onSuccess: () => {
+          setConfirmPaidOpen(false)
           onSettled?.()
           onOpenChange(false)
         },
@@ -273,10 +278,9 @@ export function SettleExpensesDialog({
     }
 
     if (!targetUpiId) {
-      toast.warning(
-        "Recipient UPI ID is not available. You can mark it as settled directly."
-      )
-      handleReport()
+      // Paid some other way (cash, another app): confirm it with the UTR
+      toast.info(`${targetName} has no UPI ID here. Pay them directly, then confirm below.`)
+      setConfirmPaidOpen(true)
       return
     }
 
@@ -298,9 +302,8 @@ export function SettleExpensesDialog({
     setShowAppChooser(false)
     window.location.href = upiUri
 
-    setTimeout(() => {
-      handleReport(note)
-    }, 1200)
+    // Waiting when they come back from the UPI app; nothing is reported until they say it went through
+    setConfirmPaidOpen(true)
   }
 
   return (
@@ -730,6 +733,15 @@ export function SettleExpensesDialog({
           </div>
         </SheetContent>
       </Sheet>
+
+      <PaymentDoneDialog
+        open={confirmPaidOpen}
+        onOpenChange={setConfirmPaidOpen}
+        amountPaise={payPaise}
+        payeeName={targetName}
+        isPending={reportSettlement.isPending}
+        onConfirm={(utr) => handleReport(`JoySplit Settlement to ${targetName}`, utr)}
+      />
 
       {/* UPI App Chooser Sheet */}
       <UpiAppSheet

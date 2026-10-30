@@ -47,6 +47,8 @@ export function usePendingPaymentFrom(personId: string) {
       // What they actually sent (after any game discount)
       amountPaise: notif?.data?.amountPaise ?? report.paidPaise,
       notifId: notif?.id,
+      // Match it with your bank SMS
+      utr: notif?.data?.utr,
     }
   }, [user, personId, expenses, notifications])
 }
@@ -145,6 +147,11 @@ export function PaymentReceivedPrompt({
         {size === "inline" ? "Paid you " : `${personName.split(" ")[0]} says they paid `}
         <span className="font-semibold text-foreground tabular-nums">{formatPaise(pending.amountPaise)}</span>
         {size === "inline" ? " · Received?" : ". Received it?"}
+        {pending.utr && (
+          <span className="block font-mono text-[11px] tracking-wide text-muted-foreground">
+            UTR {pending.utr}
+          </span>
+        )}
       </p>
       <div className={cn("flex shrink-0 gap-2", size === "lg" && "grid grid-cols-2")}>
         <Button size={buttonSize} className={buttonClass} disabled={busy} onClick={() => confirm.mutate(input)}>
