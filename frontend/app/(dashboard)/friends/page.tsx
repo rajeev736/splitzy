@@ -476,7 +476,7 @@ export default function FriendsPage() {
                     return (
                       <React.Fragment key={friend.uid}>
                         {i > 0 && <ItemSeparator className="my-0" />}
-                        <Item className="flex-col items-stretch gap-0 rounded-none px-4 py-3">
+                        <Item className="flex-col flex-nowrap items-stretch gap-0 rounded-none px-4 py-3">
                           {/* Line 1: who, and where you stand with them */}
                           <div className="flex w-full min-w-0 items-center gap-3">
                             <button

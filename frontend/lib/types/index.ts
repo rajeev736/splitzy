@@ -213,6 +213,11 @@ export interface Challenge {
   moves: Record<string, string[] | number[] | number>;
   /** Grid games: each player's digs so far (append-only, one tile at a time). */
   progress?: Record<string, number[]>;
+  /**
+   * Friend Stone Paper Scissors: each player's picks so far, one round at a
+   * time (append-only). Each round's result shows as soon as it's played.
+   */
+  roundPlays?: Record<string, string[]>;
   result?: {
     winners: string[];
     /** Revealed secret, for showing the outcome. */

@@ -39,6 +39,7 @@ import {
 } from "@/lib/games"
 import { calculatePersonNetBreakdown, formatPaise } from "@/lib/money"
 import type { Challenge } from "@/lib/types"
+import { hasRoundByRoundRps, playRpsRound, readHostRound } from "@/services/challenges"
 import { GridPlay } from "./_components/grid-play"
 import { GameResult } from "./_components/results"
 import { GameGlyph } from "@/components/games/game-glyph"
@@ -154,7 +155,21 @@ function ChallengeBody({ challenge, uid }: { challenge: Challenge; uid: string }
 /** Stone Paper Scissors, played one timed round at a time; the moves lock in after round 3. */
 function RpsPlaySection({ challenge }: { challenge: Challenge }) {
   const submit = useSubmitMove()
+  const { user } = useSession()
   const forFun = isForFun(challenge)
+  // Friend games: each round is saved as it's played and its result shows right away
+  const roundByRound = hasRoundByRoundRps(challenge)
+  const [initialPlays] = React.useState(() => (user ? ((challenge.roundPlays?.[user.uid] ?? []) as RpsPlay[]) : []))
+  const playRound = React.useCallback(
+    (plays: RpsPlay[]) => {
+      if (!user) return Promise.resolve(null)
+      return playRpsRound(user, challenge, plays)
+    },
+    // The game doesn't change while playing
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [challenge.id, user?.uid]
+  )
+  const revealRound = React.useCallback((round: number) => readHostRound(challenge.id, round), [challenge.id])
   const onComplete = React.useCallback(
     (moves: RpsPlay[]) => submit.mutate({ challenge, move: moves }),
     // The game doesn't change while playing; submit's identity is stable enough
@@ -171,7 +186,14 @@ function RpsPlaySection({ challenge }: { challenge: Challenge }) {
             {forFun ? "." : ` to get ${challenge.discountPercent}% off.`}
           </p>
         </div>
-        <RpsTimedPlay hostName={challenge.hostName} disabled={submit.isPending} onComplete={onComplete} />
+        <RpsTimedPlay
+          hostName={challenge.hostName}
+          disabled={submit.isPending}
+          initialPlays={initialPlays}
+          playRound={roundByRound ? playRound : undefined}
+          revealRound={roundByRound ? revealRound : undefined}
+          onComplete={onComplete}
+        />
         {submit.isError && submit.variables && (
           <Button variant="outline" onClick={() => submit.variables && submit.mutate(submit.variables)}>
             Couldn&apos;t save your moves — try again

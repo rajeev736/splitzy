@@ -14,6 +14,8 @@ import {
   type GameId,
   type GameMove,
   type GameSecret,
+  type RpsMove,
+  type RpsPlay,
 } from "@/lib/games"
 import type { Challenge, UserProfile } from "@/lib/types"
 import { getDb, nowIso, rupees, sendNotification } from "./shared"
@@ -100,6 +102,12 @@ export async function createChallenge(user: UserProfile, input: CreateChallengeI
   const batch = writeBatch(firestore)
   batch.set(doc(firestore, "challenges", challenge.id), challenge)
   batch.set(doc(firestore, "challenges", challenge.id, "secret", "value"), secret)
+  // Friend Stone Paper Scissors: one doc per round, so each round's result can show as it ends
+  if (hasRoundByRoundRps(challenge)) {
+    secret.moves!.forEach((move, n) =>
+      batch.set(doc(firestore, "challenges", challenge.id, "hostRounds", String(n)), { move })
+    )
+  }
   // Grid games: one doc per tile, so each can be opened (read) on its own
   if (isGridGame(input.game)) {
     for (let n = 0; n < GRID_CELLS; n++) {
@@ -156,6 +164,45 @@ export async function readTile(challengeId: string, cell: number): Promise<boole
   const snap = await getDoc(doc(firestore, "challenges", challengeId, "tiles", String(cell)))
   if (!snap.exists()) throw new AppError("This tile is missing")
   return snap.data().hit === true
+}
+
+/**
+ * Friend Stone Paper Scissors is played round by round with a result after
+ * each one. Group games (an early player could tip off the rest) and games
+ * created before this existed reveal everything at the end instead.
+ */
+export const hasRoundByRoundRps = (c: Pick<Challenge, "game" | "kind">) => c.game === "rps" && c.kind === "friend"
+
+/**
+ * Plays one round: the pick is recorded first (security rules only let you see
+ * the host's move for a round you've played, and never change a past round),
+ * then the host's move for that round is read. Returns null when the game has
+ * no per-round moves (older games) — its results show at the end.
+ */
+export async function playRpsRound(user: UserProfile, challenge: Challenge, plays: RpsPlay[]): Promise<RpsMove | null> {
+  if (!hasRoundByRoundRps(challenge)) return null
+  if (challenge.status !== "OPEN") throw new AppError("This game is already over")
+  if (challenge.moves?.[user.uid] !== undefined) throw new AppError("You've already played")
+  const firestore = getDb()
+  if (!firestore) throw new AppError("Games need an internet connection")
+
+  const recorded = challenge.roundPlays?.[user.uid] ?? []
+  if (plays.length > recorded.length) {
+    await updateDoc(doc(firestore, "challenges", challenge.id), { [`roundPlays.${user.uid}`]: plays })
+  }
+  return readHostRound(challenge.id, plays.length - 1)
+}
+
+/** The host's move for a round you've played (null if this game has none per round). */
+export async function readHostRound(challengeId: string, round: number): Promise<RpsMove | null> {
+  const firestore = getDb()
+  if (!firestore) return null
+  try {
+    const snap = await getDoc(doc(firestore, "challenges", challengeId, "hostRounds", String(round)))
+    return snap.exists() ? (snap.data().move as RpsMove) : null
+  } catch {
+    return null
+  }
 }
 
 /** A player locks in their move. Friend games resolve right away; group games once everyone has played. */

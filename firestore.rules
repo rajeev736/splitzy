@@ -409,8 +409,11 @@ service cloud.firestore {
     // secret — so nobody can peek or fake a win. Grid games (Minefield, Gold
     // Rush) also keep one doc per tile in tiles/{n}; a player can read a tile
     // only once it's in their append-only `progress` list, so tiles open one at
-    // a time and a dig can't be taken back. discountPercent 0 = just for fun
-    // (nothing to redeem). Mirrors lib/games.
+    // a time and a dig can't be taken back. Friend Stone Paper Scissors works the
+    // same way per round: the host's move for round n sits in hostRounds/{n}, and
+    // the player can read it only once their own round-n pick is in their
+    // append-only `roundPlays` list. discountPercent 0 = just for fun (nothing to
+    // redeem). Mirrors lib/games.
 
     function challengeDoc(id) {
       return get(/databases/$(database)/documents/challenges/$(id)).data;
@@ -477,11 +480,25 @@ service cloud.firestore {
               : validMove('lucky_number', s.get('number', null));
     }
 
-    /** A player's final move. In grid games it's exactly the digs they made. */
+    /**
+     * A player's final move. In grid games it's exactly the digs they made; in
+     * Stone Paper Scissors played round by round, exactly the rounds they played.
+     */
     function validFinalMove(c, move) {
       return isGridGame(c.game)
         ? move is list && move.size() >= 1 && move == c.get('progress', {}).get(uid(), null)
-        : validMove(c.game, move);
+        : validMove(c.game, move) &&
+          (c.game != 'rps' || !(uid() in c.get('roundPlays', {})) || move == c.roundPlays[uid()]);
+    }
+
+    /** Stone Paper Scissors: one more round, appended to your own list — earlier rounds never change. */
+    function validRpsRound(before, after) {
+      let old = before.get('roundPlays', {}).get(uid(), []);
+      let now = after.roundPlays[uid()];
+      return after.roundPlays.diff(before.get('roundPlays', {})).affectedKeys().hasOnly([uid()]) &&
+             now is list && now.size() == old.size() + 1 && now.size() <= 3 &&
+             (old.size() == 0 || now[0:old.size()] == old) &&
+             now[old.size()] in ['rock', 'paper', 'scissors', 'none'];
     }
 
     /** Grid games: one more dig, appended to your own list — a new cell, within the game's limit. */
@@ -604,6 +621,7 @@ service cloud.firestore {
                     request.resource.data.status == 'OPEN' &&
                     request.resource.data.moves == {} &&
                     request.resource.data.get('progress', {}) == {} &&
+                    request.resource.data.get('roundPlays', {}) == {} &&
                     !('result' in request.resource.data) &&
                     request.resource.data.discountPercent is int &&
                     request.resource.data.discountPercent >= 0 &&
@@ -658,6 +676,13 @@ service cloud.firestore {
                        onlyChanges(['progress']) &&
                        validDig(resource.data, request.resource.data))
                       ||
+                      // Stone Paper Scissors: a player plays one more round, before finishing
+                      (uid() in resource.data.players &&
+                       resource.data.game == 'rps' &&
+                       !(uid() in resource.data.moves) &&
+                       onlyChanges(['roundPlays']) &&
+                       validRpsRound(resource.data, request.resource.data))
+                      ||
                       // Anyone in the game records the result once everyone played;
                       // the host may also end a group game early
                       (uid() in resource.data.participants &&
@@ -692,6 +717,29 @@ service cloud.firestore {
                       getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.hostId == uid() &&
                       validSecret(getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.game,
                                   request.resource.data);
+        allow update: if false;
+        allow delete: if signedIn() && challengeDoc(challengeId).hostId == uid();
+      }
+
+      // Friend Stone Paper Scissors: the host's move for each round ({move}). A
+      // player reads round n only after playing their own round n (or once the
+      // game is over), so each round's result shows as it ends — never early.
+      match /hostRounds/{round} {
+        allow read: if signedIn() &&
+                    (challengeDoc(challengeId).hostId == uid() ||
+                     (uid() in challengeDoc(challengeId).players &&
+                      (int(round) < challengeDoc(challengeId).get('roundPlays', {}).get(uid(), []).size() ||
+                       challengeDoc(challengeId).status == 'DONE')));
+        allow create: if signedIn() &&
+                      !exists(/databases/$(database)/documents/challenges/$(challengeId)) &&
+                      getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.hostId == uid() &&
+                      getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.game == 'rps' &&
+                      // One player only: in a group, an early player could tip the others off
+                      getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.kind == 'friend' &&
+                      round in ['0', '1', '2'] &&
+                      request.resource.data.keys().hasOnly(['move']) &&
+                      request.resource.data.move ==
+                        getAfter(/databases/$(database)/documents/challenges/$(challengeId)/secret/value).data.moves[int(round)];
         allow update: if false;
         allow delete: if signedIn() && challengeDoc(challengeId).hostId == uid();
       }
