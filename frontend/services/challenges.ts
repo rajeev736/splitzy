@@ -238,11 +238,19 @@ export async function resolveChallenge(user: UserProfile, challenge: Challenge):
   if (!secretSnap.exists()) throw new AppError("This game's secret is missing")
   const result = computeResult(challenge, secretSnap.data() as GameSecret)
 
-  await updateDoc(doc(firestore, "challenges", challenge.id), {
-    status: "DONE",
-    result,
-    resolvedAt: serverTimestamp(),
-  })
+  const ref = doc(firestore, "challenges", challenge.id)
+  try {
+    await updateDoc(ref, { status: "DONE", result, resolvedAt: serverTimestamp() })
+  } catch (e) {
+    // Two devices (or the player's submit and the open game screen) can reveal the
+    // result at the same moment; the rules accept only the first. If it's already
+    // over, that's the result — no error, and the winner of the race sends the notifications.
+    if ((e as { code?: string })?.code === "permission-denied") {
+      const latest = await getDoc(ref).catch(() => null)
+      if (latest?.exists() && latest.data().status !== "OPEN") return toChallenge(latest.data())
+    }
+    throw e
+  }
   const resolved: Challenge = { ...challenge, status: "DONE", result, resolvedAt: nowIso() }
 
   // Tell everyone else how it ended
