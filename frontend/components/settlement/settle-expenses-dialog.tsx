@@ -85,7 +85,7 @@ export function SettleExpensesDialog({
   })
 
   const [showAppChooser, setShowAppChooser] = React.useState(false)
-  // Back from the UPI app: "Did you pay?" — only a yes (with the UTR) tells them
+  // Back from the UPI app: "Did you pay?" — only a yes tells them
   const [confirmPaidOpen, setConfirmPaidOpen] = React.useState(false)
 
   // Find friend profile if available
@@ -234,7 +234,7 @@ export function SettleExpensesDialog({
       )?.key
     : undefined
 
-  const handleReport = (noteText?: string, utr?: string) => {
+  const handleReport = (noteText?: string) => {
     if (!user || selectedKeys.length === 0) return
     const amountToSettle = netPayablePaise > 0 ? payPaise : netReceivablePaise
     if (amountToSettle <= 0) {
@@ -256,7 +256,6 @@ export function SettleExpensesDialog({
           contextKeys: selectedKeys,
         },
         note,
-        ...(utr ? { utr } : {}),
         ...(gameDiscount?.role === "winner" && payOff > 0
           ? { challengeId: gameDiscount.challengeId }
           : {}),
@@ -740,7 +739,8 @@ export function SettleExpensesDialog({
         amountPaise={payPaise}
         payeeName={targetName}
         isPending={reportSettlement.isPending}
-        onConfirm={(utr) => handleReport(`JoySplit Settlement to ${targetName}`, utr)}
+        onConfirm={() => handleReport(`JoySplit Settlement to ${targetName}`)}
+        onPayAgain={targetUpiId ? () => setShowAppChooser(true) : undefined}
       />
 
       {/* UPI App Chooser Sheet */}

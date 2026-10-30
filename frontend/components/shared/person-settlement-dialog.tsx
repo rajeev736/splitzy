@@ -98,7 +98,7 @@ export function PersonSettlementDialog({
   })
 
   const [showAppChooser, setShowAppChooser] = React.useState(false)
-  // Back from the UPI app (or "I already paid"): confirm with the UTR before they're told
+  // Back from the UPI app (or "I already paid"): confirm before they're told
   const [confirmPaidOpen, setConfirmPaidOpen] = React.useState(false)
   const [showBreakdown, setShowBreakdown] = React.useState(false)
 
@@ -180,7 +180,7 @@ export function PersonSettlementDialog({
     breakdown.aOwesBLines.every((l) => l.status === "PAYMENT_REPORTED")
   const isAllSettled = netPayablePaise === 0 && !canCancelOut
 
-  const handleReport = (utr?: string) => {
+  const handleReport = () => {
     if (awaitingConfirmation) {
       toast.info(`Already reported — waiting for ${targetName} to confirm.`)
       return
@@ -192,7 +192,6 @@ export function PersonSettlementDialog({
         amountPaise: payPaise,
         scope: resolvedScope,
         note: paymentNote,
-        ...(utr ? { utr } : {}),
         ...(discountPaise > 0 ? { challengeId: activeGame?.challengeId } : {}),
       },
       {
@@ -605,7 +604,8 @@ export function PersonSettlementDialog({
         amountPaise={payPaise}
         payeeName={targetName}
         isPending={reportSettlement.isPending}
-        onConfirm={(utr) => handleReport(utr)}
+        onConfirm={() => handleReport()}
+        onPayAgain={targetUpiId ? () => setShowAppChooser(true) : undefined}
       />
 
       <UpiAppSheet
