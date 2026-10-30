@@ -83,9 +83,17 @@ export async function createExpense(user: UserProfile, data: CreateExpenseInput)
   const firestore = getDb()
   if (!firestore) return expenseDoc
 
-  await setDoc(doc(firestore, "expenses", expenseId), firestorePayload)
+  // Saving the same form twice (a retry, a double tap) must not fail: the first
+  // save already created it, and a second write would count as an edit, which
+  // the security rules don't allow for these fields
+  const ref = doc(firestore, "expenses", expenseId)
+  const existing = await getDoc(ref).catch(() => null)
+  if (existing?.exists()) return existing.data() as Expense
 
-  // Notify all participants except creator ONLY for shared expenses
+  await setDoc(ref, firestorePayload)
+
+  // Notify everyone else, for shared expenses. Best effort: the expense is
+  // saved either way, so a failed notification never fails the save.
   if (expenseDoc.expenseType !== "personal") {
     for (const s of (expenseDoc.shares || []).filter((s) => s.userId !== user.uid)) {
       await sendNotification({
@@ -100,7 +108,7 @@ export async function createExpense(user: UserProfile, data: CreateExpenseInput)
           actorName: user.displayName,
           amountPaise: s.amountPaise,
         },
-      })
+      }).catch((e) => console.warn("Expense notification failed:", e))
     }
   }
 

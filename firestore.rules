@@ -283,17 +283,38 @@ service cloud.firestore {
               d.shares[i].keys().hasOnly(['userId', 'userName', 'userPhoto', 'amountPaise', 'status']));
     }
 
+    /**
+     * Shares are checked in blocks of 10, and a block runs only when there are
+     * shares in it: an ordinary expense evaluates one block instead of 50
+     * entries, well within the rules engine's per-request expression limit.
+     */
     function newSharesOk() {
-      return newShareOk(0) && newShareOk(1) && newShareOk(2) && newShareOk(3) && newShareOk(4) &&
-             newShareOk(5) && newShareOk(6) && newShareOk(7) && newShareOk(8) && newShareOk(9) &&
-             newShareOk(10) && newShareOk(11) && newShareOk(12) && newShareOk(13) && newShareOk(14) &&
-             newShareOk(15) && newShareOk(16) && newShareOk(17) && newShareOk(18) && newShareOk(19) &&
-             newShareOk(20) && newShareOk(21) && newShareOk(22) && newShareOk(23) && newShareOk(24) &&
-             newShareOk(25) && newShareOk(26) && newShareOk(27) && newShareOk(28) && newShareOk(29) &&
-             newShareOk(30) && newShareOk(31) && newShareOk(32) && newShareOk(33) && newShareOk(34) &&
-             newShareOk(35) && newShareOk(36) && newShareOk(37) && newShareOk(38) && newShareOk(39) &&
-             newShareOk(40) && newShareOk(41) && newShareOk(42) && newShareOk(43) && newShareOk(44) &&
-             newShareOk(45) && newShareOk(46) && newShareOk(47) && newShareOk(48) && newShareOk(49);
+      let n = request.resource.data.shares.size();
+      return newSharesOkBlock0() &&
+             (n <= 10 || newSharesOkBlock10()) &&
+             (n <= 20 || newSharesOkBlock20()) &&
+             (n <= 30 || newSharesOkBlock30()) &&
+             (n <= 40 || newSharesOkBlock40());
+    }
+
+    function newSharesOkBlock0() {
+      return newShareOk(0) && newShareOk(1) && newShareOk(2) && newShareOk(3) && newShareOk(4) && newShareOk(5) && newShareOk(6) && newShareOk(7) && newShareOk(8) && newShareOk(9);
+    }
+
+    function newSharesOkBlock10() {
+      return newShareOk(10) && newShareOk(11) && newShareOk(12) && newShareOk(13) && newShareOk(14) && newShareOk(15) && newShareOk(16) && newShareOk(17) && newShareOk(18) && newShareOk(19);
+    }
+
+    function newSharesOkBlock20() {
+      return newShareOk(20) && newShareOk(21) && newShareOk(22) && newShareOk(23) && newShareOk(24) && newShareOk(25) && newShareOk(26) && newShareOk(27) && newShareOk(28) && newShareOk(29);
+    }
+
+    function newSharesOkBlock30() {
+      return newShareOk(30) && newShareOk(31) && newShareOk(32) && newShareOk(33) && newShareOk(34) && newShareOk(35) && newShareOk(36) && newShareOk(37) && newShareOk(38) && newShareOk(39);
+    }
+
+    function newSharesOkBlock40() {
+      return newShareOk(40) && newShareOk(41) && newShareOk(42) && newShareOk(43) && newShareOk(44) && newShareOk(45) && newShareOk(46) && newShareOk(47) && newShareOk(48) && newShareOk(49);
     }
 
     function newShareAmount(i) {
@@ -302,16 +323,32 @@ service cloud.firestore {
 
     /** The shares add up to the expense total. */
     function newSharesSum() {
-      return newShareAmount(0) + newShareAmount(1) + newShareAmount(2) + newShareAmount(3) + newShareAmount(4) +
-             newShareAmount(5) + newShareAmount(6) + newShareAmount(7) + newShareAmount(8) + newShareAmount(9) +
-             newShareAmount(10) + newShareAmount(11) + newShareAmount(12) + newShareAmount(13) + newShareAmount(14) +
-             newShareAmount(15) + newShareAmount(16) + newShareAmount(17) + newShareAmount(18) + newShareAmount(19) +
-             newShareAmount(20) + newShareAmount(21) + newShareAmount(22) + newShareAmount(23) + newShareAmount(24) +
-             newShareAmount(25) + newShareAmount(26) + newShareAmount(27) + newShareAmount(28) + newShareAmount(29) +
-             newShareAmount(30) + newShareAmount(31) + newShareAmount(32) + newShareAmount(33) + newShareAmount(34) +
-             newShareAmount(35) + newShareAmount(36) + newShareAmount(37) + newShareAmount(38) + newShareAmount(39) +
-             newShareAmount(40) + newShareAmount(41) + newShareAmount(42) + newShareAmount(43) + newShareAmount(44) +
-             newShareAmount(45) + newShareAmount(46) + newShareAmount(47) + newShareAmount(48) + newShareAmount(49);
+      let n = request.resource.data.shares.size();
+      return newSharesSumBlock0() +
+             (n > 10 ? newSharesSumBlock10() : 0) +
+             (n > 20 ? newSharesSumBlock20() : 0) +
+             (n > 30 ? newSharesSumBlock30() : 0) +
+             (n > 40 ? newSharesSumBlock40() : 0);
+    }
+
+    function newSharesSumBlock0() {
+      return newShareAmount(0) + newShareAmount(1) + newShareAmount(2) + newShareAmount(3) + newShareAmount(4) + newShareAmount(5) + newShareAmount(6) + newShareAmount(7) + newShareAmount(8) + newShareAmount(9);
+    }
+
+    function newSharesSumBlock10() {
+      return newShareAmount(10) + newShareAmount(11) + newShareAmount(12) + newShareAmount(13) + newShareAmount(14) + newShareAmount(15) + newShareAmount(16) + newShareAmount(17) + newShareAmount(18) + newShareAmount(19);
+    }
+
+    function newSharesSumBlock20() {
+      return newShareAmount(20) + newShareAmount(21) + newShareAmount(22) + newShareAmount(23) + newShareAmount(24) + newShareAmount(25) + newShareAmount(26) + newShareAmount(27) + newShareAmount(28) + newShareAmount(29);
+    }
+
+    function newSharesSumBlock30() {
+      return newShareAmount(30) + newShareAmount(31) + newShareAmount(32) + newShareAmount(33) + newShareAmount(34) + newShareAmount(35) + newShareAmount(36) + newShareAmount(37) + newShareAmount(38) + newShareAmount(39);
+    }
+
+    function newSharesSumBlock40() {
+      return newShareAmount(40) + newShareAmount(41) + newShareAmount(42) + newShareAmount(43) + newShareAmount(44) + newShareAmount(45) + newShareAmount(46) + newShareAmount(47) + newShareAmount(48) + newShareAmount(49);
     }
 
     /** Participant i of a direct split is you or an active friend of yours. */
