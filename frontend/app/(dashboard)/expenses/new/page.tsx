@@ -49,25 +49,34 @@ function AmountInput({ value, onChange }: { value: string; onChange: (value: str
   const length = Math.max(1, value.length)
   const size = length <= 5 ? "text-6xl" : length <= 7 ? "text-5xl" : length <= 9 ? "text-4xl" : "text-3xl"
   return (
-    <div className="flex w-full max-w-full items-center justify-center overflow-hidden leading-none">
-      <span className={cn("mr-1.5 font-semibold text-muted-foreground transition-all duration-200", size)}>₹</span>
-      <input
-        id="expense-amount"
-        data-large-input
-        type="text"
-        inputMode="decimal"
-        autoComplete="off"
-        autoFocus
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="0"
-        // Width follows the digits so ₹ stays snug against the number
-        style={{ width: `${length + 0.2}ch` }}
-        className={cn(
-          "min-w-0 bg-transparent p-0 leading-none font-bold tracking-tight tabular-nums outline-none transition-all duration-200 placeholder:text-muted-foreground/40",
-          size
-        )}
-      />
+    // One font size for ₹, the digits and their invisible copy, so they always move together;
+    // only the size animates (widths follow it exactly, so nothing scrolls or jumps)
+    <div
+      className={cn(
+        "flex w-full max-w-full items-center justify-center overflow-hidden leading-none transition-[font-size] duration-200 ease-out",
+        size
+      )}
+    >
+      <span className="mr-1.5 font-semibold text-muted-foreground">₹</span>
+      {/* The input sits on an invisible copy of its text, which sets its width to the exact digits */}
+      <span className="inline-grid font-bold tracking-tight tabular-nums">
+        <span aria-hidden className="invisible col-start-1 row-start-1 whitespace-pre">
+          {value || "0"}
+        </span>
+        <input
+          id="expense-amount"
+          data-large-input
+          type="text"
+          inputMode="decimal"
+          autoComplete="off"
+          autoFocus
+          size={1}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="0"
+          className="col-start-1 row-start-1 w-full min-w-0 bg-transparent p-0 leading-none font-bold tracking-tight tabular-nums outline-none placeholder:text-muted-foreground/40"
+        />
+      </span>
     </div>
   )
 }
