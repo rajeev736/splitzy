@@ -302,3 +302,10 @@ input:autofill {
 .driver-popover.joysplit-tour .driver-popover-arrow-side-bottom { border-bottom-color: var(--popover); }
 .driver-popover.joysplit-tour .driver-popover-arrow-side-left { border-left-color: var(--popover); }
 .driver-popover.joysplit-tour .driver-popover-arrow-side-right { border-right-color: var(--popover); }
+
+/* Toasts: the close cross on the right corner (sonner puts it on the left) */
+[data-sonner-toaster] [data-sonner-toast] {
+  --toast-close-button-start: unset;
+  --toast-close-button-end: 0;
+  --toast-close-button-transform: translate(35%, -35%);
+}

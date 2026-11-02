@@ -79,7 +79,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             <FunSync />
             <GameDiscountProvider>{children}</GameDiscountProvider>
             {/* Theme-coloured toasts (no rich colours), centred on top so phones see them whole */}
-            <Toaster position="top-center" closeButton />
+            <Toaster position="top-center" closeButton swipeDirections={["left", "right", "top"]} />
           </TooltipProvider>
         </SessionProvider>
         {/* Dev-only (tree-shaken in production); hidden on mobile so it never covers the bottom nav */}

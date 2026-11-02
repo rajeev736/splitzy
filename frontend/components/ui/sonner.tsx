@@ -13,7 +13,8 @@ import {
 
 /**
  * App toasts: one calm card in the theme's colours (light or dark), with only
- * the icon tinted by kind — no bright green / red slabs.
+ * the icon tinted by kind — no bright green / red slabs. The close cross
+ * sits on the right (see globals.css); swipe left, right or up to dismiss.
  */
 const Toaster = ({ ...props }: ToasterProps) => {
   const { resolvedTheme } = useTheme()
