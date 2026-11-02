@@ -78,7 +78,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
             {/* Coins, badges, birthday reminders, hugs arriving */}
             <FunSync />
             <GameDiscountProvider>{children}</GameDiscountProvider>
-            <Toaster position="top-right" richColors closeButton />
+            {/* Theme-coloured toasts (no rich colours), centred on top so phones see them whole */}
+            <Toaster position="top-center" closeButton />
           </TooltipProvider>
         </SessionProvider>
         {/* Dev-only (tree-shaken in production); hidden on mobile so it never covers the bottom nav */}
