@@ -49,7 +49,8 @@ export function SwipeTabPanels({
   return (
     <div
       ref={viewport}
-      className={cn("w-full overflow-hidden supports-[overflow:clip]:overflow-clip", className)}
+      // No fixed width: a block grows into negative side margins (edge-to-edge panels)
+      className={cn("overflow-hidden supports-[overflow:clip]:overflow-clip", className)}
     >
       <div
         ref={track}
