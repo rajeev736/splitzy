@@ -127,7 +127,7 @@ export function InviteDialog({
               {target ? (
                 <>
                   <div className="flex items-center gap-3">
-                    <UserAvatar src={target.photoURL} name={target.displayName || "User"} size="md" />
+                    <UserAvatar uid={target.uid} src={target.photoURL} name={target.displayName || "User"} size="md" />
                     <div className="min-w-0">
                       <div className="truncate text-sm font-medium">{target.displayName}</div>
                       <div className="truncate font-mono text-[11px] text-muted-foreground">{target.splitzyId}</div>

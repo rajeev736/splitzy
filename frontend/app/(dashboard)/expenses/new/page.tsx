@@ -18,9 +18,12 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Spinner } from "@/components/ui/spinner"
 import { useCreateChallenge, useCreateExpense } from "@/hooks/mutations"
 import { useFriends, useGroups } from "@/hooks/queries"
+import { useUploadAttachments } from "@/hooks/use-attachments"
 import { getErrorMessage } from "@/lib/errors"
 import type { Expense, Group, UserProfile } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import type { PreparedAttachment } from "@/services/attachments"
+import { AttachBill } from "./_components/attach-bill"
 import { SplitSection } from "./_components/split-section"
 import { SplitWithPicker } from "./_components/split-with-picker"
 import { useExpenseDraft } from "./_components/use-expense-draft"
@@ -108,6 +111,12 @@ function NewExpenseFlow({
   const canAddGame = draft.expenseMode === "group" && !!user && draft.payerId === user.uid
   const gamePlayers = draft.splitShares.filter((s) => s.amountPaise > 0 && s.userId !== user?.uid)
 
+  // Bills are picked (and compressed) now, uploaded once the expense exists
+  const [bills, setBills] = React.useState<PreparedAttachment[]>([])
+  const [billProgress, setBillProgress] = React.useState<number | null>(null)
+  const uploadBills = useUploadAttachments({ errorMessage: false })
+  const busy = createExpense.isPending || billProgress !== null
+
   // `isPending` only flips after a re-render, so a fast double tap (or header +
   // bottom Save) could submit twice. A ref blocks the second tap synchronously.
   const savingRef = React.useRef(false)
@@ -130,39 +139,69 @@ function NewExpenseFlow({
 
     savingRef.current = true
     createExpense.mutate(input, {
-      onSuccess: (expense) => {
-        if (canAddGame && gameEnabled) {
-          createChallenge.mutate({
-            kind: "group",
-            game: "lucky_number",
-            discountPercent: gameDiscount,
-            players: expense.shares
-              .filter((s) => s.userId !== user?.uid && s.amountPaise > 0)
-              .map((s) => ({ uid: s.userId, name: s.userName, basePaise: s.amountPaise })),
-            expense: { id: expense.id, title: expense.title, groupId: expense.groupId, groupName: expense.groupName },
-          })
-        }
-        if (isShared) {
-          void celebrate({ particleCount: 90, spread: 75, origin: { y: 0.6 }, colors: ["#2563EB", "#FBBF24", "#10B981"] })
-        } else {
-          void celebrate({ particleCount: 70, spread: 60, origin: { y: 0.6 }, colors: ["#2563EB", "#10B981"] })
-        }
-        // Land where the expense lives, with a one-tap way to add the next one
-        const { href, addAnotherHref } = destinationFor(expense, draft.selectedFriendIds)
-        draft.reset()
-        toast.success(isShared ? "Expense added!" : "Personal expense saved!", {
-          action: { label: "Add another", onClick: () => router.push(addAnotherHref) },
-        })
-        router.replace(href)
-      },
-      onError: (err) =>
+      // Stays "saving" until the bill is uploaded, so a second tap can't upload it twice
+      onSuccess: (expense) => void afterSave(expense).finally(release),
+      onError: (err) => {
+        release()
         toast.error(
           isShared
             ? "Failed to create expense: " + getErrorMessage(err, "Please check inputs")
             : getErrorMessage(err, "Failed to save personal expense")
-        ),
-      onSettled: release,
+        )
+      },
     })
+  }
+
+  /**
+   * Upload the picked bills to the new expense before leaving. The expense is
+   * saved either way; a failed upload only means adding the bill later. A very
+   * slow upload moves on after a while — Firestore finishes the queued write.
+   */
+  const uploadBillsFor = async (expense: Expense) => {
+    if (bills.length === 0) return
+    setBillProgress(0)
+    try {
+      const outcome = await Promise.race([
+        uploadBills.mutateAsync({ expenseId: expense.id, files: bills, onProgress: setBillProgress }),
+        new Promise<"slow">((resolve) => setTimeout(() => resolve("slow"), 60_000)),
+      ])
+      if (outcome === "slow") toast.info("The bill is still uploading. It will show on the expense once it's done.")
+    } catch (err) {
+      toast.error(`Expense saved, but the bill couldn't be uploaded. ${getErrorMessage(err, "")}`.trim(), {
+        description: "You can add it from the expense page.",
+        action: { label: "Open", onClick: () => router.push(`/expenses/${expense.id}`) },
+      })
+    } finally {
+      setBillProgress(null)
+    }
+  }
+
+  const afterSave = async (expense: Expense) => {
+    if (canAddGame && gameEnabled) {
+      createChallenge.mutate({
+        kind: "group",
+        game: "lucky_number",
+        discountPercent: gameDiscount,
+        players: expense.shares
+          .filter((s) => s.userId !== user?.uid && s.amountPaise > 0)
+          .map((s) => ({ uid: s.userId, name: s.userName, basePaise: s.amountPaise })),
+        expense: { id: expense.id, title: expense.title, groupId: expense.groupId, groupName: expense.groupName },
+      })
+    }
+    await uploadBillsFor(expense)
+    if (isShared) {
+      void celebrate({ particleCount: 90, spread: 75, origin: { y: 0.6 }, colors: ["#2563EB", "#FBBF24", "#10B981"] })
+    } else {
+      void celebrate({ particleCount: 70, spread: 60, origin: { y: 0.6 }, colors: ["#2563EB", "#10B981"] })
+    }
+    // Land where the expense lives, with a one-tap way to add the next one
+    const { href, addAnotherHref } = destinationFor(expense, draft.selectedFriendIds)
+    draft.reset()
+    setBills([])
+    toast.success(isShared ? "Expense added!" : "Personal expense saved!", {
+      action: { label: "Add another", onClick: () => router.push(addAnotherHref) },
+    })
+    router.replace(href)
   }
 
   return (
@@ -171,8 +210,8 @@ function NewExpenseFlow({
         title="Add expense"
         showBack
         rightAction={
-          <Button size="sm" disabled={createExpense.isPending} onClick={save}>
-            {createExpense.isPending && <Spinner />}
+          <Button size="sm" disabled={busy} onClick={save}>
+            {busy && <Spinner />}
             Save
           </Button>
         }
@@ -187,7 +226,7 @@ function NewExpenseFlow({
           }}
         >
           {/* 1 — the amount is the star: big, centred, focused on open */}
-          <section className="flex flex-col items-center gap-5 border-b pt-4 pb-6">
+          <section data-tour="amount" className="flex flex-col items-center gap-5 border-b pt-4 pb-6">
             <label htmlFor="expense-amount" className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
               Amount
             </label>
@@ -209,7 +248,9 @@ function NewExpenseFlow({
           </section>
 
           {/* 2 — who it's split with: Group / Friends / Just me, choices right below */}
-          <SplitWithPicker draft={draft} groups={groups} friends={friends} />
+          <div data-tour="split-with">
+            <SplitWithPicker draft={draft} groups={groups} friends={friends} />
+          </div>
 
           {/* 3 — who owes what (you paid) */}
           {isShared && (
@@ -227,9 +268,14 @@ function NewExpenseFlow({
             </>
           )}
 
-          <Button type="submit" size="lg" className="mt-2 h-12 w-full text-sm font-semibold" disabled={createExpense.isPending}>
-            {createExpense.isPending && <Spinner />}
-            {isShared ? "Save expense" : "Save personal expense"}
+          {/* 4 — optional bill photo / PDF, uploaded after the expense is saved */}
+          <div data-tour="attach-bill">
+            <AttachBill files={bills} onFilesChange={setBills} progress={billProgress} disabled={busy} />
+          </div>
+
+          <Button type="submit" size="lg" className="mt-2 h-12 w-full text-sm font-semibold" disabled={busy}>
+            {busy && <Spinner />}
+            {billProgress !== null ? "Uploading bill…" : isShared ? "Save expense" : "Save personal expense"}
           </Button>
         </form>
       </PageContainer>

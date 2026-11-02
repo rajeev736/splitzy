@@ -2,8 +2,9 @@ import type { Challenge } from "@/lib/types"
 
 /**
  * Games between friends. A challenge is hosted by one person who hides a
- * secret (their moves, a number, coin flips, treasure boxes, or grid cells for
- * the tile-by-tile grid games); the players play against it. A game is either just for fun (`discountPercent` 0) or for
+ * secret (their moves, a number, coin flips, treasure boxes, grid cells for
+ * the tile-by-tile grid games, a keeper's dives, a run of cards); the players
+ * play against it. A game is either just for fun (`discountPercent` 0) or for
  * a discount: then the players are people who owe the host, and winners get
  * `discountPercent` off what they owe — only if they pay within
  * DISCOUNT_WINDOW_MS of the result.
@@ -12,7 +13,16 @@ import type { Challenge } from "@/lib/types"
  * keep the two in sync.
  */
 
-export type GameId = "rps" | "lucky_number" | "coin_toss" | "treasure" | "minefield" | "gold_rush"
+export type GameId =
+  | "rps"
+  | "lucky_number"
+  | "coin_toss"
+  | "treasure"
+  | "minefield"
+  | "gold_rush"
+  | "penalty"
+  | "hilo"
+  | "number_hunt"
 
 export interface GameInfo {
   name: string
@@ -26,7 +36,11 @@ export interface GameInfo {
    * left to chance).
    */
   setup: "moves" | "cells" | "pick"
-  /** Grid games can't be played for a discount in groups: players who've dug could tip off the rest. */
+  /**
+   * Games that reveal step by step in groups too (grid games, Higher or Lower,
+   * Number Hunt) can't be played for a discount in groups: players who've
+   * already played could tip off the rest.
+   */
   groupDiscount: boolean
 }
 
@@ -97,10 +111,54 @@ export const GAMES: Record<GameId, GameInfo> = {
     setup: "cells",
     groupDiscount: false,
   },
+  penalty: {
+    name: "Penalty Shootout",
+    tagline: "5 penalties against the host's keeper — score 3 to win",
+    emoji: "⚽",
+    howToWin: {
+      friend: "Score at least 3 of your 5 penalties",
+      group: "Score at least 3 of your 5 penalties",
+    },
+    setup: "pick",
+    // In groups the keeper's dives only show at the end, like Stone Paper Scissors
+    groupDiscount: true,
+  },
+  hilo: {
+    name: "Higher or Lower",
+    tagline: "Call the next 5 cards higher or lower — get 3 right",
+    emoji: "🃏",
+    howToWin: {
+      friend: "Call at least 3 of the 5 cards right",
+      group: "Call at least 3 of the 5 cards right",
+    },
+    setup: "pick",
+    groupDiscount: false,
+  },
+  number_hunt: {
+    name: "Number Hunt",
+    tagline: "Find the secret number from 1 to 60 in 5 guesses",
+    emoji: "🔎",
+    howToWin: {
+      friend: "Find the secret number within 5 guesses",
+      group: "Find the secret number within 5 guesses",
+    },
+    setup: "pick",
+    groupDiscount: false,
+  },
 }
 
 /** Display order. */
-export const GAME_IDS: GameId[] = ["rps", "minefield", "gold_rush", "coin_toss", "treasure", "lucky_number"]
+export const GAME_IDS: GameId[] = [
+  "rps",
+  "penalty",
+  "minefield",
+  "gold_rush",
+  "hilo",
+  "number_hunt",
+  "coin_toss",
+  "treasure",
+  "lucky_number",
+]
 
 /** How long a winner's discount lasts after the result. */
 export const DISCOUNT_WINDOW_MS = 10 * 60 * 1000
@@ -289,19 +347,204 @@ export function scoreLuckyNumber(secret: number, guesses: Record<string, number>
   }
 }
 
+/* ── Penalty Shootout ─────────────────────────────────────────────────── */
+// The host picks where their keeper dives for each of 5 kicks. Directions are
+// as the shooter sees the goal: a shot to the left is saved by a dive to the
+// left, and goes in otherwise.
+
+export const PENALTY_DIRS = ["L", "C", "R"] as const
+export type PenaltyDir = (typeof PENALTY_DIRS)[number]
+export const PENALTY_KICKS = 5
+export const PENALTY_TO_WIN = 3
+export const PENALTY_LABEL: Record<PenaltyDir, string> = { L: "Left", C: "Centre", R: "Right" }
+
+const isPenaltyDir = (v: unknown): v is PenaltyDir => (PENALTY_DIRS as readonly unknown[]).includes(v)
+
+/** 5 directions: the keeper's dives, or the player's shots. */
+export const isPenaltyDirs = (v: unknown): v is PenaltyDir[] =>
+  Array.isArray(v) && v.length === PENALTY_KICKS && v.every(isPenaltyDir)
+
+export const randomDives = (): PenaltyDir[] =>
+  Array.from({ length: PENALTY_KICKS }, () => PENALTY_DIRS[randomInt(PENALTY_DIRS.length)])
+
+/** A goal is a shot the keeper didn't dive towards. */
+export const isGoal = (shot: PenaltyDir, dive: PenaltyDir) => shot !== dive
+
+/** The kicks taken so far (there may be fewer than 5 shots); 3 goals or more wins. */
+export function scorePenalty(dives: PenaltyDir[], shots: PenaltyDir[]) {
+  const kicks = shots.map((shot, i) => ({ shot, dive: dives[i], goal: isGoal(shot, dives[i]) }))
+  const goals = kicks.filter((k) => k.goal).length
+  return { kicks, goals, saves: kicks.length - goals, won: goals >= PENALTY_TO_WIN }
+}
+
+/* ── Higher or Lower ──────────────────────────────────────────────────── */
+// The host deals 6 cards (2–14: J=11, Q=12, K=13, A=14), never the same value
+// twice in a row. Card 0 is face up from the start; the player calls whether
+// each next card is higher or lower, and each call turns the next card over.
+
+export const HILO_CARDS = 6
+export const HILO_GUESSES = HILO_CARDS - 1
+export const HILO_TO_WIN = 3
+export const CARD_MIN = 2
+export const CARD_MAX = 14
+export const HILO_CALLS = ["H", "L"] as const
+export type HiloCall = (typeof HILO_CALLS)[number]
+export const HILO_LABEL: Record<HiloCall, string> = { H: "Higher", L: "Lower" }
+
+const FACE_RANKS: Record<number, string> = { 11: "J", 12: "Q", 13: "K", 14: "A" }
+/** "2"…"10", "J", "Q", "K", "A". */
+export const cardRank = (value: number) => FACE_RANKS[value] ?? String(value)
+
+export const isCardValue = (v: unknown): v is number =>
+  Number.isInteger(v) && (v as number) >= CARD_MIN && (v as number) <= CARD_MAX
+
+/** The host's 6 cards: real values, never the same twice in a row (so every call is right or wrong). */
+export const isHiloCards = (v: unknown): v is number[] =>
+  Array.isArray(v) && v.length === HILO_CARDS && v.every(isCardValue) && v.every((c, i) => i === 0 || c !== v[i - 1])
+
+export const isHiloCalls = (v: unknown): v is HiloCall[] =>
+  Array.isArray(v) && v.length === HILO_GUESSES && v.every((c) => (HILO_CALLS as readonly unknown[]).includes(c))
+
+export function randomHiloCards() {
+  const cards: number[] = []
+  while (cards.length < HILO_CARDS) {
+    const card = CARD_MIN + randomInt(CARD_MAX - CARD_MIN + 1)
+    if (card !== cards[cards.length - 1]) cards.push(card)
+  }
+  return cards
+}
+
+/** Was `call` right going from card `from` to card `to`? Mirrors `hiloRight` in firestore.rules. */
+export const hiloCallRight = (call: HiloCall, from: number, to: number) => (call === "H") === to > from
+
+/** The calls made so far (there may be fewer than 5) against the cards; 3 right or more wins. */
+export function scoreHilo(cards: number[], calls: HiloCall[]) {
+  const rounds = calls.map((call, i) => ({
+    from: cards[i],
+    to: cards[i + 1],
+    call,
+    right: hiloCallRight(call, cards[i], cards[i + 1]),
+  }))
+  const right = rounds.filter((r) => r.right).length
+  return { rounds, right, won: right >= HILO_TO_WIN }
+}
+
+/* ── Number Hunt ──────────────────────────────────────────────────────── */
+// The host hides a number from 1 to 60. Like the grid games, each number has
+// its own doc (challenges/{id}/tiles/{n}) with the hint for guessing it —
+// "higher", "lower" or "found" — that a player can read only once n is in their
+// append-only `progress` list. Their final move is that same list.
+
+export const HUNT_MIN = 1
+export const HUNT_MAX = 60
+export const HUNT_GUESSES = 5
+export type HuntHint = "higher" | "lower" | "found"
+
+export const isHuntNumber = (v: unknown): v is number =>
+  Number.isInteger(v) && (v as number) >= HUNT_MIN && (v as number) <= HUNT_MAX
+
+/** A player's guesses, in order: different numbers, no more than 5. */
+export const isHuntGuesses = (v: unknown): v is number[] =>
+  Array.isArray(v) &&
+  v.length >= 1 &&
+  v.length <= HUNT_GUESSES &&
+  v.every(isHuntNumber) &&
+  new Set(v).size === v.length
+
+export const randomHuntNumber = () => HUNT_MIN + randomInt(HUNT_MAX - HUNT_MIN + 1)
+
+/** The hint for guessing `guess` when the secret is `secret`. Mirrors `huntHint` in firestore.rules. */
+export const huntHint = (secret: number, guess: number): HuntHint =>
+  secret > guess ? "higher" : secret < guess ? "lower" : "found"
+
+/** Found within 5 guesses (a win), or out of guesses. */
+export function scoreHunt(secret: number, guesses: number[]) {
+  const foundAt = guesses.indexOf(secret)
+  const won = foundAt !== -1 && guesses.length <= HUNT_GUESSES
+  return { won, foundAt, over: won || guesses.length >= HUNT_GUESSES }
+}
+
+/** What's still possible after these hints: above every "higher" guess, below every "lower" one. */
+export function huntRange(hints: { guess: number; hint: HuntHint }[]) {
+  let low = HUNT_MIN
+  let high = HUNT_MAX
+  for (const { guess, hint } of hints) {
+    if (hint === "found") return { low: guess, high: guess }
+    if (hint === "higher") low = Math.max(low, guess + 1)
+    else high = Math.min(high, guess - 1)
+  }
+  return { low, high }
+}
+
+/* ── Step-by-step reveals ─────────────────────────────────────────────── */
+// Round games keep each player's picks in `roundPlays[uid]` (append-only, one
+// round at a time). Where the host's side of each round shows as it's played,
+// it sits in hostRounds/{n}, readable once the player has played round n — in
+// Higher or Lower, card n+1 after call n, and card 0 from the start.
+
+export type RoundGameId = "rps" | "penalty" | "hilo"
+export const isRoundGame = (game: GameId): game is RoundGameId =>
+  game === "rps" || game === "penalty" || game === "hilo"
+
+/**
+ * Games with a doc per round, so each round's result shows as it's played.
+ * Stone Paper Scissors and Penalty Shootout only one-on-one: in a group an
+ * early player could tip off the rest, so there the result comes at the end.
+ * Higher or Lower always: calling cards blind isn't the game, so in groups it's
+ * just for fun (`groupDiscount: false`).
+ */
+export const hasHostRounds = (c: Pick<Challenge, "game" | "kind">) =>
+  c.game === "hilo" || ((c.game === "rps" || c.game === "penalty") && c.kind === "friend")
+
+/** The hostRounds docs written with a new game, as [round, doc] pairs. */
+export function hostRoundDocs(
+  c: Pick<Challenge, "game" | "kind">,
+  secret: GameSecret
+): [number, Record<string, unknown>][] {
+  if (!hasHostRounds(c)) return []
+  if (c.game === "rps") return (secret.moves ?? []).map((move, n) => [n, { move }])
+  if (c.game === "penalty") return (secret.dives ?? []).map((move, n) => [n, { move }])
+  return (secret.cards ?? []).map((card, n) => [n, { card }])
+}
+
+/** Games with a doc per tile in tiles/{n}: grid cells, or each number in Number Hunt. */
+export type TileGameId = GridGameId | "number_hunt"
+export const isTileGame = (game: GameId): game is TileGameId => isGridGame(game) || game === "number_hunt"
+
+/** The tile ids a tile game has. */
+export const tileIds = (game: TileGameId) =>
+  game === "number_hunt"
+    ? Array.from({ length: HUNT_MAX - HUNT_MIN + 1 }, (_, i) => HUNT_MIN + i)
+    : Array.from({ length: GRID_CELLS }, (_, n) => n)
+
+/** The tiles docs written with a new game, as [tile, doc] pairs. */
+export function tileDocs(game: GameId, secret: GameSecret): [number, Record<string, unknown>][] {
+  if (!isTileGame(game)) return []
+  if (game === "number_hunt") return tileIds(game).map((n) => [n, { hint: huntHint(secret.number as number, n) }])
+  return tileIds(game).map((n) => [n, { hit: (secret.cells ?? []).includes(n) }])
+}
+
 /* ── Moves, secrets & results ─────────────────────────────────────────── */
 
-/** RPS moves, coin calls, a box, a guess — or, in grid games, the list of digs. */
-export type GameMove = RpsPlay[] | CoinSide[] | number[] | number
+/**
+ * RPS moves, coin calls, a box, a guess, penalty shots, card calls — or, in
+ * tile games, the list of digs / guesses.
+ */
+export type GameMove = RpsPlay[] | CoinSide[] | PenaltyDir[] | HiloCall[] | number[] | number
 
 /** The host's hidden side of the game, stored in challenges/{id}/secret/value. */
 export interface GameSecret {
   moves?: RpsMove[]
+  /** Lucky Number, or the number to find in Number Hunt. */
   number?: number
   flips?: CoinSide[]
   boxes?: number[]
   /** Grid games: where the bombs / gold are. */
   cells?: number[]
+  /** Penalty Shootout: where the keeper dives for each kick. */
+  dives?: PenaltyDir[]
+  /** Higher or Lower: the 6 cards, in order. */
+  cards?: number[]
 }
 
 export function isValidMove(game: GameId, move: unknown): move is GameMove {
@@ -309,13 +552,17 @@ export function isValidMove(game: GameId, move: unknown): move is GameMove {
   if (game === "coin_toss") return isCoinCalls(move)
   if (game === "treasure") return isTreasurePick(move)
   if (isGridGame(game)) return isValidDigs(game, move)
+  if (game === "penalty") return isPenaltyDirs(move)
+  if (game === "hilo") return isHiloCalls(move)
+  if (game === "number_hunt") return isHuntGuesses(move)
   return isLuckyGuess(move)
 }
 
 /**
  * Secret for a new challenge, created on the host's device from what the host
- * picked. RPS moves and grid cells must be picked; flips, boxes and the lucky
- * number fall back to random when left out (e.g. games added to an expense).
+ * picked. RPS moves and grid cells must be picked; flips, boxes, numbers,
+ * dives and cards fall back to random when left out (e.g. games added to an
+ * expense).
  */
 export function newSecretFor(game: GameId, host: GameSecret = {}): GameSecret {
   switch (game) {
@@ -338,6 +585,18 @@ export function newSecretFor(game: GameId, host: GameSecret = {}): GameSecret {
       if (host.number === undefined) return { number: randomLuckyNumber() }
       if (!isLuckyGuess(host.number)) throw new Error("Pick a number from 1 to 100")
       return { number: host.number }
+    case "penalty":
+      if (host.dives === undefined) return { dives: randomDives() }
+      if (!isPenaltyDirs(host.dives)) throw new Error("Pick all 5 dives first")
+      return { dives: host.dives }
+    case "hilo":
+      if (host.cards === undefined) return { cards: randomHiloCards() }
+      if (!isHiloCards(host.cards)) throw new Error("Pick 6 cards, never the same one twice in a row")
+      return { cards: host.cards }
+    case "number_hunt":
+      if (host.number === undefined) return { number: randomHuntNumber() }
+      if (!isHuntNumber(host.number)) throw new Error("Pick a number from 1 to 60")
+      return { number: host.number }
   }
 }
 
@@ -355,6 +614,12 @@ function beatsSecret(c: Pick<Challenge, "game">, secret: GameSecret, move: GameM
     case "minefield":
     case "gold_rush":
       return scoreGrid(c.game, secret.cells ?? [], move as number[]).won
+    case "penalty":
+      return scorePenalty(secret.dives as PenaltyDir[], move as PenaltyDir[]).won
+    case "hilo":
+      return scoreHilo(secret.cards as number[], move as HiloCall[]).won
+    case "number_hunt":
+      return scoreHunt(secret.number as number, move as number[]).won
   }
 }
 
@@ -385,7 +650,11 @@ export function computeResult(
           ? { boxes: secret.boxes }
           : isGridGame(c.game)
             ? { cells: secret.cells }
-            : { number: secret.number }
+            : c.game === "penalty"
+              ? { dives: secret.dives }
+              : c.game === "hilo"
+                ? { cards: secret.cards }
+                : { number: secret.number }
   return { winners, ...reveal }
 }
 

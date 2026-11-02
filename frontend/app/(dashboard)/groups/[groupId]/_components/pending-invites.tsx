@@ -42,6 +42,7 @@ export function PendingInvites({ group, className }: { group: Group; className?:
             <Fragment key={uid}>
               {i > 0 && <ItemSeparator className="my-0" />}
               <MemberRow
+                uid={uid}
                 name={info?.name || fr?.displayName || "Invited user"}
                 photoURL={info?.photoURL || fr?.photoURL}
                 splitzyId={

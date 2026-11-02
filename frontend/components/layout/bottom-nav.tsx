@@ -66,6 +66,7 @@ export function BottomNav() {
       {showsAddExpenseFab(pathname) && (
         <Link
           href="/expenses/new"
+          data-tour="add-expense"
           aria-label="Add expense"
           title="Add expense"
           className="fixed right-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] z-40 flex size-13 items-center justify-center rounded-full bg-foreground text-background shadow-lg shadow-black/15 transition-transform active:scale-95 md:hidden dark:shadow-black/40"
@@ -110,6 +111,7 @@ export function BottomNav() {
                 >
                   {isProfile && user ? (
                     <UserAvatar
+                      uid={user.uid}
                       src={user.photoURL}
                       name={user.displayName}
                       size="xs"

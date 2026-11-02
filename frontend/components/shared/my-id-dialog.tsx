@@ -104,7 +104,7 @@ export function MyIdDialog({
 
           <div className="flex flex-col items-center gap-4 text-center">
             <div className="flex items-center gap-3 self-stretch text-left">
-              <UserAvatar src={user.photoURL} name={user.displayName} size="md" />
+              <UserAvatar uid={user.uid} src={user.photoURL} name={user.displayName} size="md" />
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{user.displayName}</p>
                 <p className="truncate text-xs text-muted-foreground">{user.email}</p>

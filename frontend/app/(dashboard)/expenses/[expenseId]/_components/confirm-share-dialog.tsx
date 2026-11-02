@@ -35,7 +35,7 @@ export function ConfirmShareDialog({
         </DialogHeader>
         {share && (
           <div className="flex flex-col items-center gap-4 py-2 text-center">
-            <UserAvatar src={share.userPhoto} name={share.userName} size="lg" />
+            <UserAvatar uid={share.userId} src={share.userPhoto} name={share.userName} size="lg" />
             <div>
               <h4 className="text-base font-semibold">{share.userName}</h4>
               <p className="text-xs text-muted-foreground">reported paid for {expenseTitle}</p>

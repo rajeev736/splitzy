@@ -233,6 +233,7 @@ export function GroupSettlementDialog({
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <UserAvatar
+                          uid={m.userId}
                           src={m.photoURL}
                           name={m.name}
                           size="md"

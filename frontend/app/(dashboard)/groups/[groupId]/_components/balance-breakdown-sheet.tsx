@@ -286,7 +286,7 @@ function PersonBlock({
   return (
     <div className="flex flex-col gap-2 rounded-lg border p-3">
       <div className="flex min-w-0 items-center gap-3">
-        <UserAvatar src={person.photoURL} name={person.name} size="sm" />
+        <UserAvatar uid={person.uid} src={person.photoURL} name={person.name} size="sm" />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold">{person.name}</div>
           <div className="text-xs text-muted-foreground">

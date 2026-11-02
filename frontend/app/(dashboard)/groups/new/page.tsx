@@ -336,6 +336,7 @@ export default function CreateGroupPage() {
                       <>
                         <ItemMedia>
                           <UserAvatar
+                            uid={searchResult.user.uid}
                             src={searchResult.user.photoURL}
                             name={searchResult.user.displayName || "User"}
                             size="sm"
@@ -471,6 +472,7 @@ export default function CreateGroupPage() {
                     >
                       <ItemMedia>
                         <UserAvatar
+                          uid={friend.uid}
                           src={friend.photoURL}
                           name={friend.displayName}
                           size="sm"
@@ -525,7 +527,7 @@ function MemberChip({
 }) {
   return (
     <span className="inline-flex h-7 items-center gap-1.5 rounded-md border bg-card pr-0.5 pl-1 text-xs font-medium">
-      <UserAvatar src={user.photoURL} name={user.displayName} size="xs" />
+      <UserAvatar uid={user.uid} src={user.photoURL} name={user.displayName} size="xs" />
       <span>{user.displayName}</span>
       {invite && (
         <span className="text-[11px] text-muted-foreground">· {invite}</span>

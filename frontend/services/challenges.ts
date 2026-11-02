@@ -1,23 +1,32 @@
-import { arrayUnion, doc, getDoc, serverTimestamp, Timestamp, updateDoc, writeBatch } from "firebase/firestore"
+import { arrayUnion, doc, getDoc, increment, serverTimestamp, Timestamp, updateDoc, writeBatch } from "firebase/firestore"
 
 import { AppError } from "@/lib/errors"
 import {
   allPlayed,
   computeResult,
   GAMES,
-  GRID_CELLS,
   gridMaxDigs,
+  hasHostRounds,
+  hostRoundDocs,
+  HUNT_GUESSES,
   isGridGame,
+  isHuntNumber,
   isValidMove,
   MAX_GROUP_PLAYERS,
   newSecretFor,
+  tileDocs,
   type GameId,
   type GameMove,
   type GameSecret,
+  type HiloCall,
+  type HuntHint,
+  type PenaltyDir,
   type RpsMove,
   type RpsPlay,
 } from "@/lib/games"
 import type { Challenge, UserProfile } from "@/lib/types"
+import { MAX_STAKE } from "@/lib/fun/catalog"
+import { coinTx, isFriendDraw } from "./fun"
 import { getDb, nowIso, rupees, sendNotification } from "./shared"
 
 export interface CreateChallengeInput {
@@ -39,6 +48,8 @@ export interface CreateChallengeInput {
   expense?: { id: string; title: string; groupId?: string; groupName?: string }
   /** Group games started from the Games tab rather than an expense. */
   group?: { id: string; name: string }
+  /** Coins each side puts in (1-on-1 games for fun only); the winner takes both. */
+  stake?: number
 }
 
 export const newChallengeId = () => `chl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -76,6 +87,10 @@ export async function createChallenge(user: UserProfile, input: CreateChallengeI
       ? { groupId: input.group.id, groupName: input.group.name }
       : {}
 
+  const stake = Math.floor(input.stake ?? 0)
+  if (stake < 0 || stake > MAX_STAKE) throw new AppError(`Stakes go up to ${MAX_STAKE} coins`)
+  if (stake > 0 && (input.kind !== "friend" || !forFun)) throw new AppError("Coins can only be played on a 1-on-1 game for fun")
+
   const secret = newSecretFor(input.game, input.hostSecret)
   const challenge: Challenge = {
     id: newChallengeId(),
@@ -92,27 +107,32 @@ export async function createChallenge(user: UserProfile, input: CreateChallengeI
     ...group,
     status: "OPEN",
     moves: {},
+    ...(stake > 0 ? { stake, staked: [user.uid] } : {}),
     createdAt: nowIso(),
   }
 
   const firestore = getDb()
   if (!firestore) return challenge
+  if (stake > 0) await requireCoins(user.uid, stake)
 
   // Challenge + secret together: rules require the secret to exist from the start
   const batch = writeBatch(firestore)
   batch.set(doc(firestore, "challenges", challenge.id), challenge)
   batch.set(doc(firestore, "challenges", challenge.id, "secret", "value"), secret)
-  // Friend Stone Paper Scissors: one doc per round, so each round's result can show as it ends
-  if (hasRoundByRoundRps(challenge)) {
-    secret.moves!.forEach((move, n) =>
-      batch.set(doc(firestore, "challenges", challenge.id, "hostRounds", String(n)), { move })
-    )
+  // Friend Stone Paper Scissors / Penalty Shootout, and Higher or Lower: one doc
+  // per round (move, dive or card), so each round's result can show as it ends
+  for (const [n, data] of hostRoundDocs(challenge, secret)) {
+    batch.set(doc(firestore, "challenges", challenge.id, "hostRounds", String(n)), data)
   }
-  // Grid games: one doc per tile, so each can be opened (read) on its own
-  if (isGridGame(input.game)) {
-    for (let n = 0; n < GRID_CELLS; n++) {
-      batch.set(doc(firestore, "challenges", challenge.id, "tiles", String(n)), { hit: secret.cells!.includes(n) })
-    }
+  // Grid games and Number Hunt: one doc per tile / number, so each can be opened (read) on its own
+  for (const [n, data] of tileDocs(input.game, secret)) {
+    batch.set(doc(firestore, "challenges", challenge.id, "tiles", String(n)), data)
+  }
+  // Your stake leaves your wallet with the game (the rules check both together)
+  if (stake > 0) {
+    batch.update(doc(firestore, "wallets", user.uid), { balance: increment(-stake), lastTx: `stake:${challenge.id}` })
+    const line = coinTx(user.uid, "stake", -stake, `Stake on ${GAMES[input.game].name} with ${players[0].name}`, challenge.id)
+    batch.set(line.ref, line.data)
   }
   await batch.commit()
 
@@ -124,7 +144,9 @@ export async function createChallenge(user: UserProfile, input: CreateChallengeI
       message: `${user.displayName} challenged you to ${game.name}${
         input.expense ? ` for "${input.expense.title}"` : group.groupName ? ` in ${group.groupName}` : ""
       }. ${
-        forFun
+        stake > 0
+          ? `${stake} coins each — winner takes ${stake * 2}.`
+          : forFun
           ? "Just for fun — play when you're ready."
           : `Win to get ${pct}% off the ₹${rupees(p.basePaise)} you owe — pay right after the game to use it.`
       }`,
@@ -174,6 +196,21 @@ export async function readTile(challengeId: string, cell: number): Promise<boole
 export const hasRoundByRoundRps = (c: Pick<Challenge, "game" | "kind">) => c.game === "rps" && c.kind === "friend"
 
 /**
+ * Records a round game's picks so far (append-only: the rules never let a past
+ * round change), before the host's side of the latest round is read.
+ */
+async function saveRoundPlays(user: UserProfile, challenge: Challenge, plays: string[]) {
+  if (challenge.status !== "OPEN") throw new AppError("This game is already over")
+  if (challenge.moves?.[user.uid] !== undefined) throw new AppError("You've already played")
+  const firestore = getDb()
+  if (!firestore) throw new AppError("Games need an internet connection")
+  const recorded = challenge.roundPlays?.[user.uid] ?? []
+  if (plays.length > recorded.length) {
+    await updateDoc(doc(firestore, "challenges", challenge.id), { [`roundPlays.${user.uid}`]: plays })
+  }
+}
+
+/**
  * Plays one round: the pick is recorded first (security rules only let you see
  * the host's move for a round you've played, and never change a past round),
  * then the host's move for that round is read. Returns null when the game has
@@ -181,28 +218,94 @@ export const hasRoundByRoundRps = (c: Pick<Challenge, "game" | "kind">) => c.gam
  */
 export async function playRpsRound(user: UserProfile, challenge: Challenge, plays: RpsPlay[]): Promise<RpsMove | null> {
   if (!hasRoundByRoundRps(challenge)) return null
-  if (challenge.status !== "OPEN") throw new AppError("This game is already over")
-  if (challenge.moves?.[user.uid] !== undefined) throw new AppError("You've already played")
-  const firestore = getDb()
-  if (!firestore) throw new AppError("Games need an internet connection")
-
-  const recorded = challenge.roundPlays?.[user.uid] ?? []
-  if (plays.length > recorded.length) {
-    await updateDoc(doc(firestore, "challenges", challenge.id), { [`roundPlays.${user.uid}`]: plays })
-  }
+  await saveRoundPlays(user, challenge, plays)
   return readHostRound(challenge.id, plays.length - 1)
 }
 
 /** The host's move for a round you've played (null if this game has none per round). */
 export async function readHostRound(challengeId: string, round: number): Promise<RpsMove | null> {
+  return (await readHostRoundField(challengeId, round, "move")) as RpsMove | null
+}
+
+/** One field of hostRounds/{round}, or null when it can't be read (not yours yet, or no such round). */
+async function readHostRoundField(challengeId: string, round: number, field: "move" | "card") {
   const firestore = getDb()
   if (!firestore) return null
   try {
     const snap = await getDoc(doc(firestore, "challenges", challengeId, "hostRounds", String(round)))
-    return snap.exists() ? (snap.data().move as RpsMove) : null
+    return snap.exists() ? ((snap.data()[field] as unknown) ?? null) : null
   } catch {
     return null
   }
+}
+
+/**
+ * Penalty Shootout: takes one kick. One-on-one, the shot is recorded first and
+ * then the keeper's dive for it is read (rules allow it only once the shot is
+ * in). In a group there are no per-kick dives (an early player could tip the
+ * others off): returns null and the result shows at the end.
+ */
+export async function playPenaltyKick(
+  user: UserProfile,
+  challenge: Challenge,
+  shots: PenaltyDir[]
+): Promise<PenaltyDir | null> {
+  if (challenge.game !== "penalty" || !hasHostRounds(challenge)) return null
+  await saveRoundPlays(user, challenge, shots)
+  return readKeeperDive(challenge.id, shots.length - 1)
+}
+
+/** The keeper's dive for a kick you've taken (null if this game has none per kick). */
+export async function readKeeperDive(challengeId: string, kick: number): Promise<PenaltyDir | null> {
+  return (await readHostRoundField(challengeId, kick, "move")) as PenaltyDir | null
+}
+
+/**
+ * Higher or Lower: makes one call. The call is recorded first, then the card
+ * it was about is turned over (rules allow reading card n+1 only after call n).
+ */
+export async function playHiloCall(user: UserProfile, challenge: Challenge, calls: HiloCall[]): Promise<number> {
+  if (challenge.game !== "hilo") throw new AppError("This game has no cards")
+  await saveRoundPlays(user, challenge, calls)
+  const card = await readHiloCard(challenge.id, calls.length)
+  if (card === null) throw new AppError("Couldn't turn the card over — try again")
+  return card
+}
+
+/** Card n of a Higher or Lower game: card 0 from the start, card n+1 once you've made call n. */
+export async function readHiloCard(challengeId: string, n: number): Promise<number | null> {
+  return (await readHostRoundField(challengeId, n, "card")) as number | null
+}
+
+/**
+ * Number Hunt: guesses one number. The guess is recorded first (rules only let
+ * you read the hint for a number you've guessed, and never undo a guess), then
+ * its hint is read.
+ */
+export async function huntGuess(user: UserProfile, challenge: Challenge, guess: number): Promise<HuntHint> {
+  if (challenge.game !== "number_hunt") throw new AppError("This game has no numbers to guess")
+  if (challenge.status !== "OPEN") throw new AppError("This game is already over")
+  if (!challenge.players.includes(user.uid)) throw new AppError("You're not a player in this game")
+  if (challenge.moves?.[user.uid] !== undefined) throw new AppError("You've already finished")
+  if (!isHuntNumber(guess)) throw new AppError("Guess a number from 1 to 60")
+  const guessed = challenge.progress?.[user.uid] ?? []
+  if (!guessed.includes(guess) && guessed.length >= HUNT_GUESSES) throw new AppError("No guesses left")
+
+  const firestore = getDb()
+  if (!firestore) throw new AppError("Games need an internet connection")
+  if (!guessed.includes(guess)) {
+    await updateDoc(doc(firestore, "challenges", challenge.id), { [`progress.${user.uid}`]: arrayUnion(guess) })
+  }
+  return readHuntHint(challenge.id, guess)
+}
+
+/** The hint for a number you've already guessed (or any number, once the game is over). */
+export async function readHuntHint(challengeId: string, guess: number): Promise<HuntHint> {
+  const firestore = getDb()
+  if (!firestore) throw new AppError("Games need an internet connection")
+  const snap = await getDoc(doc(firestore, "challenges", challengeId, "tiles", String(guess)))
+  if (!snap.exists()) throw new AppError("This number is missing")
+  return snap.data().hint as HuntHint
 }
 
 /** A player locks in their move. Friend games resolve right away; group games once everyone has played. */
@@ -239,8 +342,28 @@ export async function resolveChallenge(user: UserProfile, challenge: Challenge):
   const result = computeResult(challenge, secretSnap.data() as GameSecret)
 
   const ref = doc(firestore, "challenges", challenge.id)
+  const update = { status: "DONE", result, resolvedAt: serverTimestamp() }
+  // Group games (but Lucky Number's "closest wins"): each player's win is
+  // checked by its own verdict doc written with the result, so the rules can
+  // verify a big group within their limits.
+  const withVerdicts = challenge.kind === "group" && challenge.game !== "lucky_number"
+  const saveResult = async (verdicts: boolean) => {
+    if (!verdicts) return updateDoc(ref, update)
+    const batch = writeBatch(firestore)
+    batch.update(ref, update)
+    for (const p of challenge.players.filter((p) => challenge.moves?.[p] !== undefined)) {
+      batch.set(doc(firestore, "challenges", challenge.id, "verdicts", p), { won: result.winners.includes(p) })
+    }
+    await batch.commit()
+  }
   try {
-    await updateDoc(ref, { status: "DONE", result, resolvedAt: serverTimestamp() })
+    try {
+      await saveResult(withVerdicts)
+    } catch (e) {
+      // Rules from before verdicts existed: the result on its own (fine for small groups)
+      if (!withVerdicts || (e as { code?: string })?.code !== "permission-denied") throw e
+      await saveResult(false)
+    }
   } catch (e) {
     // Two devices (or the player's submit and the open game screen) can reveal the
     // result at the same moment; the rules accept only the first. If it's already
@@ -287,6 +410,72 @@ export async function resolveChallenge(user: UserProfile, challenge: Challenge):
   }
 
   return resolved
+}
+
+async function requireCoins(uid: string, amount: number) {
+  const firestore = getDb()
+  if (!firestore) return
+  const snap = await getDoc(doc(firestore, "wallets", uid))
+  const balance = snap.exists() ? (snap.data().balance as number) : 0
+  if (balance < amount) throw new AppError(`You need ${amount - balance} more coins for this stake`)
+}
+
+/** The player puts in their coins before playing a staked game. */
+export async function joinStake(user: UserProfile, challenge: Challenge) {
+  const stake = challenge.stake ?? 0
+  if (stake <= 0 || challenge.staked?.includes(user.uid)) return
+  if (challenge.status !== "OPEN") throw new AppError("This game is already over")
+  const firestore = getDb()
+  if (!firestore) return
+  await requireCoins(user.uid, stake)
+  const batch = writeBatch(firestore)
+  batch.update(doc(firestore, "challenges", challenge.id), { staked: arrayUnion(user.uid) })
+  batch.update(doc(firestore, "wallets", user.uid), { balance: increment(-stake), lastTx: `stake:${challenge.id}` })
+  const line = coinTx(user.uid, "stake", -stake, `Stake on ${GAMES[challenge.game].name} with ${challenge.hostName}`, challenge.id)
+  batch.set(line.ref, line.data)
+  await batch.commit()
+}
+
+/**
+ * Coins a staker gets back from a finished or cancelled game: both stakes to
+ * the winner, each their own on a draw or a cancel. Mirrors payoutFor in the rules.
+ */
+export function stakePayout(c: Challenge, uid: string): number {
+  const stake = c.stake ?? 0
+  if (stake <= 0 || !c.staked?.includes(uid) || c.paidOut?.includes(uid)) return 0
+  if (c.status === "CANCELLED") return stake
+  if (c.status !== "DONE" || !c.result) return 0
+  if (isFriendDraw(c)) return stake
+  const player = c.players[0]
+  return c.result.winners.includes(player) === (uid === player) ? stake * 2 : 0
+}
+
+/** Collects what you won (or your refund) into your wallet, once. */
+export async function collectStake(user: UserProfile, challenge: Challenge): Promise<number> {
+  const amount = stakePayout(challenge, user.uid)
+  const firestore = getDb()
+  if (!firestore || amount <= 0) return 0
+  const batch = writeBatch(firestore)
+  batch.update(doc(firestore, "challenges", challenge.id), { paidOut: arrayUnion(user.uid) })
+  const stake = challenge.stake ?? 0
+  const won = challenge.status === "DONE" && amount === stake * 2
+  batch.update(doc(firestore, "wallets", user.uid), {
+    balance: increment(amount),
+    lastTx: `payout:${challenge.id}`,
+    // Net coins won from the other player, for the coin milestones
+    ...(won ? { coinsWon: increment(stake) } : {}),
+  })
+  const other = challenge.hostId === user.uid ? challenge.playerNames[challenge.players[0]] : challenge.hostName
+  const line = coinTx(
+    user.uid,
+    won ? "win" : "refund",
+    amount,
+    won ? `Won ${GAMES[challenge.game].name} against ${other}` : `Stake back from ${GAMES[challenge.game].name}`,
+    challenge.id
+  )
+  batch.set(line.ref, line.data)
+  await batch.commit()
+  return amount
 }
 
 /** Host withdraws an unfinished game. */

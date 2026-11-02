@@ -99,6 +99,7 @@ function GroupsContent() {
         rightAction={
           <ButtonLink
             href="/groups/new"
+            data-tour="create-group"
             size="icon-lg"
             aria-label="Create Group"
           >

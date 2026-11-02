@@ -136,7 +136,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       (snap) => {
         if (!snap.exists()) return
         const data = snap.data() as UserProfile
-        setUser((prev) => (prev ? { ...prev, ...data } : data))
+        // The doc is the truth (a removed mood or frame must go away too); email isn't stored in it
+        setUser((prev) => (prev ? { ...data, email: prev.email || data.email } : data))
       },
       (err) => console.warn("Profile sync notice:", err?.message || err)
     )

@@ -30,6 +30,7 @@ import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
 import { useDeleteExpense } from "@/hooks/mutations"
 import { useLiveGameDiscounts } from "@/hooks/use-game-discounts"
 import type { Expense } from "@/lib/types"
+import { BillSection } from "./_components/bill-section"
 import { DeleteExpenseDialog } from "./_components/delete-expense-dialog"
 import { ExpenseActionsMenu } from "./_components/expense-actions-menu"
 import { ExpenseGate } from "./_components/expense-gate"
@@ -213,6 +214,9 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
             ))}
           </CardContent>
         </Card>
+
+        {/* Bill photos / PDFs */}
+        <BillSection expense={expense} />
 
         {/* Bill metadata */}
         <Card>

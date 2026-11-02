@@ -55,6 +55,7 @@ export function SplitSection({ draft }: { draft: ExpenseDraft }) {
                 className="size-4.5 rounded-[4px]"
               />
               <MemberRow
+                uid={m.uid}
                 name={m.displayName}
                 photoURL={m.photoURL}
                 subtitle={

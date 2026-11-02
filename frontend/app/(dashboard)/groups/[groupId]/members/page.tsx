@@ -85,6 +85,7 @@ export default function GroupMembersPage() {
                   <React.Fragment key={mId}>
                     {i > 0 && <ItemSeparator className="my-0" />}
                     <MemberRow
+                      uid={mId}
                       name={displayName}
                       photoURL={photoURL}
                       splitzyId={splitzyId}

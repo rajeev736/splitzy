@@ -103,7 +103,7 @@ function FriendRequestsContent() {
                 <Item key={req.id} className="flex-col items-stretch gap-3 rounded-none px-4 py-3.5 sm:flex-row sm:items-center">
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     <ItemMedia>
-                      <UserAvatar src={req.senderPhoto} name={req.senderName} size="md" />
+                      <UserAvatar uid={req.senderId} src={req.senderPhoto} name={req.senderName} size="md" />
                     </ItemMedia>
                     <ItemContent className="min-w-0 gap-0.5">
                       <ItemTitle className="w-full truncate font-semibold">{req.senderName}</ItemTitle>
@@ -148,7 +148,7 @@ function FriendRequestsContent() {
               {sentRequests.map((req) => (
                 <Item key={req.id} className="flex-nowrap rounded-none px-4 py-3.5">
                   <ItemMedia>
-                    <UserAvatar name={req.receiverName} size="md" />
+                    <UserAvatar uid={req.receiverId} name={req.receiverName} size="md" />
                   </ItemMedia>
                   <ItemContent className="min-w-0 gap-0.5">
                     <ItemTitle className="w-full truncate font-semibold">{req.receiverName}</ItemTitle>
@@ -238,7 +238,7 @@ function FriendRequestsContent() {
                 return (
                   <Item key={su.uid} size="sm" className="flex-nowrap rounded-none px-4 py-3">
                     <ItemMedia>
-                      <UserAvatar src={su.photoURL} name={su.displayName} size="sm" />
+                      <UserAvatar uid={su.uid} src={su.photoURL} name={su.displayName} size="sm" />
                     </ItemMedia>
                     <ItemContent className="min-w-0 gap-0">
                       <ItemTitle className="w-full truncate text-sm font-semibold">{su.displayName}</ItemTitle>

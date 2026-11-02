@@ -50,7 +50,7 @@ export function IdLookupResult({ splitzyId }: { splitzyId: string }) {
   return (
     <Item variant="outline" className="flex-nowrap bg-card px-4 py-3">
       <ItemMedia>
-        <UserAvatar src={u.photoURL} name={u.displayName || "User"} size="sm" />
+        <UserAvatar uid={u.uid} src={u.photoURL} name={u.displayName || "User"} size="sm" />
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0.5">
         <ItemTitle className="w-full truncate font-medium">{u.displayName}</ItemTitle>

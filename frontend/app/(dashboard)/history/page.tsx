@@ -203,7 +203,7 @@ function HistoryContent() {
           onValueChange={(v) => setMainView(v as MainView)}
           className="gap-5"
         >
-          <TabsList className="w-full">
+          <TabsList data-tour="history" className="w-full">
             <TabsTrigger value="expenses" className="text-xs font-medium">
               Expenses
             </TabsTrigger>

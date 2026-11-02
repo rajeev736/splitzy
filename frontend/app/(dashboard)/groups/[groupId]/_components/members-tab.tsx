@@ -71,6 +71,7 @@ export function MembersTab({
               <Fragment key={mId}>
                 {i > 0 && <ItemSeparator className="my-0" />}
                 <MemberRow
+                  uid={mId}
                   name={displayName}
                   photoURL={info?.photoURL || fr?.photoURL}
                   splitzyId={memberSplitzyId || mId}
@@ -158,6 +159,7 @@ export function MembersTab({
                   <Fragment key={mId}>
                     {i > 0 && <ItemSeparator className="my-0" />}
                     <MemberRow
+                      uid={mId}
                       name={info?.name || "Former Member"}
                       photoURL={info?.photoURL}
                       splitzyId={info?.splitzyId || mId}

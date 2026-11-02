@@ -132,6 +132,7 @@ function FriendChoice({ draft, friends }: { draft: ExpenseDraft; friends: UserPr
               {picked.slice(0, 3).map((f) => (
                 <UserAvatar
                   key={f.uid}
+                  uid={f.uid}
                   src={f.photoURL}
                   name={f.displayName}
                   size="sm"
@@ -163,7 +164,7 @@ function FriendChoice({ draft, friends }: { draft: ExpenseDraft; friends: UserPr
           label: f.displayName,
           sublabel: f.splitzyId,
           keywords: f.splitzyId,
-          media: <UserAvatar src={f.photoURL} name={f.displayName} size="sm" className="size-8" />,
+          media: <UserAvatar uid={f.uid} src={f.photoURL} name={f.displayName} size="sm" className="size-8" />,
         }))}
         selected={draft.selectedFriendIds}
         onSelect={draft.toggleFriendSelection}

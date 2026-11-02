@@ -4,7 +4,29 @@ import {
   activeDiscountPaise,
   computeResult,
   DISCOUNT_WINDOW_MS,
+  GAME_IDS,
+  GAMES,
   gameStats,
+  hasHostRounds,
+  hiloCallRight,
+  hostRoundDocs,
+  huntHint,
+  huntRange,
+  isHiloCalls,
+  isHiloCards,
+  isHuntGuesses,
+  isPenaltyDirs,
+  isRoundGame,
+  isTileGame,
+  isValidMove,
+  randomDives,
+  randomHiloCards,
+  randomHuntNumber,
+  scoreHilo,
+  scoreHunt,
+  scorePenalty,
+  tileDocs,
+  cardRank,
   isCoinCalls,
   isRpsMoves,
   isRpsPlays,
@@ -139,6 +161,102 @@ assert(throws(() => newSecretFor("lucky_number", { number: 0 })), "number must b
 assert(throws(() => newSecretFor("coin_toss", { flips: ["H", "H"] as never })), "all 5 flips needed")
 assert(throws(() => newSecretFor("rps")), "RPS needs the host's moves")
 console.log("✓ Host-picked secrets")
+
+// Penalty Shootout: a goal unless the keeper dives the same way; 3 of 5 wins
+let p = scorePenalty(["L", "C", "R", "L", "C"], ["L", "R", "L", "R", "R"])
+assert(p.goals === 4 && p.saves === 1 && p.won, "4 goals, 1 save wins")
+p = scorePenalty(["L", "L", "L", "L", "L"], ["L", "L", "L", "R", "C"])
+assert(p.goals === 2 && !p.won, "2 goals loses")
+p = scorePenalty(["L", "C", "R", "L", "C"], ["R", "R", "L"])
+assert(p.goals === 3 && p.won && p.kicks.length === 3, "partial shootout: 3 goals already wins")
+assert(p.kicks[1].dive === "C" && p.kicks[1].goal, "each kick has its dive")
+assert(isPenaltyDirs(randomDives()) && !isPenaltyDirs(["L", "C"]) && !isPenaltyDirs(["L", "C", "R", "L", "X"]), "5 dives L/C/R")
+r = computeResult(
+  { kind: "group", game: "penalty", players: ["a", "b", "c"], moves: { a: ["R", "R", "L", "R", "R"], b: ["L", "C", "R", "L", "C"] } },
+  { dives: ["L", "C", "R", "L", "C"] }
+)
+assert(r.winners.join() === "a" && r.dives?.join("") === "LCRLC", "penalty result reveals the dives")
+console.log("✓ Penalty Shootout")
+
+// Higher or Lower: 6 cards, 5 calls, 3 right wins
+const deck = [7, 12, 3, 4, 14, 2]
+let h = scoreHilo(deck, ["H", "L", "H", "H", "L"])
+assert(h.right === 5 && h.won, "all 5 right")
+h = scoreHilo(deck, ["L", "H", "L", "H", "L"])
+assert(h.right === 2 && !h.won, "2 right loses")
+h = scoreHilo(deck, ["H", "H"])
+assert(h.right === 1 && h.rounds[1].from === 12 && h.rounds[1].to === 3 && !h.rounds[1].right, "partial calls")
+assert(hiloCallRight("H", 2, 14) && hiloCallRight("L", 14, 2) && !hiloCallRight("H", 9, 3), "higher / lower")
+assert(isHiloCards(deck) && !isHiloCards([7, 7, 3, 4, 14, 2]), "never the same card twice in a row")
+assert(!isHiloCards([1, 12, 3, 4, 14, 2]) && !isHiloCards([7, 12, 3, 4, 15, 2]) && !isHiloCards(deck.slice(0, 5)), "6 cards, 2–14")
+for (let i = 0; i < 50; i++) assert(isHiloCards(randomHiloCards()), "random cards are valid")
+assert(isHiloCalls(["H", "L", "H", "H", "L"]) && !isHiloCalls(["H", "L"]), "5 calls")
+assert(cardRank(2) === "2" && cardRank(10) === "10" && cardRank(11) === "J" && cardRank(14) === "A", "card ranks")
+r = computeResult({ kind: "friend", game: "hilo", players: ["a"], moves: { a: ["H", "L", "H", "L", "L"] } }, { cards: deck })
+assert(r.winners.join() === "a" && r.cards?.join() === deck.join(), "hilo result reveals the cards")
+console.log("✓ Higher or Lower")
+
+// Number Hunt: 1–60, 5 guesses, each with a hint
+assert(huntHint(37, 20) === "higher" && huntHint(37, 45) === "lower" && huntHint(37, 37) === "found", "hints")
+let n = scoreHunt(37, [20, 45, 37])
+assert(n.won && n.over && n.foundAt === 2, "found on the 3rd guess")
+n = scoreHunt(37, [20, 45])
+assert(!n.won && !n.over, "still hunting")
+n = scoreHunt(60, [1, 2, 3, 4, 5])
+assert(!n.won && n.over, "5 misses is a loss")
+assert(!scoreHunt(6, [1, 2, 3, 4, 5, 6]).won, "a 6th guess doesn't count")
+assert(isHuntGuesses([1, 60]) && !isHuntGuesses([]) && !isHuntGuesses([0]) && !isHuntGuesses([61]), "guesses 1–60")
+assert(!isHuntGuesses([5, 5]) && !isHuntGuesses([1, 2, 3, 4, 5, 6]), "different guesses, at most 5")
+const range = huntRange([{ guess: 20, hint: "higher" }, { guess: 45, hint: "lower" }, { guess: 30, hint: "higher" }])
+assert(range.low === 31 && range.high === 44, "hints narrow the range")
+for (let i = 0; i < 50; i++) {
+  const x = randomHuntNumber()
+  assert(x >= 1 && x <= 60, "random number in range")
+}
+r = computeResult(
+  { kind: "group", game: "number_hunt", players: ["a", "b"], moves: { a: [30, 15, 22], b: [1, 2, 3, 4, 5] } },
+  { number: 22 }
+)
+assert(r.winners.join() === "a" && r.number === 22, "number hunt result")
+console.log("✓ Number Hunt")
+
+// New games: moves, secrets, and the per-step docs (mirrors firestore.rules)
+assert(isValidMove("penalty", ["L", "C", "R", "L", "C"]) && !isValidMove("penalty", ["H", "L", "H", "H", "L"]), "penalty moves")
+assert(isValidMove("hilo", ["H", "L", "H", "H", "L"]) && !isValidMove("hilo", ["L", "C", "R", "L", "C"]), "hilo moves")
+assert(isValidMove("number_hunt", [4, 9]) && !isValidMove("number_hunt", 4), "number hunt moves are the guesses")
+assert(newSecretFor("penalty", { dives: ["R", "R", "C", "L", "L"] }).dives?.join("") === "RRCLL", "host's dives")
+assert(isPenaltyDirs(newSecretFor("penalty").dives), "random dives by default")
+assert(newSecretFor("hilo", { cards: deck }).cards?.join() === deck.join(), "host's cards")
+assert(isHiloCards(newSecretFor("hilo").cards), "random cards by default")
+assert(newSecretFor("number_hunt", { number: 60 }).number === 60, "host's number")
+const hunted = newSecretFor("number_hunt").number ?? 0
+assert(hunted >= 1 && hunted <= 60, "random number by default")
+assert(throws(() => newSecretFor("hilo", { cards: [5, 5, 6, 7, 8, 9] })), "no repeated card in a row")
+assert(throws(() => newSecretFor("number_hunt", { number: 61 })), "number must be 1–60")
+assert(throws(() => newSecretFor("penalty", { dives: ["L"] as never })), "all 5 dives needed")
+
+assert(hasHostRounds({ game: "rps", kind: "friend" }) && !hasHostRounds({ game: "rps", kind: "group" }), "RPS rounds: friend only")
+assert(hasHostRounds({ game: "penalty", kind: "friend" }) && !hasHostRounds({ game: "penalty", kind: "group" }), "dives: friend only")
+assert(hasHostRounds({ game: "hilo", kind: "friend" }) && hasHostRounds({ game: "hilo", kind: "group" }), "cards: always")
+assert(!hasHostRounds({ game: "coin_toss", kind: "friend" }), "no rounds for coin toss")
+assert(!GAMES.hilo.groupDiscount && !GAMES.number_hunt.groupDiscount && GAMES.penalty.groupDiscount, "group discounts")
+assert(isRoundGame("penalty") && isRoundGame("hilo") && !isRoundGame("number_hunt"), "round games")
+assert(isTileGame("number_hunt") && isTileGame("minefield") && !isTileGame("hilo"), "tile games")
+assert(GAME_IDS.length === Object.keys(GAMES).length && new Set(GAME_IDS).size === GAME_IDS.length, "every game listed once")
+
+const dives = hostRoundDocs({ game: "penalty", kind: "friend" }, { dives: ["L", "C", "R", "L", "C"] })
+assert(dives.length === 5 && dives[2][0] === 2 && dives[2][1].move === "R", "a doc per dive")
+assert(hostRoundDocs({ game: "penalty", kind: "group" }, { dives: ["L", "C", "R", "L", "C"] }).length === 0, "no dives in groups")
+const cardDocs = hostRoundDocs({ game: "hilo", kind: "group" }, { cards: deck })
+assert(cardDocs.length === 6 && cardDocs[0][1].card === 7 && cardDocs[5][1].card === 2, "a doc per card")
+assert(hostRoundDocs({ game: "rps", kind: "friend" }, { moves: ["rock", "paper", "rock"] })[1][1].move === "paper", "RPS rounds")
+const hints = tileDocs("number_hunt", { number: 22 })
+assert(hints.length === 60 && hints[0][0] === 1 && hints[59][0] === 60, "a hint for each of 1–60")
+assert(hints.every(([k, d]) => d.hint === (k < 22 ? "higher" : k > 22 ? "lower" : "found")), "hints match the number")
+const grid = tileDocs("minefield", { cells: [0, 5, 10] })
+assert(grid.length === 16 && grid[5][1].hit === true && grid[6][1].hit === false, "grid tiles")
+assert(tileDocs("hilo", { cards: deck }).length === 0, "no tiles for hilo")
+console.log("✓ New games' secrets & per-step docs")
 
 // Games for fun never give a discount
 const funWin: Challenge = {

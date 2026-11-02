@@ -20,6 +20,7 @@ import { GAMES, isForFun, type GameId } from "@/lib/games"
 import { formatPaise } from "@/lib/money"
 import type { Challenge } from "@/lib/types"
 import { useSwipeTabs } from "@/hooks/use-swipe-tabs"
+import { SwipeTabIndicator, SwipeTabPanels } from "@/components/shared/swipe-tabs"
 import { cn } from "@/lib/utils"
 import { GameGlyph } from "@/components/games/game-glyph"
 
@@ -31,6 +32,9 @@ const GAME_TONE: Record<GameId, string> = {
   coin_toss: "bg-warning/12",
   treasure: "bg-violet-500/12",
   lucky_number: "bg-success/12",
+  penalty: "bg-emerald-600/12",
+  hilo: "bg-sky-500/12",
+  number_hunt: "bg-orange-500/12",
 }
 
 type Tab = "discount" | "fun"
@@ -95,143 +99,81 @@ function ChallengesContent() {
   const searchParams = useSearchParams()
   const uid = user?.uid ?? ""
   const [sheet, setSheet] = React.useState<{ open: boolean; game: GameId }>({ open: false, game: "rps" })
-  const [historyShown, setHistoryShown] = React.useState(HISTORY_PAGE)
-  const [incomingShown, setIncomingShown] = React.useState(INCOMING_PAGE)
 
   const all = [...challenges.data].sort(newestFirst)
   const isYourTurn = (c: Challenge) => c.status === "OPEN" && c.hostId !== uid && c.moves[uid] === undefined
   const yourTurnCount = (t: Tab) => all.filter((c) => tabOf(c) === t && isYourTurn(c)).length
 
-  // ?tab=fun|discount wins; otherwise open the tab that has games waiting for you
+  // ?tab=fun|discount wins (also when it changes while the page is open);
+  // otherwise open the tab that has games waiting for you
   const param = searchParams.get("tab")
-  const [picked, setPicked] = React.useState<Tab | null>(param === "fun" || param === "discount" ? param : null)
-  const tab: Tab = picked ?? (yourTurnCount("discount") === 0 && yourTurnCount("fun") > 0 ? "fun" : "discount")
-  const blurb = TABS.find((t) => t.value === tab)!.blurb
-
-  const inTab = all.filter((c) => tabOf(c) === tab)
-  const yourTurn = inTab.filter(isYourTurn)
-  const waiting = inTab.filter((c) => c.status === "OPEN" && !isYourTurn(c))
-  const history = inTab.filter((c) => c.status !== "OPEN")
-  const openSheet = (game: GameId) => setSheet({ open: true, game })
-  const switchTab = (t: Tab) => {
-    setPicked(t)
-    setHistoryShown(HISTORY_PAGE)
-    setIncomingShown(INCOMING_PAGE)
+  const paramTab: Tab | null = param === "fun" || param === "discount" ? param : null
+  const [picked, setPicked] = React.useState<Tab | null>(paramTab)
+  const [syncedParam, setSyncedParam] = React.useState(paramTab)
+  if (paramTab !== syncedParam) {
+    setSyncedParam(paramTab)
+    if (paramTab) setPicked(paramTab)
   }
-  // Swipe left for Just for fun, right for Discounted
-  const swipeRef = useSwipeTabs(TAB_ORDER, tab, switchTab)
+  const tab: Tab = picked ?? (yourTurnCount("discount") === 0 && yourTurnCount("fun") > 0 ? "fun" : "discount")
+  const openSheet = (game: GameId) => setSheet({ open: true, game })
+  // Swipe left for Just for fun, right for Discounted, anywhere below the header
+  const { surface: swipeSurface, ...swipe } = useSwipeTabs(TAB_ORDER, tab, setPicked)
 
   return (
     <>
       <AppHeader title="Games" showBack />
-      <PageContainer ref={swipeRef} className="max-w-2xl gap-5 pb-24">
+      {/* flex-1: the swipe surface reaches the bottom of the screen, even when the tab is short */}
+      <PageContainer ref={swipeSurface} className="max-w-2xl flex-1 gap-2 pb-24">
         {/* Discounted | Just for fun */}
-        <div className="flex flex-col gap-2">
-          <div role="tablist" aria-label="Kind of game" className="grid grid-cols-2 border-b">
-            {TABS.map((t) => {
-              const count = yourTurnCount(t.value)
-              const active = tab === t.value
-              return (
-                <button
-                  key={t.value}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => switchTab(t.value)}
-                  className={cn(
-                    "relative flex items-center justify-center gap-2 pb-2.5 text-sm font-medium transition-colors",
-                    active
-                      ? "text-foreground after:absolute after:inset-x-0 after:bottom-[-1px] after:h-0.5 after:bg-primary"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {t.label}
-                  {count > 0 && (
-                    <span
-                      className={cn(
-                        "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums",
-                        t.value === "discount" ? "bg-success text-success-foreground" : "bg-primary text-primary-foreground"
-                      )}
-                      aria-label={`${count} waiting for you`}
-                    >
-                      {count}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-          <p className="text-xs text-muted-foreground">{blurb}</p>
+        <div role="tablist" data-tour="game-tabs" aria-label="Kind of game" className="relative grid grid-cols-2 border-b">
+          {TABS.map((t) => {
+            const count = yourTurnCount(t.value)
+            const active = tab === t.value
+            return (
+              <button
+                key={t.value}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setPicked(t.value)}
+                className={cn(
+                  "flex items-center justify-center gap-2 pb-2.5 text-sm font-medium transition-colors",
+                  active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {t.label}
+                {count > 0 && (
+                  <span
+                    className={cn(
+                      "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums",
+                      t.value === "discount" ? "bg-success text-success-foreground" : "bg-primary text-primary-foreground"
+                    )}
+                    aria-label={`${count} waiting for you`}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+          <SwipeTabIndicator swipe={swipe} className="bottom-[-1px]" />
         </div>
 
-        {/* One way in: the sheet picks the game, who plays and the stakes */}
-        <Button size="lg" className="h-11 w-full" onClick={() => openSheet("rps")}>
-          <HugeiconsIcon icon={GameController03Icon} data-icon="inline-start" />
-          {tab === "discount" ? "Challenge someone who owes you" : "New challenge"}
-        </Button>
-
-        {challenges.isPending ? (
-          <ListSkeleton rows={3} />
-        ) : challenges.isError ? (
-          <QueryError error={challenges.error} onRetry={() => challenges.refetch()} />
-        ) : (
-          <>
-            {/* Everyone who has challenged you in this tab — each challenge, newest first */}
-            <section className="flex flex-col gap-2">
-              <SectionTitle title="Challenges for you" count={yourTurn.length} tone="text-primary" />
-              {yourTurn.length === 0 ? (
-                <p className="rounded-lg border border-dashed px-4 py-5 text-center text-xs text-muted-foreground">
-                  {tab === "discount"
-                    ? "No discount challenges waiting. They come from people you owe."
-                    : "No fun challenges waiting. Send one to a friend!"}
-                </p>
-              ) : (
-                <>
-                  <Card className="gap-0 divide-y py-0">
-                    {yourTurn.slice(0, incomingShown).map((c) => (
-                      <IncomingRow key={c.id} challenge={c} uid={uid} />
-                    ))}
-                  </Card>
-                  {yourTurn.length > incomingShown && (
-                    <Button variant="ghost" size="sm" onClick={() => setIncomingShown(yourTurn.length)}>
-                      Show all {yourTurn.length}
-                    </Button>
-                  )}
-                </>
-              )}
-            </section>
-
-            {waiting.length > 0 && (
-              <section className="flex flex-col gap-2">
-                <SectionTitle title="Waiting for others" count={waiting.length} />
-                <ChallengeList items={waiting} uid={uid} />
-              </section>
-            )}
-
-            <section className="flex flex-col gap-2">
-              <SectionTitle title="History" count={history.length || undefined} />
-              {history.length === 0 ? (
-                <Card>
-                  <EmptyState
-                    className="py-6"
-                    icon={GameController03Icon}
-                    title="Nothing here yet"
-                    description="Finished games will show up here."
-                  />
-                </Card>
-              ) : (
-                <>
-                  <ChallengeList items={history.slice(0, historyShown)} uid={uid} />
-                  {history.length > historyShown && (
-                    <Button variant="ghost" size="sm" onClick={() => setHistoryShown((n) => n + 10)}>
-                      Show more ({history.length - historyShown})
-                    </Button>
-                  )}
-                </>
-              )}
-            </section>
-          </>
-        )}
+        {/* Edge to edge, so panels slide in from the screen edge; scroll-mt clears the sticky header */}
+        <SwipeTabPanels swipe={swipe} className="-mx-4 scroll-mt-16 sm:-mx-6" panelClassName="px-4 sm:px-6">
+          {TABS.map((t) => (
+            <GamesPanel
+              key={t.value}
+              tab={t.value}
+              blurb={t.blurb}
+              items={all.filter((c) => tabOf(c) === t.value)}
+              uid={uid}
+              isYourTurn={isYourTurn}
+              challenges={challenges}
+              onNew={() => openSheet("rps")}
+            />
+          ))}
+        </SwipeTabPanels>
       </PageContainer>
 
       <NewChallengeSheet
@@ -241,6 +183,106 @@ function ChallengesContent() {
         initialStake={tab}
       />
     </>
+  )
+}
+
+/** One tab's games: what's waiting for you, what's waiting on others, and history. */
+function GamesPanel({
+  tab,
+  blurb,
+  items,
+  uid,
+  isYourTurn,
+  challenges,
+  onNew,
+}: {
+  tab: Tab
+  blurb: string
+  items: Challenge[]
+  uid: string
+  isYourTurn: (c: Challenge) => boolean
+  challenges: ReturnType<typeof useChallenges>
+  onNew: () => void
+}) {
+  const [historyShown, setHistoryShown] = React.useState(HISTORY_PAGE)
+  const [incomingShown, setIncomingShown] = React.useState(INCOMING_PAGE)
+  const yourTurn = items.filter(isYourTurn)
+  const waiting = items.filter((c) => c.status === "OPEN" && !isYourTurn(c))
+  const history = items.filter((c) => c.status !== "OPEN")
+
+  return (
+    <div className="flex flex-col gap-5">
+      <p className="text-xs text-muted-foreground">{blurb}</p>
+
+      {/* One way in: the sheet picks the game, who plays and the stakes */}
+      <Button size="lg" data-tour="new-challenge" className="h-11 w-full" onClick={onNew}>
+        <HugeiconsIcon icon={GameController03Icon} data-icon="inline-start" />
+        {tab === "discount" ? "Challenge someone who owes you" : "New challenge"}
+      </Button>
+
+      {challenges.isPending ? (
+        <ListSkeleton rows={3} />
+      ) : challenges.isError ? (
+        <QueryError error={challenges.error} onRetry={() => challenges.refetch()} />
+      ) : (
+        <>
+          {/* Everyone who has challenged you in this tab — each challenge, newest first */}
+          <section className="flex flex-col gap-2">
+            <SectionTitle title="Challenges for you" count={yourTurn.length} tone="text-primary" />
+            {yourTurn.length === 0 ? (
+              <p className="rounded-lg border border-dashed px-4 py-5 text-center text-xs text-muted-foreground">
+                {tab === "discount"
+                  ? "No discount challenges waiting. They come from people you owe."
+                  : "No fun challenges waiting. Send one to a friend!"}
+              </p>
+            ) : (
+              <>
+                <Card className="gap-0 divide-y py-0">
+                  {yourTurn.slice(0, incomingShown).map((c) => (
+                    <IncomingRow key={c.id} challenge={c} uid={uid} />
+                  ))}
+                </Card>
+                {yourTurn.length > incomingShown && (
+                  <Button variant="ghost" size="sm" onClick={() => setIncomingShown(yourTurn.length)}>
+                    Show all {yourTurn.length}
+                  </Button>
+                )}
+              </>
+            )}
+          </section>
+
+          {waiting.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <SectionTitle title="Waiting for others" count={waiting.length} />
+              <ChallengeList items={waiting} uid={uid} />
+            </section>
+          )}
+
+          <section className="flex flex-col gap-2">
+            <SectionTitle title="History" count={history.length || undefined} />
+            {history.length === 0 ? (
+              <Card>
+                <EmptyState
+                  className="py-6"
+                  icon={GameController03Icon}
+                  title="Nothing here yet"
+                  description="Finished games will show up here."
+                />
+              </Card>
+            ) : (
+              <>
+                <ChallengeList items={history.slice(0, historyShown)} uid={uid} />
+                {history.length > historyShown && (
+                  <Button variant="ghost" size="sm" onClick={() => setHistoryShown((n) => n + 10)}>
+                    Show more ({history.length - historyShown})
+                  </Button>
+                )}
+              </>
+            )}
+          </section>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -269,7 +311,7 @@ function IncomingRow({ challenge: c, uid }: { challenge: Challenge; uid: string 
   return (
     <div className="flex items-center gap-3 px-4 py-3">
       <span className="relative shrink-0">
-        <UserAvatar src={photo} name={c.hostName} size="md" />
+        <UserAvatar uid={c.hostId} src={photo} name={c.hostName} size="md" />
         <span
           className={cn(
             "absolute -right-1 -bottom-1 flex size-6 items-center justify-center rounded-md border-2 border-card text-sm",

@@ -91,7 +91,7 @@ function GroupInvitationsContent() {
                   return (
                     <Item key={`${group.id}_${invite.uid}`} variant="outline" className="flex-nowrap bg-card p-4">
                       <ItemMedia>
-                        <UserAvatar src={invite.photoURL} name={invite.name} size="md" />
+                        <UserAvatar uid={invite.uid} src={invite.photoURL} name={invite.name} size="md" />
                       </ItemMedia>
                       <ItemContent className="min-w-0 gap-0.5">
                         <ItemTitle className="font-semibold">{invite.name}</ItemTitle>

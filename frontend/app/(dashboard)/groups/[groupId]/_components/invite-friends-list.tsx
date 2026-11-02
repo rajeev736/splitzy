@@ -39,7 +39,7 @@ export function InviteFriendsList({
               {i > 0 && <ItemSeparator className="my-0" />}
               <Item size="xs" role="listitem" className="flex-nowrap px-0">
                 <ItemMedia>
-                  <UserAvatar src={f.photoURL} name={f.displayName} size="sm" />
+                  <UserAvatar uid={f.uid} src={f.photoURL} name={f.displayName} size="sm" />
                 </ItemMedia>
                 <ItemContent className="min-w-0">
                   <ItemTitle className="text-sm font-medium">{f.displayName}</ItemTitle>

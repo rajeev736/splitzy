@@ -1,4 +1,9 @@
+"use client"
+
+import { FrameArt, hasFrame } from "@/components/fun/frame-art"
+import { useSession } from "@/components/providers/session-provider"
 import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useFriends } from "@/hooks/queries"
 import { cn } from "@/lib/utils"
 
 const SIZES = {
@@ -31,6 +36,15 @@ function colorFor(name: string) {
   return PALETTE[Math.abs(hash) % PALETTE.length]
 }
 
+/** The frame someone wears, when we know them: you, or one of your friends. */
+function useKnownFrame(uid: string | undefined) {
+  const { user } = useSession()
+  const { data: friends } = useFriends()
+  if (!uid) return undefined
+  if (uid === user?.uid) return user.frame
+  return friends.find((f) => f.uid === uid)?.frame
+}
+
 export interface UserAvatarProps {
   src?: string | null
   name: string
@@ -38,16 +52,40 @@ export interface UserAvatarProps {
   className?: string
   /** Small status dot / icon rendered at the bottom-right. */
   badge?: React.ReactNode
+  /** Whose avatar it is: shows their profile frame (yours or a friend's). */
+  uid?: string
+  /** A frame to show regardless of who it is. */
+  frame?: string
 }
 
-export function UserAvatar({ src, name, size = "md", className, badge }: UserAvatarProps) {
-  return (
-    <Avatar className={cn(SIZES[size], className)}>
+export function UserAvatar({ src, name, size = "md", className, badge, uid, frame }: UserAvatarProps) {
+  const known = useKnownFrame(uid)
+  const worn = frame ?? known
+  const photo = (
+    <>
       {src ? <AvatarImage src={src} alt={name || "Avatar"} /> : null}
       <AvatarFallback className={cn("font-bold tracking-tight", colorFor(name || "User"))}>
         {getInitials(name)}
       </AvatarFallback>
-      {badge ? <AvatarBadge className="size-auto! bg-transparent ring-0">{badge}</AvatarBadge> : null}
-    </Avatar>
+    </>
+  )
+
+  if (!hasFrame(worn)) {
+    return (
+      <Avatar className={cn(SIZES[size], className)}>
+        {photo}
+        {badge ? <AvatarBadge className="size-auto! bg-transparent ring-0">{badge}</AvatarBadge> : null}
+      </Avatar>
+    )
+  }
+
+  // Framed: the photo shrinks a little so the frame fits the same box (spilling
+  // just 10% around it), so rows and headers keep their layout.
+  return (
+    <span className={cn("relative inline-flex shrink-0 items-center justify-center rounded-full", SIZES[size], className)}>
+      <Avatar className="size-[72%] text-[0.8em]">{photo}</Avatar>
+      <FrameArt frame={worn} className="absolute" style={{ inset: "-10%" }} />
+      {badge ? <span className="absolute right-0 bottom-0 z-10">{badge}</span> : null}
+    </span>
   )
 }

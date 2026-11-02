@@ -5,10 +5,12 @@ import { useRouter } from "nextjs-toploader/app"
 import { ArrowLeft01Icon, Notification01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
+import { Coins } from "@/components/fun/coin"
 import { useSession } from "@/components/providers/session-provider"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
 import { useUnreadCount } from "@/hooks/queries"
+import { useWallet } from "@/hooks/use-fun"
 
 /** Time-of-day greeting for the home header. */
 function greeting() {
@@ -56,7 +58,7 @@ export function AppHeader({
           ) : showUserGreeting && user ? (
             <div className="flex items-center gap-3">
               <Link href="/profile" className="shrink-0">
-                <UserAvatar src={user.photoURL} name={user.displayName} size="md" />
+                <UserAvatar uid={user.uid} src={user.photoURL} name={user.displayName} size="md" />
               </Link>
               <div>
                 <div className="text-xs text-muted-foreground">{greeting()}</div>
@@ -72,6 +74,7 @@ export function AppHeader({
         </div>
 
         <div className="flex items-center gap-2">
+          {!rightAction && <CoinChip />}
           {rightAction ?? (
             <Button
               variant="ghost"
@@ -90,5 +93,21 @@ export function AppHeader({
         </div>
       </div>
     </header>
+  )
+}
+
+/** Your coins, top right; opens the frame shop. */
+function CoinChip() {
+  const wallet = useWallet()
+  if (!wallet) return null
+  return (
+    <Link
+      href="/profile/coins"
+      data-tour="coins"
+      aria-label={`${wallet.balance} coins`}
+      className="flex h-8 items-center rounded-full border bg-card px-2.5 text-xs transition-colors hover:bg-muted"
+    >
+      <Coins amount={wallet.balance} iconClassName="size-4" />
+    </Link>
   )
 }

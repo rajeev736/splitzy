@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore"
+import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore"
 
 import { AppError } from "@/lib/errors"
 import { buildFirestoreExpense } from "@/lib/expenses/builder"
@@ -90,7 +90,8 @@ export async function createExpense(user: UserProfile, data: CreateExpenseInput)
   const existing = await getDoc(ref).catch(() => null)
   if (existing?.exists()) return existing.data() as Expense
 
-  await setDoc(ref, firestorePayload)
+  // createdTs: server time it was added, so a payment within 5 minutes earns Swift Payer
+  await setDoc(ref, { ...firestorePayload, createdTs: serverTimestamp() })
 
   // Notify everyone else, for shared expenses. Best effort: the expense is
   // saved either way, so a failed notification never fails the save.

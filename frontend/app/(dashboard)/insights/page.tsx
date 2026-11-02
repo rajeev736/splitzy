@@ -162,7 +162,7 @@ export default function InsightsPage() {
                       label: f.label,
                       value: f.valuePaise,
                       detail: `${plural(f.count, "split")} · your share ${formatPaise(f.mySpendPaise)}`,
-                      leading: <UserAvatar src={f.image} name={f.label} size="sm" />,
+                      leading: <UserAvatar uid={f.id} src={f.image} name={f.label} size="sm" />,
                       trailing: (
                         <div
                           className={cn(

@@ -41,6 +41,11 @@ import { calculatePersonNetBreakdown, formatPaise } from "@/lib/money"
 import type { Challenge } from "@/lib/types"
 import { hasRoundByRoundRps, playRpsRound, readHostRound } from "@/services/challenges"
 import { GridPlay } from "./_components/grid-play"
+import { HiloPlay } from "./_components/hilo-play"
+import { NumberHuntPlay } from "./_components/number-hunt-play"
+import { PenaltyPlay } from "./_components/penalty-play"
+import { StakeGate, StakeOutcome } from "./_components/stake-parts"
+import { Coins } from "@/components/fun/coin"
 import { GameResult } from "./_components/results"
 import { GameGlyph } from "@/components/games/game-glyph"
 
@@ -108,10 +113,12 @@ function ChallengeBody({ challenge, uid }: { challenge: Challenge; uid: string }
                 : "shrink-0 text-sm font-semibold tabular-nums text-success"
             }
           >
-            {stakeLabel(challenge)}
+            {(challenge.stake ?? 0) > 0 ? <Coins amount={(challenge.stake ?? 0) * 2} /> : stakeLabel(challenge)}
           </span>
         </CardContent>
       </Card>
+
+      <StakeOutcome challenge={challenge} uid={uid} />
 
       {challenge.status === "CANCELLED" ? (
         <Card>
@@ -121,9 +128,17 @@ function ChallengeBody({ challenge, uid }: { challenge: Challenge; uid: string }
         <ResultSection challenge={challenge} uid={uid} />
       ) : isHost ? (
         <HostWaiting challenge={challenge} />
+      ) : (challenge.stake ?? 0) > 0 && !challenge.staked?.includes(uid) ? (
+        <StakeGate challenge={challenge} />
       ) : challenge.moves[uid] === undefined ? (
         isGridGame(challenge.game) ? (
           <GridPlay challenge={challenge} uid={uid} />
+        ) : challenge.game === "penalty" ? (
+          <PenaltyPlay challenge={challenge} uid={uid} />
+        ) : challenge.game === "hilo" ? (
+          <HiloPlay challenge={challenge} uid={uid} />
+        ) : challenge.game === "number_hunt" ? (
+          <NumberHuntPlay challenge={challenge} uid={uid} />
         ) : (
           challenge.game === "rps" ? (
             <RpsPlaySection challenge={challenge} />
@@ -232,9 +247,12 @@ function PlaySection({ challenge }: { challenge: Challenge }) {
     coin_toss: `${challenge.hostName} has locked in 5 secret coin flips. Call each one.`,
     treasure: `${challenge.hostName} hid treasure in 3 of these 9 boxes. Open one.`,
     lucky_number: `${challenge.hostName} picked a secret number between 1 and 100.`,
-    // Grid games have their own screen (GridPlay)
+    // These games have their own screens
     minefield: "",
     gold_rush: "",
+    penalty: "",
+    hilo: "",
+    number_hunt: "",
   }[challenge.game]
 
   return (

@@ -10,6 +10,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { GameDiscountProvider } from "@/hooks/use-game-discounts"
 import { makeQueryClient } from "@/lib/query/client"
+import { FunSync } from "./fun-sync"
 import { GameWinAutoSettle } from "./game-win-auto-settle"
 import { RealtimeSync } from "./realtime-sync"
 import { SessionProvider } from "./session-provider"
@@ -74,6 +75,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
             <RealtimeSync />
             {/* One clock + list of live game discounts for every balance, pay button and countdown */}
             <GameWinAutoSettle />
+            {/* Coins, badges, birthday reminders, hugs arriving */}
+            <FunSync />
             <GameDiscountProvider>{children}</GameDiscountProvider>
             <Toaster position="top-right" richColors closeButton />
           </TooltipProvider>

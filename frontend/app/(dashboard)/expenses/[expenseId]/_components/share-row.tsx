@@ -18,7 +18,7 @@ export function ShareRow({
   return (
     <Item className="px-0">
       <ItemMedia>
-        <UserAvatar src={share.userPhoto} name={share.userName} size="md" />
+        <UserAvatar uid={share.userId} src={share.userPhoto} name={share.userName} size="md" />
       </ItemMedia>
       <ItemContent className="min-w-0">
         <ItemTitle className="text-sm font-medium">

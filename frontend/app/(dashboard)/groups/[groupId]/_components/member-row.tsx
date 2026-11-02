@@ -6,6 +6,8 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle }
 import { cn } from "@/lib/utils"
 
 export interface MemberRowProps {
+  /** Whose row it is (shows their profile frame when known). */
+  uid?: string
   name: string
   photoURL?: string | null
   splitzyId: string
@@ -23,6 +25,7 @@ export interface MemberRowProps {
 
 /** One group member: avatar, name, role badges, JoySplit ID and optional trailing actions. */
 export function MemberRow({
+  uid,
   name,
   photoURL,
   splitzyId,
@@ -38,7 +41,7 @@ export function MemberRow({
   return (
     <Item size="sm" role="listitem" className={cn("flex-nowrap px-0", muted && "opacity-80")}>
       <ItemMedia>
-        <UserAvatar src={photoURL} name={name} size={size} />
+        <UserAvatar uid={uid} src={photoURL} name={name} size={size} />
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0.5">
         <ItemTitle className="line-clamp-none flex-wrap gap-x-2 gap-y-0.5 font-medium">

@@ -7,8 +7,6 @@ import { useRouter } from "nextjs-toploader/app"
 import {
   Alert02Icon,
   ArrowRight01Icon,
-  AtIcon,
-  Calendar03Icon,
   Delete02Icon,
   Invoice01Icon,
   MoreVerticalIcon,
@@ -17,7 +15,6 @@ import {
   Search01Icon,
   UserAdd01Icon,
   UserCheck01Icon,
-  UserGroupIcon,
   UserIcon,
   UserRemove01Icon,
 } from "@hugeicons/core-free-icons"
@@ -35,14 +32,10 @@ import { ChallengeButton } from "@/components/games/challenge-button"
 import { ChallengeInviteStrip } from "@/components/games/challenge-invite"
 import {
   HideWhilePaymentPending,
-  PaymentDisputeLine,
-  PaymentReceivedOr,
   PaymentStatusStrip,
-  usePendingPaymentFrom,
 } from "@/components/shared/payment-received-prompt"
 import {
   GameDiscountAmount,
-  GameDiscountTag,
 } from "@/components/games/game-discount-amount"
 import { useLiveGameDiscounts } from "@/hooks/use-game-discounts"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
@@ -50,13 +43,6 @@ import { UserAvatar } from "@/components/shared/user-avatar"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -89,10 +75,12 @@ import {
   calculateDirectBalance,
   canRemoveFriend,
   filterExpensesByScope,
-  formatPaise,
 } from "@/lib/money"
 import type { UserProfile } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { MoodFace } from "@/components/fun/mood-face"
+import { useFriendships } from "@/hooks/use-fun"
+import { BONDS, isBondId, isMoodId } from "@/lib/fun/catalog"
 
 import {
   IdLookupResult,
@@ -116,23 +104,27 @@ export default function FriendsPage() {
 
   const [searchQuery, setSearchQuery] = React.useState("")
   const [scanning, setScanning] = React.useState(false)
-  const [profileFriend, setProfileFriend] = React.useState<UserProfile | null>(
-    null
-  )
-
-  // ?friend=<uid> (e.g. right after adding a split with them) opens their profile once
-  const friendParam = searchParams.get("friend")
-  const [openedParam, setOpenedParam] = React.useState<string | null>(null)
-  if (friendParam && friendParam !== openedParam) {
-    const target = friendsQuery.data.find((f) => f.uid === friendParam)
-    if (target) {
-      setOpenedParam(friendParam)
-      setProfileFriend(target)
-    }
-  }
   const [removeTarget, setRemoveTarget] = React.useState<UserProfile | null>(
     null
   )
+  const { data: friendships } = useFriendships()
+
+  // ?friend=<uid> (e.g. right after adding a split with them) opens their profile;
+  // ?remove=<uid> (from their profile page) asks to remove them
+  const friendParam = searchParams.get("friend")
+  React.useEffect(() => {
+    if (friendParam) router.replace(`/friends/${friendParam}`)
+  }, [friendParam, router])
+  const removeParam = searchParams.get("remove")
+  const [handledRemove, setHandledRemove] = React.useState<string | null>(null)
+  if (removeParam && removeParam !== handledRemove) {
+    const target = friendsQuery.data.find((f) => f.uid === removeParam)
+    if (target) {
+      setHandledRemove(removeParam)
+      setRemoveTarget(target)
+    }
+  }
+  const openProfile = (uid: string) => router.push(`/friends/${uid}`)
 
   const userId = user?.uid
   const pendingReceivedCount = React.useMemo(() => {
@@ -212,115 +204,6 @@ export default function FriendsPage() {
     [expenses]
   )
 
-  const profileGame = profileFriend
-    ? gameDiscounts.byPerson.get(profileFriend.uid)
-    : undefined
-  // They reported a payment to you: the modal asks "received?" instead of offering Remind / Challenge
-  const profilePending = usePendingPaymentFrom(profileFriend?.uid ?? "")
-
-  // Raw balances with the profile friend: direct splits, and each shared group with an open balance
-  const profileRaw = React.useMemo(() => {
-    if (!user || !profileFriend) return null
-    const direct = calculateDirectBalance(
-      user.uid,
-      profileFriend.uid,
-      directExpenses
-    )
-    const groupRows = groups
-      .filter(
-        (g) =>
-          g.members.includes(user.uid) && g.members.includes(profileFriend.uid)
-      )
-      .map((g) => {
-        const groupExpenses = expenses.filter(
-          (e) => !e.deletedAt && e.groupId === g.id
-        )
-        return {
-          group: g,
-          originalPaise: calculateDirectBalance(
-            user.uid,
-            profileFriend.uid,
-            groupExpenses
-          ).netBalancePaise,
-        }
-      })
-      .filter((r) => r.originalPaise !== 0)
-    return { direct, groupRows }
-  }, [user, profileFriend, groups, expenses, directExpenses])
-
-  // The live game discount lands on one balance, the same way the pay dialog applies it:
-  // the game's own split if there's something to discount there, else direct, else the first group
-  const profileGameOff = React.useMemo(() => {
-    const d = profileGame
-    if (!d || !profileRaw) return { key: null as string | null, offPaise: 0 }
-    const offOn = (netPaise: number) =>
-      Math.max(
-        0,
-        Math.min(d.discountPaise, d.role === "winner" ? -netPaise : netPaise)
-      )
-    const candidates = [
-      ...(d.groupId
-        ? profileRaw.groupRows
-            .filter((r) => r.group.id === d.groupId)
-            .map((r) => ({ key: r.group.id, net: r.originalPaise }))
-        : []),
-      { key: "direct", net: profileRaw.direct.netBalancePaise },
-      ...profileRaw.groupRows.map((r) => ({
-        key: r.group.id,
-        net: r.originalPaise,
-      })),
-    ]
-    const hit = candidates.find((c) => offOn(c.net) > 0)
-    return hit
-      ? { key: hit.key, offPaise: offOn(hit.net) }
-      : { key: null, offPaise: 0 }
-  }, [profileGame, profileRaw])
-
-  const applyOff = (key: string, netPaise: number) => {
-    const offPaise = profileGameOff.key === key ? profileGameOff.offPaise : 0
-    return {
-      netPaise:
-        netPaise + (profileGame?.role === "winner" ? offPaise : -offPaise),
-      offPaise,
-    }
-  }
-
-  const profileDirect = profileRaw
-    ? (() => {
-        const { netPaise, offPaise } = applyOff(
-          "direct",
-          profileRaw.direct.netBalancePaise
-        )
-        return {
-          ...profileRaw.direct,
-          originalPaise: profileRaw.direct.netBalancePaise,
-          netBalancePaise: netPaise,
-          offPaise,
-        }
-      })()
-    : null
-
-  // Per-group balances for the profile friend (groups that BOTH are members of)
-  const profileGroupBalances = (profileRaw?.groupRows ?? []).map((r) => ({
-    ...r,
-    ...applyOff(r.group.id, r.originalPaise),
-  }))
-
-  // Mutual expenses for the profile panel
-  const mutualExpenses = React.useMemo(() => {
-    if (!user || !profileFriend) return []
-    return expenses.filter((exp) => {
-      if (exp.deletedAt) return false
-      const userInvolved =
-        exp.payerId === user.uid ||
-        exp.shares.some((s) => s.userId === user.uid)
-      const friendInvolved =
-        exp.payerId === profileFriend.uid ||
-        exp.shares.some((s) => s.userId === profileFriend.uid)
-      return userInvolved && friendInvolved
-    })
-  }, [user, profileFriend, expenses])
-
   // Combined net (direct + group) for friend list display
   const getFriendNetBalance = React.useCallback(
     (friend: UserProfile) => {
@@ -367,6 +250,7 @@ export default function FriendsPage() {
         rightAction={
           <ButtonLink
             href="/friends/add"
+            data-tour="add-friend"
             variant="outline"
             size="icon"
             aria-label="Add Friend"
@@ -462,7 +346,7 @@ export default function FriendsPage() {
               <span>Recent activity first</span>
             </div>
 
-            <Card className="gap-0 py-0">
+            <Card data-tour="friend-list" className="gap-0 py-0">
               {filteredFriends.length === 0 ? (
                 <p className="p-8 text-center text-xs text-muted-foreground">
                   No friends found matching &quot;{searchQuery}&quot;.
@@ -482,21 +366,48 @@ export default function FriendsPage() {
                             <button
                               type="button"
                               className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
-                              onClick={() => setProfileFriend(friend)}
+                              onClick={() => openProfile(friend.uid)}
                             >
                               <UserAvatar
+                                uid={friend.uid}
                                 src={friend.photoURL}
                                 name={friend.displayName}
                                 size="md"
+                                badge={
+                                  isMoodId(friend.mood?.id) ? (
+                                    <MoodFace
+                                      mood={friend.mood.id}
+                                      className="size-4.5 rounded-full ring-2 ring-card"
+                                    />
+                                  ) : undefined
+                                }
                               />
                               <div className="min-w-0 flex-1">
                                 <div className="truncate text-sm font-semibold text-foreground">
                                   {friend.displayName}
                                 </div>
                                 <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                                  <span className="font-mono">
-                                    {friend.splitzyId}
-                                  </span>
+                                  {(() => {
+                                    const bond = friendships.find((fs) =>
+                                      fs.users?.includes(friend.uid)
+                                    )?.bond
+                                    return bond && isBondId(bond.type) ? (
+                                      <span
+                                        className={cn(
+                                          "font-medium",
+                                          bond.type === "love"
+                                            ? "text-rose-500"
+                                            : "text-primary"
+                                        )}
+                                      >
+                                        {BONDS[bond.type].pair}
+                                      </span>
+                                    ) : (
+                                      <span className="font-mono">
+                                        {friend.splitzyId}
+                                      </span>
+                                    )
+                                  })()}
                                   {netBalance === 0 && " · Settled up"}
                                 </div>
                               </div>
@@ -557,7 +468,7 @@ export default function FriendsPage() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-44">
                                 <DropdownMenuItem
-                                  onClick={() => setProfileFriend(friend)}
+                                  onClick={() => openProfile(friend.uid)}
                                 >
                                   <HugeiconsIcon icon={UserIcon} />
                                   View Profile
@@ -656,362 +567,6 @@ export default function FriendsPage() {
         )}
       </PageContainer>
 
-      {/* View Profile & Shared Expenses Dialog */}
-      <Dialog
-        open={!!profileFriend}
-        onOpenChange={(open) => !open && setProfileFriend(null)}
-      >
-        <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Friend profile</DialogTitle>
-          </DialogHeader>
-          {profileFriend && (
-            <div className="-mx-4 flex flex-1 flex-col gap-4 overflow-y-auto px-4">
-              <div className="flex flex-col items-center gap-2 text-center">
-                <UserAvatar
-                  src={profileFriend.photoURL}
-                  name={profileFriend.displayName}
-                  size="lg"
-                />
-                <div>
-                  <h3 className="text-base font-semibold">
-                    {profileFriend.displayName}
-                  </h3>
-                  <p className="font-mono text-xs text-muted-foreground">
-                    JoySplit ID: {profileFriend.splitzyId}
-                  </p>
-                </div>
-              </div>
-
-              {/* Contact & Meta Details */}
-              <div className="flex flex-col divide-y border-y text-xs">
-                <div className="flex items-center justify-between gap-3 py-2.5">
-                  <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
-                    <HugeiconsIcon icon={AtIcon} className="size-3.5" /> UPI ID
-                  </span>
-                  <span className="min-w-0 truncate font-mono font-medium">
-                    {profileFriend.upiId || "Not set"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-3 py-2.5">
-                  <span className="flex items-center gap-1.5 text-muted-foreground">
-                    <HugeiconsIcon icon={Calendar03Icon} className="size-3.5" />{" "}
-                    Member since
-                  </span>
-                  <span className="font-medium">
-                    {new Date(profileFriend.createdAt).toLocaleDateString(
-                      "en-IN",
-                      { month: "short", year: "numeric" }
-                    )}
-                  </span>
-                </div>
-              </div>
-
-              {/* They reported paying you: only ask whether it arrived (Remind / Challenge come back on "No") */}
-              <PaymentReceivedOr
-                className="border-b pb-4"
-                personId={profileFriend.uid}
-                personName={profileFriend.displayName}
-              >
-                {null}
-              </PaymentReceivedOr>
-              <PaymentDisputeLine
-                personId={profileFriend.uid}
-                personName={profileFriend.displayName}
-              />
-              <ChallengeInviteStrip personId={profileFriend.uid} />
-
-              {/* Direct Splits Balance */}
-              {profileDirect && (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <HugeiconsIcon
-                      icon={Invoice01Icon}
-                      className="size-4 text-muted-foreground"
-                    />
-                    <span className="text-sm font-semibold">Direct splits</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-xs text-muted-foreground">
-                        Direct balance
-                      </div>
-                      {profileDirect.offPaise > 0 && (
-                        <div className="text-xs text-muted-foreground line-through">
-                          {formatPaise(Math.abs(profileDirect.originalPaise))}
-                        </div>
-                      )}
-                      {profileDirect.netBalancePaise > 0 ? (
-                        <div className="text-base font-semibold text-success tabular-nums">
-                          +{formatPaise(profileDirect.netBalancePaise)}
-                          <span className="ml-1.5 text-xs font-normal text-muted-foreground">
-                            owes you
-                          </span>
-                        </div>
-                      ) : profileDirect.netBalancePaise < 0 ? (
-                        <div className="text-base font-semibold text-destructive tabular-nums">
-                          -
-                          {formatPaise(Math.abs(profileDirect.netBalancePaise))}
-                          <span className="ml-1.5 text-xs font-normal text-muted-foreground">
-                            you owe
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="text-sm font-medium text-muted-foreground">
-                          Settled
-                        </div>
-                      )}
-                      {profileGame && (
-                        <GameDiscountTag
-                          className="mt-1"
-                          discountPaise={profileDirect.offPaise}
-                          endsAt={profileGame.expiresAt}
-                          now={gameDiscounts.now}
-                        />
-                      )}
-                    </div>
-                    <div className="shrink-0">
-                      {profilePending ? null : profileDirect.netBalancePaise >
-                        0 ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-1.5 text-xs"
-                          disabled={sendReminder.isPending}
-                          onClick={() =>
-                            sendReminder.mutate({
-                              targetUserId: profileFriend.uid,
-                              amountPaise: profileDirect.netBalancePaise,
-                            })
-                          }
-                        >
-                          <HugeiconsIcon
-                            icon={Notification01Icon}
-                            className="size-3.5"
-                          />
-                          Remind
-                        </Button>
-                      ) : profileDirect.netBalancePaise < 0 ? (
-                        <PayPersonButton
-                          personId={profileFriend.uid}
-                          personName={profileFriend.displayName}
-                          size="sm"
-                        />
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Group Balances */}
-              {profileGroupBalances.length > 0 && (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <HugeiconsIcon
-                      icon={UserGroupIcon}
-                      className="size-4 text-muted-foreground"
-                    />
-                    <span className="text-sm font-semibold">
-                      Group balances
-                    </span>
-                  </div>
-                  <div className="flex flex-col divide-y border-y">
-                    {profileGroupBalances.map(
-                      ({ group, netPaise, offPaise, originalPaise }) => (
-                        <div
-                          key={group.id}
-                          className="flex items-center justify-between py-2.5"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-medium">
-                              {group.name}
-                            </div>
-                            {offPaise > 0 && (
-                              <div className="text-[11px] text-muted-foreground line-through">
-                                {formatPaise(Math.abs(originalPaise))}
-                              </div>
-                            )}
-                            {netPaise > 0 ? (
-                              <div className="text-xs font-medium text-success tabular-nums">
-                                +{formatPaise(netPaise)} — they owe you
-                              </div>
-                            ) : (
-                              <div className="text-xs font-medium text-destructive tabular-nums">
-                                -{formatPaise(Math.abs(netPaise))} — you owe
-                              </div>
-                            )}
-                            {profileGame && (
-                              <GameDiscountTag
-                                className="mt-1"
-                                discountPaise={offPaise}
-                                endsAt={profileGame.expiresAt}
-                                now={gameDiscounts.now}
-                              />
-                            )}
-                          </div>
-                          <div className="ml-3 flex shrink-0 gap-2">
-                            {netPaise > 0 ? (
-                              profilePending ? null : (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 gap-1 px-2 text-[11px]"
-                                  disabled={sendReminder.isPending}
-                                  onClick={() =>
-                                    sendReminder.mutate({
-                                      targetUserId: profileFriend.uid,
-                                      amountPaise: netPaise,
-                                    })
-                                  }
-                                >
-                                  <HugeiconsIcon
-                                    icon={Notification01Icon}
-                                    className="size-3"
-                                  />
-                                  Remind
-                                </Button>
-                              )
-                            ) : (
-                              <PayPersonButton
-                                personId={profileFriend.uid}
-                                personName={`${profileFriend.displayName} (${group.name})`}
-                                size="sm"
-                              />
-                            )}
-                          </div>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Combined Pay All — if owing across multiple contexts */}
-              {(() => {
-                const directOwe =
-                  profileDirect && profileDirect.netBalancePaise < 0
-                    ? Math.abs(profileDirect.netBalancePaise)
-                    : 0
-                const groupOwe = profileGroupBalances
-                  .filter((r) => r.netPaise < 0)
-                  .reduce((s, r) => s + Math.abs(r.netPaise), 0)
-                const totalOwe = directOwe + groupOwe
-                const hasMultipleContexts =
-                  (directOwe > 0 ? 1 : 0) +
-                    profileGroupBalances.filter((r) => r.netPaise < 0).length >
-                  1
-                if (!hasMultipleContexts || totalOwe === 0) return null
-                return (
-                  <div className="flex items-center justify-between gap-3 border-t pt-4">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold">
-                        Pay all at once
-                      </div>
-                      <div className="text-sm font-semibold text-destructive tabular-nums">
-                        -{formatPaise(totalOwe)} total
-                      </div>
-                    </div>
-                    <PayPersonButton
-                      personId={profileFriend.uid}
-                      personName={profileFriend.displayName}
-                      size="sm"
-                    />
-                  </div>
-                )
-              })()}
-
-              {/* They owe you overall: challenge them to a game */}
-              {getFriendNetBalance(profileFriend) > 0 && !profilePending && (
-                <div className="flex items-center justify-between gap-3 border-t pt-4">
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold">Settle-up game</div>
-                    <div className="text-xs text-muted-foreground">
-                      Play {profileFriend.displayName} for a discount on the{" "}
-                      {formatPaise(getFriendNetBalance(profileFriend))} they owe
-                    </div>
-                  </div>
-                  <ChallengeButton
-                    person={{
-                      uid: profileFriend.uid,
-                      name: profileFriend.displayName,
-                      photoURL: profileFriend.photoURL,
-                    }}
-                    owedPaise={getFriendNetBalance(profileFriend)}
-                  />
-                </div>
-              )}
-
-              {/* Shared Expenses (Group & Personal) */}
-              <div className="flex flex-col gap-2 border-t pt-4">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-semibold">
-                    Shared expenses ({mutualExpenses.length})
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    Group & personal
-                  </span>
-                </div>
-
-                {mutualExpenses.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-muted-foreground">
-                    No shared expenses between you and{" "}
-                    {profileFriend.displayName} yet.
-                  </div>
-                ) : (
-                  <div className="-mx-2 flex flex-col">
-                    {mutualExpenses.map((exp) => (
-                      <Link
-                        key={exp.id}
-                        href={`/expenses/${exp.id}`}
-                        onClick={() => setProfileFriend(null)}
-                        className="flex items-center justify-between rounded-md px-2 py-2.5 transition-colors hover:bg-muted/60"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium">
-                            {exp.title}
-                          </div>
-                          <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                            {exp.groupId ? exp.groupName || "Group" : "Direct"}{" "}
-                            •{" "}
-                            {exp.payerId === user?.uid
-                              ? "You paid"
-                              : `${exp.payerName} paid`}{" "}
-                            • {exp.date}
-                          </div>
-                        </div>
-                        <div className="ml-3 flex shrink-0 items-center gap-1.5">
-                          <span className="text-sm font-semibold tabular-nums">
-                            {formatPaise(exp.amountPaise)}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground">
-                            View
-                          </span>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          <DialogFooter className="grid grid-cols-2">
-            <Button variant="outline" onClick={() => setProfileFriend(null)}>
-              Close
-            </Button>
-            <Button
-              onClick={() => {
-                if (!profileFriend) return
-                const targetId = profileFriend.uid
-                setProfileFriend(null)
-                router.push(splitHref(targetId))
-              }}
-            >
-              Split Bill
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Remove Friend Confirmation (with invariant enforcement) */}
       <ConfirmDialog
         open={!!removeTarget}
@@ -1038,6 +593,7 @@ export default function FriendsPage() {
             <Item variant="outline" size="sm">
               <ItemMedia>
                 <UserAvatar
+                  uid={removeTarget.uid}
                   src={removeTarget.photoURL}
                   name={removeTarget.displayName}
                   size="sm"

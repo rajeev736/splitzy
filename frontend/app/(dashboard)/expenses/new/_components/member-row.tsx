@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
  */
 export function MemberRow({
   as: Comp = "div",
+  uid,
   name,
   photoURL,
   subtitle,
@@ -18,6 +19,8 @@ export function MemberRow({
   ...props
 }: {
   as?: "div" | "label"
+  /** Whose row it is (shows their profile frame when known). */
+  uid?: string
   name: string
   photoURL?: string
   subtitle?: React.ReactNode
@@ -33,7 +36,7 @@ export function MemberRow({
       )}
       {...props}
     >
-      <UserAvatar src={photoURL} name={name} size="sm" />
+      <UserAvatar uid={uid} src={photoURL} name={name} size="sm" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold">{name}</div>
         {subtitle && <div className="truncate text-xs text-muted-foreground">{subtitle}</div>}

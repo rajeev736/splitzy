@@ -52,6 +52,309 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.uid == uid();
     }
 
+    // ───────────────────────── Fun: coins, frames, gifts, badges ─────────────────────────
+    // Coins live in wallets/{uid}. Every balance change names its reason in
+    // `lastTx` and is checked against the document that justifies it, written in
+    // the same batch: a frame bought, a gift sent, a game stake, a game payout.
+    // Prices mirror lib/fun/catalog.
+
+    /** Coin price of a premium frame; 0 for free or unknown frames. */
+    function framePrice(id) {
+      return {
+        'laurel': 300, 'star_1': 400, 'flame': 700, 'star_3': 800, 'crystal_wings': 900,
+        'gold_wings': 1000, 'royal_crown': 1200, 'kitty': 300, 'ribbon': 350, 'blossom': 400,
+        'cloud_moon': 500, 'pumpkin': 500, 'festive': 600, 'sweethearts': 400, 'cupid': 500,
+        'rose_vine': 700, 'love_wings': 900,
+        'silver_wings': 450, 'gem_wings': 650, 'inferno': 1100, 'fox': 400, 'headphones': 450,
+        'rainbow': 500, 'horns': 550, 'unicorn': 600, 'butterfly': 650, 'witch': 700,
+        'neon_heart': 350, 'sweet_candy': 450, 'love_letter': 550, 'party': 600
+      }.get(id, 0);
+    }
+
+    /** Milestone frames: never sold, unlocked when a lifetime stat reaches the goal. */
+    function milestoneGoal(id) {
+      return {
+        'victor': ['wins', 10], 'conqueror': ['wins', 50], 'legend': ['wins', 100],
+        'regular': ['played', 50], 'veteran': ['played', 200], 'immortal': ['played', 500],
+        'coin_hunter': ['coinsWon', 1000], 'tycoon': ['coinsWon', 10000]
+      }.get(id, null);
+    }
+
+    function isFreeFrame(id) {
+      return id in ['gold_ring', 'silver_ring', 'rose_ring', 'bunny', 'heart_halo'];
+    }
+
+    function giftPrice(id) {
+      return {
+        'chai': 40, 'rose': 50, 'sunflower': 70, 'coffee': 80, 'kiss': 90, 'icecream': 100,
+        'balloon': 120, 'chocolate': 120, 'momos': 150, 'pizza': 180, 'cake': 250,
+        'teddy': 400, 'bouquet': 600, 'diamond': 1000
+      }.get(id, 0);
+    }
+
+    /** Frame (free or owned), mood and birthday on a profile. */
+    function profileExtrasOk(userId) {
+      let d = request.resource.data;
+      return (!changes('frame') || d.get('frame', '') == '' || isFreeFrame(d.frame) ||
+              d.frame in get(/databases/$(database)/documents/wallets/$(userId)).data.frames) &&
+             (!changes('mood') || d.get('mood', null) == null ||
+              (d.mood.keys().hasOnly(['id', 'at']) && d.mood.id is string && d.mood.id.size() <= 20 &&
+               d.mood.at is string)) &&
+             (!changes('birthday') || d.get('birthday', null) == null ||
+              (d.birthday.keys().hasOnly(['month', 'day']) &&
+               d.birthday.month is int && d.birthday.month >= 1 && d.birthday.month <= 12 &&
+               d.birthday.day is int && d.birthday.day >= 1 && d.birthday.day <= 31));
+    }
+
+    /** One-on-one Stone Paper Scissors that ended level (stakes are refunded). */
+    function friendDraw(c) {
+      return c.game == 'rps' &&
+             rpsScore(c.moves[c.players[0]], c.result.hostMoves) ==
+               rpsScore(c.result.hostMoves, c.moves[c.players[0]]);
+    }
+
+    /** Coins a staker gets back from a finished or cancelled 1-on-1 game. */
+    function payoutFor(c, who) {
+      return c.status == 'CANCELLED'
+        ? c.stake
+        : c.status != 'DONE'
+          ? 0
+          : friendDraw(c)
+            ? c.stake
+            : (c.players[0] in c.result.winners) == (who == c.players[0]) ? c.stake * 2 : 0;
+    }
+
+    function frameBuyOk(id, delta) {
+      return framePrice(id) > 0 && delta == -framePrice(id) &&
+             !(id in resource.data.frames) &&
+             request.resource.data.frames == resource.data.frames.concat([id]);
+    }
+
+    function giftPaidOk(fid, mid, delta) {
+      let path = /databases/$(database)/documents/friendships/$(fid)/moments/$(mid);
+      let m = getAfter(path).data;
+      return !exists(path) && m.from == uid() && m.type == 'gift' && delta == -giftPrice(m.item);
+    }
+
+    function stakeOk(cid, delta) {
+      let path = /databases/$(database)/documents/challenges/$(cid);
+      let c = getAfter(path).data;
+      return c.get('stake', 0) > 0 && delta == -c.stake && uid() in c.get('staked', []) &&
+             (!exists(path) || !(uid() in get(path).data.get('staked', [])));
+    }
+
+    function payoutOk(cid, delta) {
+      let path = /databases/$(database)/documents/challenges/$(cid);
+      let c = getAfter(path).data;
+      return delta > 0 &&
+             uid() in c.get('staked', []) &&
+             uid() in c.get('paidOut', []) &&
+             !(uid() in get(path).data.get('paidOut', [])) &&
+             delta == payoutFor(c, uid()) &&
+             // Lifetime coins won (net: the other side's stake) for milestones
+             request.resource.data.get('coinsWon', 0) ==
+               resource.data.get('coinsWon', 0) + (delta == c.stake * 2 ? c.stake : 0);
+    }
+
+    function statSame(f) {
+      return request.resource.data.get(f, 0) == resource.data.get(f, 0);
+    }
+
+    function statUp(f) {
+      return request.resource.data.get(f, 0) == resource.data.get(f, 0) + 1;
+    }
+
+    /** Lifetime stats move only with their proof: a win with its Game Champ badge, a game with its played record. */
+    function statsOk(tx) {
+      return (tx[0] == 'win' ? statUp('wins') : statSame('wins')) &&
+             (tx[0] == 'played' ? statUp('played') : statSame('played')) &&
+             (tx[0] == 'payout' || statSame('coinsWon'));
+    }
+
+    function winRecorded(cid) {
+      let p = /databases/$(database)/documents/users/$(uid())/badges/$('champ_' + cid);
+      return existsAfter(p) && !exists(p);
+    }
+
+    function playedRecorded(cid) {
+      let p = /databases/$(database)/documents/users/$(uid())/played/$(cid);
+      return existsAfter(p) && !exists(p);
+    }
+
+    function milestoneOk(id) {
+      let m = milestoneGoal(id);
+      return m != null && !(id in resource.data.frames) &&
+             request.resource.data.frames == resource.data.frames.concat([id]) &&
+             resource.data.get(m[0], 0) >= m[1];
+    }
+
+    /** The one-time welcome bonus: 10,000 coins, and a free Rising Star frame. */
+    function welcomeOk(tx, delta) {
+      return (tx[0] == 'welcome' && tx.size() == 1 && delta == 10000 &&
+              resource.data.get('welcomed', false) == false && request.resource.data.welcomed == true &&
+              request.resource.data.frames == resource.data.frames &&
+              request.resource.data.get('welcomeFrame', false) == resource.data.get('welcomeFrame', false)) ||
+             (tx[0] == 'welcomeframe' && tx.size() == 1 && delta == 0 &&
+              resource.data.get('welcomeFrame', false) == false && request.resource.data.welcomeFrame == true &&
+              !('star_1' in resource.data.frames) &&
+              request.resource.data.frames == resource.data.frames.concat(['star_1']) &&
+              request.resource.data.get('welcomed', false) == resource.data.get('welcomed', false));
+    }
+
+    function walletTxOk(tx, delta) {
+      return statsOk(tx) &&
+             (welcomeOk(tx, delta) ||
+              (request.resource.data.get('welcomed', false) == resource.data.get('welcomed', false) &&
+               request.resource.data.get('welcomeFrame', false) == resource.data.get('welcomeFrame', false) &&
+               walletSpendOk(tx, delta)));
+    }
+
+    function walletSpendOk(tx, delta) {
+      return (tx[0] == 'frame' && tx.size() == 2 && frameBuyOk(tx[1], delta)) ||
+             (tx[0] == 'milestone' && tx.size() == 2 && delta == 0 && milestoneOk(tx[1])) ||
+             (request.resource.data.frames == resource.data.frames &&
+              delta == 0 && tx.size() == 2 &&
+              ((tx[0] == 'win' && winRecorded(tx[1])) || (tx[0] == 'played' && playedRecorded(tx[1])))) ||
+             (request.resource.data.frames == resource.data.frames &&
+              ((tx[0] == 'gift' && tx.size() == 3 && giftPaidOk(tx[1], tx[2], delta)) ||
+               (tx[0] == 'stake' && tx.size() == 2 && stakeOk(tx[1], delta)) ||
+               (tx[0] == 'payout' && tx.size() == 2 && payoutOk(tx[1], delta))));
+    }
+
+    match /wallets/{userId} {
+      // Friends see each other's coins
+      allow get: if signedIn();
+      allow create: if signedIn() && uid() == userId &&
+                    request.resource.data.keys().hasOnly(['uid', 'balance', 'frames', 'lastTx', 'createdAt']) &&
+                    request.resource.data.uid == userId &&
+                    // Starts empty: the welcome bonus is claimed once (lastTx 'welcome')
+                    request.resource.data.balance == 0 &&
+                    request.resource.data.frames == [] &&
+                    request.resource.data.lastTx == 'start' &&
+                    exists(/databases/$(database)/documents/users/$(userId));
+      allow update: if signedIn() && uid() == userId &&
+                    onlyChanges(['balance', 'frames', 'lastTx', 'welcomed', 'welcomeFrame', 'wins', 'played', 'coinsWon']) &&
+                    request.resource.data.balance is int &&
+                    request.resource.data.balance >= 0 &&
+                    request.resource.data.lastTx is string &&
+                    walletTxOk(request.resource.data.lastTx.split(':'),
+                               request.resource.data.balance - resource.data.balance);
+      // Only once the account itself is gone (no free reset to the starting coins)
+      allow delete: if signedIn() && uid() == userId &&
+                    !exists(/databases/$(database)/documents/users/$(userId));
+    }
+
+    // Your own coin history: what each change was for. Only you see it; it's a
+    // record for you, the balance itself is checked above.
+    match /wallets/{userId}/txs/{txId} {
+      allow read: if signedIn() && uid() == userId;
+      allow create: if signedIn() && uid() == userId &&
+                    request.resource.data.keys().hasOnly(['id', 'kind', 'amount', 'label', 'ref', 'createdAt']) &&
+                    request.resource.data.amount is int &&
+                    request.resource.data.kind is string && request.resource.data.kind.size() <= 20 &&
+                    request.resource.data.label is string && request.resource.data.label.size() <= 120 &&
+                    request.resource.data.createdAt is string;
+      allow update: if false;
+      allow delete: if signedIn() && uid() == userId &&
+                    !exists(/databases/$(database)/documents/users/$(userId));
+    }
+
+    // Badges: one doc per achievement, each checked against what earned it.
+    function swiftEarned(expenseId, i) {
+      let e = get(/databases/$(database)/documents/expenses/$(expenseId)).data;
+      return i is int && i >= 0 && i < e.shares.size() &&
+             e.shares[i].userId == uid() &&
+             e.shares[i].status in ['PAYMENT_REPORTED', 'PAID'] &&
+             e.payerId != uid() &&
+             e.get('createdTs', null) is timestamp &&
+             request.time < e.createdTs + duration.value(6, 'm');
+    }
+
+    function champEarned(cid) {
+      let c = get(/databases/$(database)/documents/challenges/$(cid)).data;
+      return c.status == 'DONE' && uid() in c.participants &&
+             (uid() in c.result.winners ||
+              (c.kind == 'friend' && c.hostId == uid() && c.players[0] in c.moves &&
+               !(c.players[0] in c.result.winners) && !friendDraw(c)));
+    }
+
+    function bigheartEarned(ref) {
+      let p = ref.split('/');
+      let m = get(/databases/$(database)/documents/friendships/$(p[0])/moments/$(p[1])).data;
+      return p.size() == 2 && m.from == uid() && m.type == 'gift';
+    }
+
+    function earlyBirdCount() {
+      return exists(/databases/$(database)/documents/meta/earlyBird)
+        ? get(/databases/$(database)/documents/meta/earlyBird).data.count
+        : 0;
+    }
+
+    /** Early Bird: the next number, taken in the same batch, while under 1,000. */
+    function earlyBirdEarned() {
+      let next = getAfter(/databases/$(database)/documents/meta/earlyBird).data.count;
+      return request.resource.data.ref == 'joysplit' &&
+             next == earlyBirdCount() + 1 && next <= 1000 &&
+             request.resource.data.get('i', 0) == next;
+    }
+
+    // Counter for Early Bird: only ever +1, together with that person's badge
+    match /meta/earlyBird {
+      allow get: if signedIn();
+      allow create, update: if signedIn() &&
+                            request.resource.data.keys().hasOnly(['count']) &&
+                            request.resource.data.count == earlyBirdCount() + 1 &&
+                            request.resource.data.count <= 1000 &&
+                            !exists(/databases/$(database)/documents/users/$(uid())/badges/earlybird_joysplit) &&
+                            existsAfter(/databases/$(database)/documents/users/$(uid())/badges/earlybird_joysplit);
+      allow delete: if false;
+    }
+
+    match /users/{userId}/badges/{badgeId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && uid() == userId &&
+                    request.resource.data.keys().hasOnly(['type', 'ref', 'i', 'createdAt']) &&
+                    request.resource.data.ref is string &&
+                    request.resource.data.createdAt is string &&
+                    badgeId == request.resource.data.type + '_' + request.resource.data.ref.replace('/', '_') &&
+                    ((request.resource.data.type == 'swift' &&
+                      swiftEarned(request.resource.data.ref, request.resource.data.get('i', -1))) ||
+                     // a win also counts on your wallet, in the same batch (for milestones)
+                     (request.resource.data.type == 'champ' && champEarned(request.resource.data.ref) &&
+                      getAfter(/databases/$(database)/documents/wallets/$(uid())).data.lastTx ==
+                        'win:' + request.resource.data.ref) ||
+                     (request.resource.data.type == 'bigheart' && bigheartEarned(request.resource.data.ref)) ||
+                     (request.resource.data.type == 'earlybird' && earlyBirdEarned()));
+      allow update: if false;
+      // Only with the account itself (re-creating a badge would count it twice)
+      allow delete: if signedIn() && uid() == userId &&
+                    !exists(/databases/$(database)/documents/users/$(userId));
+    }
+
+    // One record per finished game you were in (host or player who played):
+    // proof for the "games played" milestones.
+    match /users/{userId}/played/{challengeId} {
+      allow read: if signedIn() && uid() == userId;
+      allow create: if signedIn() && uid() == userId &&
+                    request.resource.data.keys().hasOnly(['at']) &&
+                    playedIn(challengeId) &&
+                    getAfter(/databases/$(database)/documents/wallets/$(uid())).data.lastTx == 'played:' + challengeId;
+      allow update: if false;
+      allow delete: if signedIn() && uid() == userId &&
+                    !exists(/databases/$(database)/documents/users/$(userId));
+    }
+
+    function playedIn(cid) {
+      let c = get(/databases/$(database)/documents/challenges/$(cid)).data;
+      return c.status == 'DONE' && uid() in c.participants &&
+             (c.hostId == uid() || uid() in c.moves);
+    }
+
+    // Private profile bits (full date of birth): only the owner.
+    match /users/{userId}/private/{docId} {
+      allow read, write: if signedIn() && uid() == userId;
+    }
+
     // ───────────────────────── Users ─────────────────────────
     // Public profile (name, JoySplit ID, photo, UPI) — needed for friend
     // discovery and payments. Email is never stored here.
@@ -62,6 +365,7 @@ service cloud.firestore {
                     request.resource.data.uid == userId &&
                     !('email' in request.resource.data) &&
                     request.resource.data.get('photoURL', '').size() < 500000 &&
+                    (request.resource.data.get('frame', '') == '' || isFreeFrame(request.resource.data.frame)) &&
                     // The JoySplit ID must be reserved by this user
                     get(/databases/$(database)/documents/splitzyIds/$(request.resource.data.splitzyId)).data.uid == userId;
       allow update: if signedIn() && uid() == userId &&
@@ -69,7 +373,8 @@ service cloud.firestore {
                     request.resource.data.get('splitzyId', '') == resource.data.get('splitzyId', '') &&
                     request.resource.data.get('photoURL', '').size() < 500000 &&
                     request.resource.data.get('displayName', '').size() <= 100 &&
-                    request.resource.data.get('upiId', '').size() <= 100;
+                    request.resource.data.get('upiId', '').size() <= 100 &&
+                    profileExtrasOk(userId);
       allow delete: if signedIn() && uid() == userId;
     }
 
@@ -85,6 +390,75 @@ service cloud.firestore {
              data.users.hasAll([req.senderId, req.receiverId]) &&
              (friendshipId == req.senderId + '_' + req.receiverId ||
               friendshipId == req.receiverId + '_' + req.senderId);
+    }
+
+    // Bonds (buddy, bestie, love…) need both people: one asks (bondRequest),
+    // the other accepts. Counters of moments only ever go up by one, together
+    // with the moment itself (lastMoment).
+    function bondChangeOk() {
+      let b = request.resource.data.get('bond', null);
+      let r = resource.data.get('bondRequest', null);
+      return b == null ||
+             (r != null && r.from != uid() &&
+              b.keys().hasOnly(['type', 'since']) && b.type == r.type && b.since is string &&
+              request.resource.data.get('bondRequest', null) == null);
+    }
+
+    function bondRequestOk() {
+      let r = request.resource.data.get('bondRequest', null);
+      return r == null ||
+             (r.keys().hasOnly(['type', 'from', 'at']) && r.from == uid() &&
+              r.type in ['buddy', 'bestie', 'bromance', 'siblings', 'love'] && r.at is string);
+    }
+
+    function lastMomentOk(fid) {
+      let lm = request.resource.data.lastMoment;
+      let path = /databases/$(database)/documents/friendships/$(fid)/moments/$(lm.id);
+      let m = getAfter(path).data;
+      return lm.keys().hasOnly(['id', 'key', 'by', 'at']) && lm.by == uid() &&
+             !exists(path) && m.from == uid() &&
+             lm.key == (m.type == 'gift' ? 'g_' + m.item : m.type);
+    }
+
+    function countsOk() {
+      let before = resource.data.get('counts', {});
+      let after = request.resource.data.counts;
+      let key = request.resource.data.lastMoment.key;
+      return changes('lastMoment') &&
+             after.diff(before).affectedKeys().hasOnly([uid()]) &&
+             after[uid()].diff(before.get(uid(), {})).affectedKeys().hasOnly([key]) &&
+             after[uid()][key] == before.get(uid(), {}).get(key, 0) + 1;
+    }
+
+    function friendFunOk(fid) {
+      return (!changes('lastMoment') || !('lastMoment' in request.resource.data) || lastMomentOk(fid)) &&
+             (!changes('counts') || !('counts' in request.resource.data) || countsOk()) &&
+             (!changes('bond') || bondChangeOk()) &&
+             (!changes('bondRequest') || bondRequestOk());
+    }
+
+    function momentCreateOk(fid, mid) {
+      let f = get(/databases/$(database)/documents/friendships/$(fid)).data;
+      let d = request.resource.data;
+      return f.status == 'ACTIVE' && uid() in f.users &&
+             d.keys().hasOnly(['id', 'type', 'from', 'to', 'fromName', 'item', 'price', 'note',
+                               'text', 'kind', 'status', 'createdAt']) &&
+             d.id == mid && d.from == uid() && d.to in f.users && d.to != uid() &&
+             d.createdAt is string &&
+             d.get('fromName', '') is string && d.get('fromName', '').size() <= 100 &&
+             getAfter(/databases/$(database)/documents/friendships/$(fid)).data.get('lastMoment', {}).get('id', '') == mid &&
+             (d.type in ['hug', 'kiss', 'miss']
+               ? f.get('bond', null) != null && f.bond.type == 'love'
+               : d.type == 'wish'
+                 ? true
+                 : d.type == 'gift'
+                   ? giftPrice(d.get('item', '')) > 0 && d.price == giftPrice(d.item) &&
+                     d.get('note', '') is string && d.get('note', '').size() <= 80 &&
+                     getAfter(/databases/$(database)/documents/wallets/$(uid())).data.lastTx ==
+                       'gift:' + fid + ':' + mid
+                   : d.type == 'plan' && d.status == 'PENDING' &&
+                     d.text is string && d.text.size() >= 1 && d.text.size() <= 120 &&
+                     d.get('kind', 'other') in ['momos', 'movie', 'coffee', 'dinner', 'trip', 'other']);
     }
 
     match /friendships/{friendshipId} {
@@ -104,8 +478,24 @@ service cloud.firestore {
                     request.resource.data.users.hasAll(resource.data.users) &&
                     (request.resource.data.status == 'REMOVED' ||
                      (request.resource.data.status == 'ACTIVE' &&
-                      (resource.data.status == 'ACTIVE' || isAcceptedRequestActivation(friendshipId))));
+                      (resource.data.status == 'ACTIVE' || isAcceptedRequestActivation(friendshipId)))) &&
+                    friendFunOk(friendshipId);
       allow delete: if signedIn() && uid() in resource.data.users;
+
+      // Hugs, kisses, miss-yous (love bonds), gifts (paid in coins), birthday
+      // wishes and plans ("let's get momos"). Only the two friends see them.
+      match /moments/{momentId} {
+        allow read: if signedIn() &&
+                    uid() in get(/databases/$(database)/documents/friendships/$(friendshipId)).data.users;
+        allow create: if signedIn() && momentCreateOk(friendshipId, momentId);
+        // The one asked answers a plan, once
+        allow update: if signedIn() &&
+                      resource.data.type == 'plan' && resource.data.to == uid() &&
+                      resource.data.status == 'PENDING' &&
+                      onlyChanges(['status', 'respondedAt']) &&
+                      request.resource.data.status in ['YES', 'NO'];
+        allow delete: if false;
+      }
     }
 
     // ───────────────────────── Friend requests ─────────────────────────
@@ -395,6 +785,7 @@ service cloud.firestore {
                     request.resource.data.payerId == uid() &&
                     request.resource.data.get('recipientId', uid()) == uid() &&
                     request.resource.data.createdAt is string &&
+                    request.resource.data.get('createdTs', request.time) == request.time &&
                     request.resource.data.amountPaise is int &&
                     request.resource.data.amountPaise > 0 &&
                     request.resource.data.shares is list &&
@@ -436,6 +827,76 @@ service cloud.firestore {
                     // Only ever your own share in it
                     resource.data.shares.size() == 1 &&
                     resource.data.shares[0].userId == uid();
+
+      // ─────────────── Bill attachments (images / PDFs) ───────────────
+      // No Storage on the free plan, so a file lives in Firestore: meta in
+      // files/{slot} and its base64 in chunks/{n} (≤ 900,000 chars each, under
+      // the 1 MiB doc limit). Three fixed slots cap an expense at 3 files. Meta
+      // and every chunk are written in ONE batch (the meta requires its last
+      // chunk, each chunk requires the meta), so a half-written file can't
+      // exist. Never edited; the uploader deletes the meta and chunks together.
+      // Mirrors services/attachments.ts.
+      function expenseData() {
+        return get(/databases/$(database)/documents/expenses/$(expenseId)).data;
+      }
+
+      function canSeeExpense() {
+        let e = expenseData();
+        return isInvolved(e) || inGroupOf(e);
+      }
+
+      function fileMetaPath(fileId) {
+        return /databases/$(database)/documents/expenses/$(expenseId)/files/$(fileId);
+      }
+
+      function validFileMeta(fileId, f) {
+        let e = expenseData();
+        let isPdf = f.type == 'application/pdf';
+        return (e.createdBy == uid() || e.payerId == uid()) &&
+               e.get('deletedAt', null) == null &&
+               f.keys().hasOnly(['name', 'type', 'size', 'chunks', 'uploadedBy', 'uploaderName', 'createdAt']) &&
+               f.keys().hasAll(['name', 'type', 'size', 'chunks', 'uploadedBy', 'uploaderName', 'createdAt']) &&
+               f.uploadedBy == uid() &&
+               f.uploaderName is string && f.uploaderName.size() <= 100 &&
+               f.createdAt is string && f.createdAt.size() <= 40 &&
+               f.name is string && f.name.size() > 0 && f.name.size() <= 120 &&
+               f.type in ['image/jpeg', 'image/webp', 'application/pdf'] &&
+               f.size is int && f.size > 0 &&
+               // 3 MB PDFs as-is; images are compressed to ≤ 1.5 MB first
+               f.size <= (isPdf ? 3145728 : 1572864) &&
+               // base64 of 3 MB = 4.2M chars → 5 chunks; of 1.5 MB = 2.1M → 3
+               f.chunks is int && f.chunks >= 1 && f.chunks <= (isPdf ? 5 : 3) &&
+               // Written together with its last chunk
+               existsAfter(/databases/$(database)/documents/expenses/$(expenseId)/files/$(fileId)/chunks/$(string(f.chunks - 1)));
+      }
+
+      function validChunk(fileId, n) {
+        let m = getAfter(fileMetaPath(fileId)).data;
+        return m.uploadedBy == uid() &&
+               n in ['0', '1', '2', '3', '4'] &&
+               int(n) < m.chunks &&
+               request.resource.data.keys().hasOnly(['data']) &&
+               request.resource.data.data is string &&
+               request.resource.data.data.size() > 0 &&
+               request.resource.data.data.size() <= 900000;
+      }
+
+      match /files/{fileId} {
+        allow read: if signedIn() && canSeeExpense();
+        allow create: if signedIn() &&
+                      fileId in ['1', '2', '3'] &&
+                      validFileMeta(fileId, request.resource.data);
+        allow update: if false;
+        allow delete: if signedIn() && resource.data.uploadedBy == uid();
+
+        match /chunks/{n} {
+          allow read: if signedIn() && canSeeExpense();
+          allow create: if signedIn() && validChunk(fileId, n);
+          allow update: if false;
+          // In the same batch as the meta's delete, get() still sees the meta
+          allow delete: if signedIn() && get(fileMetaPath(fileId)).data.uploadedBy == uid();
+        }
+      }
     }
 
     // ───────────────────────── Challenges (games) ─────────────────────────
@@ -460,8 +921,49 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/challenges/$(id)/secret/value).data;
     }
 
+    // Penalty Shootout (keeper's dives L/C/R, 5 kicks), Higher or Lower (6 cards
+    // 2–14, call each next one H/L) and Number Hunt (a number 1–60, 5 guesses)
+    // follow the same patterns. Their per-round picks go in `roundPlays` like
+    // Stone Paper Scissors: hostRounds/{n} holds the keeper's dive (friend games
+    // only) or card n (always: card 0 is readable from the start, card n+1 after
+    // call n). Number Hunt keeps a hint per number in tiles/{n} ('higher',
+    // 'lower', 'found'), readable once n is in `progress`, like a grid tile.
+
     function isGridGame(game) {
       return game in ['minefield', 'gold_rush'];
+    }
+
+    /** Games with a doc per tile (tiles/{n}) opened one by one via `progress`. */
+    function hasTiles(game) {
+      return game in ['minefield', 'gold_rush', 'number_hunt'];
+    }
+
+    /** Games played round by round via `roundPlays`. */
+    function isRoundGame(game) {
+      return game in ['rps', 'penalty', 'hilo'];
+    }
+
+    /** Games that reveal step by step in groups too, so early players could tip off the rest: fun only there. */
+    function noGroupDiscount(game) {
+      return game in ['minefield', 'gold_rush', 'hilo', 'number_hunt'];
+    }
+
+    /** A playing card: 2–10, J=11, Q=12, K=13, A=14. */
+    function validCard(v) {
+      return v is int && v >= 2 && v <= 14;
+    }
+
+    /** The host's 6 Higher or Lower cards, never the same value twice in a row. */
+    function validHiloCards(c) {
+      return c is list && c.size() == 6 &&
+             validCard(c[0]) && validCard(c[1]) && validCard(c[2]) &&
+             validCard(c[3]) && validCard(c[4]) && validCard(c[5]) &&
+             c[0] != c[1] && c[1] != c[2] && c[2] != c[3] && c[3] != c[4] && c[4] != c[5];
+    }
+
+    /** Number Hunt: the hint for guessing n. Mirrors `huntHint` in lib/games. */
+    function huntHint(secret, n) {
+      return secret > n ? 'higher' : secret < n ? 'lower' : 'found';
     }
 
     function gridCells() {
@@ -498,7 +1000,16 @@ service cloud.firestore {
             move[3] in ['H', 'T'] && move[4] in ['H', 'T']
           : game == 'treasure'
             ? move is int && move >= 0 && move <= 8
-            : move is int && move >= 1 && move <= 100;
+            : game == 'penalty'
+              // 5 shots, or the keeper's 5 dives
+              ? move is list && move.size() == 5 &&
+                move[0] in ['L', 'C', 'R'] && move[1] in ['L', 'C', 'R'] && move[2] in ['L', 'C', 'R'] &&
+                move[3] in ['L', 'C', 'R'] && move[4] in ['L', 'C', 'R']
+              : game == 'hilo'
+                ? move is list && move.size() == 5 &&
+                  move[0] in ['H', 'L'] && move[1] in ['H', 'L'] && move[2] in ['H', 'L'] &&
+                  move[3] in ['H', 'L'] && move[4] in ['H', 'L']
+                : move is int && move >= 1 && move <= 100;
     }
 
     /** The host's secret has the right shape for the game. */
@@ -514,39 +1025,62 @@ service cloud.firestore {
               s.boxes[0] != s.boxes[1] && s.boxes[0] != s.boxes[2] && s.boxes[1] != s.boxes[2]
             : isGridGame(game)
               ? validCells(s.get('cells', null), game == 'minefield' ? 3 : 4)
-              : validMove('lucky_number', s.get('number', null));
+              : game == 'penalty'
+                ? validMove('penalty', s.get('dives', null))
+                : game == 'hilo'
+                  ? validHiloCards(s.get('cards', null))
+                  : game == 'number_hunt'
+                    ? s.get('number', null) is int && s.number >= 1 && s.number <= 60
+                    : validMove('lucky_number', s.get('number', null));
     }
 
     /**
-     * A player's final move. In grid games it's exactly the digs they made; in
-     * Stone Paper Scissors played round by round, exactly the rounds they played.
+     * A player's final move. In tile games (grid, Number Hunt) it's exactly the
+     * digs / guesses they made. In Higher or Lower (always card by card), exactly
+     * the calls they made; in Stone Paper Scissors and Penalty Shootout played
+     * round by round, exactly the rounds they played.
      */
     function validFinalMove(c, move) {
-      return isGridGame(c.game)
+      return hasTiles(c.game)
         ? move is list && move.size() >= 1 && move == c.get('progress', {}).get(uid(), null)
         : validMove(c.game, move) &&
-          (c.game != 'rps' || !(uid() in c.get('roundPlays', {})) || move == c.roundPlays[uid()]);
+          (c.game == 'hilo'
+            ? move == c.get('roundPlays', {}).get(uid(), null)
+            : !(c.game in ['rps', 'penalty']) || !(uid() in c.get('roundPlays', {})) || move == c.roundPlays[uid()]);
     }
 
-    /** Stone Paper Scissors: one more round, appended to your own list — earlier rounds never change. */
-    function validRpsRound(before, after) {
+    /** What a player may pick in one round of a round game. */
+    function roundChoices(game) {
+      return game == 'rps'
+        ? ['rock', 'paper', 'scissors', 'none']
+        : game == 'penalty' ? ['L', 'C', 'R'] : ['H', 'L'];
+    }
+
+    /** Round games: one more round, appended to your own list — earlier rounds never change. */
+    function validRound(before, after) {
       let old = before.get('roundPlays', {}).get(uid(), []);
       let now = after.roundPlays[uid()];
       return after.roundPlays.diff(before.get('roundPlays', {})).affectedKeys().hasOnly([uid()]) &&
-             now is list && now.size() == old.size() + 1 && now.size() <= 3 &&
+             now is list && now.size() == old.size() + 1 &&
+             now.size() <= (before.game == 'rps' ? 3 : 5) &&
              (old.size() == 0 || now[0:old.size()] == old) &&
-             now[old.size()] in ['rock', 'paper', 'scissors', 'none'];
+             now[old.size()] in roundChoices(before.game);
     }
 
-    /** Grid games: one more dig, appended to your own list — a new cell, within the game's limit. */
+    /**
+     * Tile games: one more dig / guess, appended to your own list — a new cell
+     * (or number 1–60), within the game's limit (16 in Minefield, else 5).
+     */
     function validDig(before, after) {
       let old = before.get('progress', {}).get(uid(), []);
       let now = after.progress[uid()];
       return after.progress.diff(before.get('progress', {})).affectedKeys().hasOnly([uid()]) &&
              now is list && now.size() == old.size() + 1 &&
-             now.size() <= (before.game == 'gold_rush' ? 5 : 16) &&
+             now.size() <= (before.game == 'minefield' ? 16 : 5) &&
              (old.size() == 0 || now[0:old.size()] == old) &&
-             now[old.size()] in gridCells() &&
+             (before.game == 'number_hunt'
+               ? now[old.size()] is int && now[old.size()] >= 1 && now[old.size()] <= 60
+               : now[old.size()] in gridCells()) &&
              !(now[old.size()] in old);
     }
 
@@ -569,6 +1103,16 @@ service cloud.firestore {
       return a == b ? 1 : 0;
     }
 
+    /** Penalty Shootout: a goal unless the keeper dived the way the ball went. */
+    function goal(shot, dive) {
+      return shot != dive ? 1 : 0;
+    }
+
+    /** Higher or Lower: was this call right going from card a to card b? Mirrors `hiloCallRight`. */
+    function hiloRight(call, a, b) {
+      return (call == 'H') == (b > a) ? 1 : 0;
+    }
+
     /** One player's move against the secret (every game but group Lucky Number). */
     function beatsSecret(c, secret, m) {
       return c.game == 'rps'
@@ -586,7 +1130,22 @@ service cloud.firestore {
               : c.game == 'gold_rush'
                 // 2+ gold coins within 5 digs
                 ? m.size() <= 5 && m.toSet().intersection(secret.cells.toSet()).size() >= 2
-                : math.abs(m - secret.number) <= 10;
+                : c.game == 'penalty'
+                  // 3+ goals from 5 kicks
+                  ? goal(m[0], secret.dives[0]) + goal(m[1], secret.dives[1]) +
+                    goal(m[2], secret.dives[2]) + goal(m[3], secret.dives[3]) +
+                    goal(m[4], secret.dives[4]) >= 3
+                  : c.game == 'hilo'
+                    // 3+ of the 5 calls right
+                    ? hiloRight(m[0], secret.cards[0], secret.cards[1]) +
+                      hiloRight(m[1], secret.cards[1], secret.cards[2]) +
+                      hiloRight(m[2], secret.cards[2], secret.cards[3]) +
+                      hiloRight(m[3], secret.cards[3], secret.cards[4]) +
+                      hiloRight(m[4], secret.cards[4], secret.cards[5]) >= 3
+                    : c.game == 'number_hunt'
+                      // Found within 5 guesses
+                      ? m.size() <= 5 && secret.number in m
+                      : math.abs(m - secret.number) <= 10;
     }
 
     /** The result reveals the host's actual secret. */
@@ -599,7 +1158,41 @@ service cloud.firestore {
             ? result.boxes == secret.boxes
             : isGridGame(c.game)
               ? result.cells == secret.cells
-              : result.number == secret.number;
+              : c.game == 'penalty'
+                ? result.dives == secret.dives
+                : c.game == 'hilo'
+                  ? result.cards == secret.cards
+                  : result.number == secret.number;
+    }
+
+    /**
+     * hostRounds/{round} written with a new game, matching its secret: a Higher
+     * or Lower card, or the host's move / keeper's dive in one-on-one Stone
+     * Paper Scissors / Penalty Shootout (in a group, an early player could tip
+     * the others off, so those only reveal at the end).
+     */
+    function validHostRound(c, round, d, secret) {
+      return c.game == 'hilo'
+        ? round in ['0', '1', '2', '3', '4', '5'] &&
+          d.keys().hasOnly(['card']) &&
+          d.card == secret.cards[int(round)]
+        : c.game in ['rps', 'penalty'] &&
+          c.kind == 'friend' &&
+          round in (c.game == 'rps' ? ['0', '1', '2'] : ['0', '1', '2', '3', '4']) &&
+          d.keys().hasOnly(['move']) &&
+          d.move == (c.game == 'rps' ? secret.moves[int(round)] : secret.dives[int(round)]);
+    }
+
+    /** tiles/{tile} written with a new game, matching its secret: a grid cell's hit, or a Number Hunt hint. */
+    function validTile(game, tile, d, secret) {
+      return isGridGame(game)
+        ? tile in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'] &&
+          d.keys().hasOnly(['hit']) &&
+          d.hit == (int(tile) in secret.cells)
+        : game == 'number_hunt' &&
+          tile.matches('^([1-9]|[1-5][0-9]|60)$') &&
+          d.keys().hasOnly(['hint']) &&
+          d.hint == huntHint(secret.number, int(tile));
     }
 
     /** Player i didn't play and didn't win, or is a winner exactly when their move beats the secret. */
@@ -622,6 +1215,34 @@ service cloud.firestore {
              soloPlayerOk(c, secret, result, 10) && soloPlayerOk(c, secret, result, 11) &&
              soloPlayerOk(c, secret, result, 12) && soloPlayerOk(c, secret, result, 13) &&
              soloPlayerOk(c, secret, result, 14);
+    }
+
+    /**
+     * The same result, with each player's win checked by their own doc in
+     * verdicts/{player}, written in this batch (see that match). Checking every
+     * player inline above runs out of the 1,000-expression budget after a few
+     * players; each verdict write gets its own budget, so a 15-player group
+     * result fits. Uses up to 15 existsAfter() plus the secret: within 20.
+     */
+    function validVerdictResult(challengeId, c, secret, result) {
+      return verdictGiven(challengeId, c, 0) &&
+             secretRevealed(c, secret, result) &&
+             result.winners is list &&
+             result.winners.toSet().difference(c.moves.keys().toSet()).size() == 0 &&
+             verdictGiven(challengeId, c, 1) && verdictGiven(challengeId, c, 2) &&
+             verdictGiven(challengeId, c, 3) && verdictGiven(challengeId, c, 4) &&
+             verdictGiven(challengeId, c, 5) && verdictGiven(challengeId, c, 6) &&
+             verdictGiven(challengeId, c, 7) && verdictGiven(challengeId, c, 8) &&
+             verdictGiven(challengeId, c, 9) && verdictGiven(challengeId, c, 10) &&
+             verdictGiven(challengeId, c, 11) && verdictGiven(challengeId, c, 12) &&
+             verdictGiven(challengeId, c, 13) && verdictGiven(challengeId, c, 14);
+    }
+
+    /** Player i didn't play, or their verdict is written alongside the result. */
+    function verdictGiven(challengeId, c, i) {
+      return i >= c.players.size() ||
+             !(c.players[i] in c.moves) ||
+             existsAfter(/databases/$(database)/documents/challenges/$(challengeId)/verdicts/$(c.players[i]));
     }
 
     /** Player i either didn't play, or is a winner exactly when at the winning distance. */
@@ -670,12 +1291,35 @@ service cloud.firestore {
                     request.resource.data.participants.size() == request.resource.data.players.size() + 1 &&
                     request.resource.data.participants.hasAll(request.resource.data.players) &&
                     uid() in request.resource.data.participants &&
-                    request.resource.data.game in ['rps', 'lucky_number', 'coin_toss', 'treasure', 'minefield', 'gold_rush'] &&
+                    request.resource.data.game in ['rps', 'lucky_number', 'coin_toss', 'treasure', 'minefield', 'gold_rush',
+                                                   'penalty', 'hilo', 'number_hunt'] &&
                     ((request.resource.data.kind == 'friend' && request.resource.data.players.size() == 1) ||
                      (request.resource.data.kind == 'group' && request.resource.data.players.size() <= 15 &&
-                      // grid tiles open one by one, so players could tip each other off: fun only
-                      !(isGridGame(request.resource.data.game) && request.resource.data.discountPercent > 0))) &&
+                      // tiles / cards open one by one, so players could tip each other off: fun only
+                      !(noGroupDiscount(request.resource.data.game) && request.resource.data.discountPercent > 0))) &&
+                    newStakeOk(challengeId) &&
                     existsAfter(/databases/$(database)/documents/challenges/$(challengeId)/secret/value);
+
+      /**
+       * Coins on a 1-on-1 game for fun: the host stakes them as the game is
+       * created (paid from their wallet in the same batch); the player must stake
+       * the same before playing. Winner takes both; a draw or a cancel refunds.
+       */
+      function newStakeOk(challengeId) {
+        let d = request.resource.data;
+        return !('paidOut' in d) &&
+               (d.get('stake', 0) == 0
+                 ? d.get('staked', []).size() == 0
+                 : d.stake is int && d.stake > 0 && d.stake <= 5000 &&
+                   d.kind == 'friend' && d.discountPercent == 0 &&
+                   d.staked == [uid()] &&
+                   getAfter(/databases/$(database)/documents/wallets/$(uid())).data.lastTx == 'stake:' + challengeId);
+      }
+
+      /** Staked games: you play only once your coins are in. */
+      function stakedIn() {
+        return resource.data.get('stake', 0) == 0 || uid() in resource.data.get('staked', []);
+      }
 
       allow update: if signedIn() && (
                       // A winner records using their discount, once, within 10 minutes
@@ -694,6 +1338,24 @@ service cloud.firestore {
                         request.time < resource.data.resolvedAt + duration.value(10, 'm')))
                       ||
                       (resource.data.status == 'OPEN' && validOpenUpdate(challengeId))
+                      ||
+                      // The player puts in their stake, once, paid from their wallet in the same batch
+                      (resource.data.status == 'OPEN' &&
+                       resource.data.get('stake', 0) > 0 &&
+                       uid() in resource.data.players &&
+                       !(uid() in resource.data.staked) &&
+                       onlyChanges(['staked']) &&
+                       request.resource.data.staked == resource.data.staked.concat([uid()]) &&
+                       getAfter(/databases/$(database)/documents/wallets/$(uid())).data.lastTx == 'stake:' + challengeId)
+                      ||
+                      // Someone who staked collects what they won (or their refund), once;
+                      // the wallet rules check the amount
+                      (resource.data.status in ['DONE', 'CANCELLED'] &&
+                       uid() in resource.data.get('staked', []) &&
+                       !(uid() in resource.data.get('paidOut', [])) &&
+                       onlyChanges(['paidOut']) &&
+                       request.resource.data.paidOut == resource.data.get('paidOut', []).concat([uid()]) &&
+                       getAfter(/databases/$(database)/documents/wallets/$(uid())).data.lastTx == 'payout:' + challengeId)
                     );
 
       /** Moves, the result, or cancelling — while the game is still open. */
@@ -701,24 +1363,27 @@ service cloud.firestore {
         return (
                       // A player locks in their own move, once
                       (uid() in resource.data.players &&
+                       stakedIn() &&
                        onlyChanges(['moves']) &&
                        !(uid() in resource.data.moves) &&
                        request.resource.data.moves.diff(resource.data.moves).affectedKeys().hasOnly([uid()]) &&
                        validFinalMove(resource.data, request.resource.data.moves[uid()]))
                       ||
-                      // Grid games: a player digs one more tile, before finishing
+                      // Grid games / Number Hunt: a player digs / guesses one more, before finishing
                       (uid() in resource.data.players &&
-                       isGridGame(resource.data.game) &&
+                       stakedIn() &&
+                       hasTiles(resource.data.game) &&
                        !(uid() in resource.data.moves) &&
                        onlyChanges(['progress']) &&
                        validDig(resource.data, request.resource.data))
                       ||
-                      // Stone Paper Scissors: a player plays one more round, before finishing
+                      // Round games: a player plays one more round, before finishing
                       (uid() in resource.data.players &&
-                       resource.data.game == 'rps' &&
+                       stakedIn() &&
+                       isRoundGame(resource.data.game) &&
                        !(uid() in resource.data.moves) &&
                        onlyChanges(['roundPlays']) &&
-                       validRpsRound(resource.data, request.resource.data))
+                       validRound(resource.data, request.resource.data))
                       ||
                       // Anyone in the game records the result once everyone played;
                       // the host may also end a group game early
@@ -731,7 +1396,8 @@ service cloud.firestore {
                        request.resource.data.resolvedAt == request.time &&
                        (resource.data.game == 'lucky_number' && resource.data.kind == 'group'
                          ? validLuckyResult(resource.data, secretDoc(challengeId), request.resource.data.result)
-                         : validSoloResult(resource.data, secretDoc(challengeId), request.resource.data.result)))
+                         : (validVerdictResult(challengeId, resource.data, secretDoc(challengeId), request.resource.data.result) ||
+                            validSoloResult(resource.data, secretDoc(challengeId), request.resource.data.result))))
                       ||
                       // The host withdraws an unfinished game
                       (resource.data.hostId == uid() &&
@@ -740,7 +1406,10 @@ service cloud.firestore {
         );
       }
 
-      allow delete: if signedIn() && resource.data.hostId == uid();
+      // Not while a friend's staked coins are still in an open game
+      allow delete: if signedIn() && resource.data.hostId == uid() &&
+                    (resource.data.get('stake', 0) == 0 || resource.data.status != 'OPEN' ||
+                     resource.data.get('staked', []).size() <= 1);
 
       match /secret/{docId} {
         allow read: if signedIn() &&
@@ -758,31 +1427,51 @@ service cloud.firestore {
         allow delete: if signedIn() && challengeDoc(challengeId).hostId == uid();
       }
 
-      // Friend Stone Paper Scissors: the host's move for each round ({move}). A
-      // player reads round n only after playing their own round n (or once the
-      // game is over), so each round's result shows as it ends — never early.
+      // Friend Stone Paper Scissors / Penalty Shootout: the host's move or the
+      // keeper's dive for each round ({move}). A player reads round n only after
+      // playing their own round n (or once the game is over), so each round's
+      // result shows as it ends — never early. Higher or Lower: card n ({card});
+      // card 0 from the start, card n+1 once call n is in.
       match /hostRounds/{round} {
         allow read: if signedIn() &&
                     (challengeDoc(challengeId).hostId == uid() ||
                      (uid() in challengeDoc(challengeId).players &&
-                      (int(round) < challengeDoc(challengeId).get('roundPlays', {}).get(uid(), []).size() ||
+                      (int(round) < challengeDoc(challengeId).get('roundPlays', {}).get(uid(), []).size() +
+                                    (challengeDoc(challengeId).game == 'hilo' ? 1 : 0) ||
                        challengeDoc(challengeId).status == 'DONE')));
         allow create: if signedIn() &&
                       !exists(/databases/$(database)/documents/challenges/$(challengeId)) &&
                       getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.hostId == uid() &&
-                      getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.game == 'rps' &&
-                      // One player only: in a group, an early player could tip the others off
-                      getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.kind == 'friend' &&
-                      round in ['0', '1', '2'] &&
-                      request.resource.data.keys().hasOnly(['move']) &&
-                      request.resource.data.move ==
-                        getAfter(/databases/$(database)/documents/challenges/$(challengeId)/secret/value).data.moves[int(round)];
+                      validHostRound(getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data,
+                                     round, request.resource.data,
+                                     getAfter(/databases/$(database)/documents/challenges/$(challengeId)/secret/value).data);
         allow update: if false;
         allow delete: if signedIn() && challengeDoc(challengeId).hostId == uid();
       }
 
-      // Grid games: one doc per tile ({hit: bool}). A player reads a tile only
-      // after digging it (or once the game is over); the host sees them all.
+      // A group result's per-player check ({won: bool}): written only in the
+      // batch that records the result (OPEN → DONE), and only if this player's
+      // place among the winners matches their move against the secret.
+      match /verdicts/{player} {
+        allow read: if false;
+        allow create: if signedIn() &&
+                      uid() in challengeDoc(challengeId).participants &&
+                      challengeDoc(challengeId).status == 'OPEN' &&
+                      getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.status == 'DONE' &&
+                      !(challengeDoc(challengeId).game == 'lucky_number' && challengeDoc(challengeId).kind == 'group') &&
+                      player in challengeDoc(challengeId).moves &&
+                      request.resource.data.keys().hasOnly(['won']) &&
+                      request.resource.data.won ==
+                        (player in getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.result.winners) &&
+                      request.resource.data.won ==
+                        beatsSecret(challengeDoc(challengeId), secretDoc(challengeId), challengeDoc(challengeId).moves[player]);
+        allow update: if false;
+        allow delete: if signedIn() && challengeDoc(challengeId).hostId == uid();
+      }
+
+      // Grid games: one doc per tile ({hit: bool}); Number Hunt: one per number
+      // 1–60 ({hint}). A player reads a tile only after digging / guessing it
+      // (or once the game is over); the host sees them all.
       match /tiles/{tile} {
         allow read: if signedIn() &&
                     (challengeDoc(challengeId).hostId == uid() ||
@@ -792,11 +1481,9 @@ service cloud.firestore {
         allow create: if signedIn() &&
                       !exists(/databases/$(database)/documents/challenges/$(challengeId)) &&
                       getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.hostId == uid() &&
-                      isGridGame(getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.game) &&
-                      tile in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'] &&
-                      request.resource.data.keys().hasOnly(['hit']) &&
-                      request.resource.data.hit ==
-                        (int(tile) in getAfter(/databases/$(database)/documents/challenges/$(challengeId)/secret/value).data.cells);
+                      validTile(getAfter(/databases/$(database)/documents/challenges/$(challengeId)).data.game,
+                                tile, request.resource.data,
+                                getAfter(/databases/$(database)/documents/challenges/$(challengeId)/secret/value).data);
         allow update: if false;
         allow delete: if signedIn() && challengeDoc(challengeId).hostId == uid();
       }
@@ -806,16 +1493,19 @@ service cloud.firestore {
     match /notifications/{notificationId} {
       allow read: if signedIn() && resource.data.userId == uid();
       // Senders must identify themselves truthfully
+      // A badge you just unlocked is the one notification you write to yourself
       allow create: if signedIn() &&
                     request.resource.data.userId is string &&
-                    request.resource.data.userId != uid() &&
+                    (request.resource.data.userId != uid() ||
+                     (request.resource.data.type == 'BADGE' && request.resource.data.userId == uid())) &&
                     request.resource.data.get('data', {}).get('actorId', '') == uid() &&
                     request.resource.data.read == false &&
                     request.resource.data.type in [
                       'FRIEND_REQUEST', 'FRIEND_ACCEPTED', 'FRIEND_REMOVED', 'GROUP_INVITE',
                       'GROUP_INVITE_ACCEPTED', 'GROUP_ACCEPTED', 'GROUP_MEMBER_LEFT', 'NEW_EXPENSE',
                       'EXPENSE_DELETED', 'PAYMENT_REPORTED', 'PAYMENT_CONFIRMED', 'PAYMENT_DISPUTED',
-                      'PAYMENT_REMINDER', 'CHALLENGE_RECEIVED', 'CHALLENGE_RESULT'] &&
+                      'PAYMENT_REMINDER', 'CHALLENGE_RECEIVED', 'CHALLENGE_RESULT',
+                      'MOMENT', 'PLAN', 'PLAN_REPLY', 'BOND_REQUEST', 'BOND_ACCEPTED', 'BADGE'] &&
                     request.resource.data.title is string && request.resource.data.title.size() <= 200 &&
                     request.resource.data.message is string && request.resource.data.message.size() <= 1000;
       // Recipient marks read / records the action taken

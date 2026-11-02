@@ -150,6 +150,22 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
     )
   }
 
+  if (notif.type === "BADGE") {
+    return (
+      <Button size="lg" className={CTA} onClick={() => go(data?.frame ? "/profile/frames#milestones" : "/profile#badges")}>
+        {data?.frame ? "Claim your frame" : "See your badges"}
+      </Button>
+    )
+  }
+
+  if ((notif.type === "MOMENT" || notif.type.startsWith("PLAN") || notif.type.startsWith("BOND")) && data?.actorId) {
+    return (
+      <Button size="lg" className={CTA} onClick={() => go(`/friends/${data.actorId}`)}>
+        {notif.type === "BOND_REQUEST" ? "Answer on their profile" : "Open their profile"}
+      </Button>
+    )
+  }
+
   if (notif.type === "FRIEND_REQUEST") {
     return (
       <Button size="lg" className={CTA} onClick={() => go("/friends/requests?tab=received")}>

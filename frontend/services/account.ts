@@ -20,7 +20,7 @@ import {
 
 import { auth } from "@/lib/firebase/config"
 import { AppError } from "@/lib/errors"
-import { GRID_CELLS, isGridGame } from "@/lib/games"
+import { HILO_CARDS, isTileGame, PENALTY_KICKS, tileIds } from "@/lib/games"
 import { calculateNetBalances } from "@/lib/money"
 import type { Expense, Group, UserProfile } from "@/lib/types"
 import { getDb, nowIso } from "./shared"
@@ -205,19 +205,26 @@ export async function deleteAccount(
     ])
     await deleteRefs([...sentReqs, ...receivedReqs, ...friendships, ...notifications].map((d) => d.ref))
 
-    // 4. Games you hosted (with their hidden secret and, for grid games, their tiles)
+    // 4. Games you hosted (with their hidden secret and, for grid games and
+    // Number Hunt, their tiles; penalty dives / cards; group verdicts)
     // (queried by participant: read access is granted per participant)
     const hosted = (await docsWhere("challenges", "participants", "array-contains", uid)).filter(
       (d) => d.data().hostId === uid
     )
     await deleteRefs(
-      hosted.flatMap((d) => [
-        doc(firestore, "challenges", d.id, "secret", "value"),
-        ...(isGridGame(d.data().game)
-          ? Array.from({ length: GRID_CELLS }, (_, n) => doc(firestore, "challenges", d.id, "tiles", String(n)))
-          : []),
-        d.ref,
-      ])
+      hosted.flatMap((d) => {
+        const game = d.data().game
+        const rounds = game === "penalty" ? PENALTY_KICKS : game === "hilo" ? HILO_CARDS : 0
+        return [
+          doc(firestore, "challenges", d.id, "secret", "value"),
+          ...(isTileGame(game) ? tileIds(game).map((n) => doc(firestore, "challenges", d.id, "tiles", String(n))) : []),
+          ...Array.from({ length: rounds }, (_, n) => doc(firestore, "challenges", d.id, "hostRounds", String(n))),
+          ...(d.data().kind === "group"
+            ? ((d.data().players ?? []) as string[]).map((p) => doc(firestore, "challenges", d.id, "verdicts", p))
+            : []),
+          d.ref,
+        ]
+      })
     )
 
     // 5. Identity: free the JoySplit ID, then remove the profile

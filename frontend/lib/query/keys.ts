@@ -7,6 +7,8 @@ export const queryKeys = {
   user: (uid: string) => [...queryKeys.all, uid] as const,
 
   friends: (uid: string) => [...queryKeys.user(uid), "friends"] as const,
+  /** Your friendship docs: bonds, bond requests, moment counters. */
+  friendships: (uid: string) => [...queryKeys.user(uid), "friendships"] as const,
   friendRequests: (uid: string) => [...queryKeys.user(uid), "friendRequests"] as const,
   groups: (uid: string) => [...queryKeys.user(uid), "groups"] as const,
   expenses: (uid: string) => [...queryKeys.user(uid), "expenses"] as const,
@@ -14,6 +16,11 @@ export const queryKeys = {
   challenges: (uid: string) => [...queryKeys.user(uid), "challenges"] as const,
 
   expense: (uid: string, expenseId: string) => [...queryKeys.user(uid), "expense", expenseId] as const,
+  /** Bill attachments (meta only) on an expense. */
+  expenseFiles: (uid: string, expenseId: string) => [...queryKeys.user(uid), "expenseFiles", expenseId] as const,
+  /** One attachment's bytes; `version` (its createdAt) changes when a slot is reused. */
+  expenseFile: (uid: string, expenseId: string, fileId: string, version: string) =>
+    [...queryKeys.user(uid), "expenseFile", expenseId, fileId, version] as const,
   group: (uid: string, groupId: string) => [...queryKeys.user(uid), "group", groupId] as const,
   groupExpenses: (uid: string, groupId: string) => [...queryKeys.user(uid), "groupExpenses", groupId] as const,
   userSearch: (uid: string, splitzyId: string) => [...queryKeys.user(uid), "userSearch", splitzyId] as const,

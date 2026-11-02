@@ -23,6 +23,7 @@ import { useExpenses, useNotifications } from "@/hooks/queries"
 import { useQueryTab } from "@/hooks/use-query-tab"
 import type { AppNotification } from "@/lib/types"
 import { NotificationDetailDialog } from "./_components/notification-detail-dialog"
+import { burstFromNotification, playBurst } from "@/lib/fun/burst"
 import { notificationCategory } from "./_components/notification-icon"
 import { NotificationRow } from "./_components/notification-row"
 import { usePaymentReportActions } from "./_components/use-payment-report-actions"
@@ -56,8 +57,11 @@ function NotificationsContent() {
   const filteredNotifs = notifications.filter((n) => filter === "all" || notificationCategory(n.type) === filter)
 
   const handleOpenNotif = (notif: AppNotification) => {
-    markRead.mutate(notif.id)
-    setSelectedNotif(notif)
+    if (!notif.read) markRead.mutate(notif.id)
+    // A hug, kiss, wish or gift plays its animation first, then shows the details
+    const burst = burstFromNotification(notif)
+    if (burst) playBurst({ ...burst, onDone: () => setSelectedNotif(notif) })
+    else setSelectedNotif(notif)
   }
 
   /** Live status of what the notification reported, so resolved ones show a badge. */

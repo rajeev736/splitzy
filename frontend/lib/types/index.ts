@@ -10,6 +10,72 @@ export interface UserProfile {
   updatedAt?: string;
   /** Friends list only: last activity between you two (or when you became friends). */
   friendActivityAt?: string;
+  /** Equipped profile frame (lib/fun/catalog FrameId); free or bought with coins. */
+  frame?: string;
+  /** What they're up to, set by them. */
+  mood?: { id: string; at: string };
+  /** Shown only when they choose to share it (the year stays private). */
+  birthday?: { month: number; day: number };
+}
+
+/** Coins (wallets/{uid}). Every change is checked by the security rules. */
+export interface Wallet {
+  uid: string;
+  balance: number;
+  /** Premium frames bought. */
+  frames: string[];
+  /** Reason for the last change, e.g. "frame:laurel", "gift:{friendshipId}:{momentId}". */
+  lastTx: string;
+  /** Claimed the 10,000-coin welcome bonus. */
+  welcomed?: boolean;
+  /** Claimed the free welcome frame. */
+  welcomeFrame?: boolean;
+  /** Lifetime stats for milestone frames (each step checked by the rules). */
+  wins?: number;
+  played?: number;
+  /** Coins won from other players in staked games (net). */
+  coinsWon?: number;
+  createdAt: string;
+}
+
+/** One line of coin history (wallets/{uid}/txs/{id}). */
+export interface CoinTx {
+  id: string;
+  kind: "welcome" | "frame" | "gift" | "stake" | "win" | "refund";
+  /** Coins in (+) or out (−). */
+  amount: number;
+  label: string;
+  ref?: string;
+  createdAt: string;
+}
+
+/** Something one friend sends another (friendships/{id}/moments/{id}). */
+export interface Moment {
+  id: string;
+  type: "hug" | "kiss" | "miss" | "gift" | "wish" | "plan";
+  from: string;
+  to: string;
+  fromName?: string;
+  /** Gifts: which one and what it cost. */
+  item?: string;
+  price?: number;
+  note?: string;
+  /** Plans: what they're asking for, and the answer. */
+  text?: string;
+  kind?: string;
+  status?: "PENDING" | "YES" | "NO";
+  respondedAt?: string;
+  createdAt: string;
+}
+
+/** One earned achievement (users/{uid}/badges/{type_ref}). */
+export interface BadgeEvent {
+  id: string;
+  type: "swift" | "champ" | "bigheart" | "earlybird";
+  ref: string;
+  /** Swift Payer: the share index. Early Bird: the member number. */
+  i?: number;
+  createdAt: string;
 }
 
 export type FriendRequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED";
@@ -46,6 +112,14 @@ export interface Friendship {
   status: "ACTIVE" | "REMOVED";
   createdAt: string;
   updatedAt?: string;
+  lastActivityAt?: string;
+  /** The relationship both agreed on (buddy, bestie, love…). */
+  bond?: { type: string; since: string };
+  /** One asked for a bond; the other can accept. */
+  bondRequest?: { type: string; from: string; at: string };
+  /** Moments each one has sent: counts[uid][type], gifts as "g_<gift>". */
+  counts?: Record<string, Record<string, number>>;
+  lastMoment?: { id: string; key: string; by: string; at: string };
 }
 
 export interface GroupMemberInfo {
@@ -175,7 +249,13 @@ export type NotificationType =
   | "PAYMENT_DISPUTED"
   | "PAYMENT_REMINDER"
   | "CHALLENGE_RECEIVED"
-  | "CHALLENGE_RESULT";
+  | "CHALLENGE_RESULT"
+  | "MOMENT"
+  | "PLAN"
+  | "PLAN_REPLY"
+  | "BOND_REQUEST"
+  | "BOND_ACCEPTED"
+  | "BADGE";
 
 /**
  * A game between friends. For a discount game the host is owed money by every
@@ -189,7 +269,16 @@ export type NotificationType =
 export interface Challenge {
   id: string;
   kind: "friend" | "group";
-  game: "rps" | "lucky_number" | "coin_toss" | "treasure" | "minefield" | "gold_rush";
+  game:
+    | "rps"
+    | "lucky_number"
+    | "coin_toss"
+    | "treasure"
+    | "minefield"
+    | "gold_rush"
+    | "penalty"
+    | "hilo"
+    | "number_hunt";
   hostId: string;
   hostName: string;
   players: string[];
@@ -209,13 +298,19 @@ export interface Challenge {
   /**
    * RPS: 3 moves. Coin toss: 5 calls ("H"/"T"). Treasure: a box 0–8. Lucky
    * number: a guess. Grid games: the cells dug, in order (set when finished).
+   * Penalty Shootout: 5 shots ("L"/"C"/"R"). Higher or Lower: 5 calls
+   * ("H"/"L"). Number Hunt: the numbers guessed, in order.
    */
   moves: Record<string, string[] | number[] | number>;
-  /** Grid games: each player's digs so far (append-only, one tile at a time). */
+  /**
+   * Grid games and Number Hunt: each player's digs / guesses so far
+   * (append-only, one at a time).
+   */
   progress?: Record<string, number[]>;
   /**
-   * Friend Stone Paper Scissors: each player's picks so far, one round at a
-   * time (append-only). Each round's result shows as soon as it's played.
+   * Round games (Stone Paper Scissors, Penalty Shootout, Higher or Lower):
+   * each player's picks so far, one round at a time (append-only). Where the
+   * host's side has a doc per round, each round's result shows as it's played.
    */
   roundPlays?: Record<string, string[]>;
   result?: {
@@ -227,12 +322,22 @@ export interface Challenge {
     boxes?: number[];
     /** Grid games: where the bombs / gold were. */
     cells?: number[];
+    /** Penalty Shootout: where the keeper dived for each kick. */
+    dives?: string[];
+    /** Higher or Lower: the 6 cards, in order. */
+    cards?: number[];
     winningDistance?: number;
   };
   /** ISO time of the result (stored as a server timestamp). */
   resolvedAt?: string;
   /** Discount each winner actually used when paying (paise). */
   redeemed?: Record<string, number>;
+  /** 1-on-1 games for fun: coins each side puts in; the winner takes both. */
+  stake?: number;
+  /** Who has put their stake in (the host, as the game is created). */
+  staked?: string[];
+  /** Who has collected their winnings or refund. */
+  paidOut?: string[];
   createdAt: string;
 }
 
@@ -260,6 +365,17 @@ export interface AppNotification {
     discountPaise?: number;
     /** UPI transaction reference the payer gave for a reported payment. */
     utr?: string;
+    /** Moments, plans and bonds between friends. */
+    friendshipId?: string;
+    momentId?: string;
+    momentType?: string;
+    gift?: string;
+    bond?: string;
+    /** A badge you unlocked, and its tier. */
+    badge?: string;
+    tier?: number;
+    /** A milestone frame you unlocked. */
+    frame?: string;
   };
   read: boolean;
   actionTaken?: "CONFIRMED" | "DISPUTED";

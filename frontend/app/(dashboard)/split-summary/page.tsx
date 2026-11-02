@@ -35,6 +35,7 @@ import { PaymentDisputeLine, PaymentReceivedOr } from "@/components/shared/payme
 import { GameDiscountAmount, GameDiscountNote } from "@/components/games/game-discount-amount"
 import { useDiscountedBalances, useLiveGameDiscounts } from "@/hooks/use-game-discounts"
 import { useSwipeTabs } from "@/hooks/use-swipe-tabs"
+import { SwipeTabIndicator, SwipeTabPanels } from "@/components/shared/swipe-tabs"
 import { cn } from "@/lib/utils"
 
 const SUMMARY_TABS = ["groups", "people"] as const
@@ -58,7 +59,8 @@ function SplitSummaryContent() {
   })
   const [selectedPersonId, setSelectedPersonId] = React.useState<string | null>(null)
   const [selectedGroupId, setSelectedGroupId] = React.useState<string | null>(null)
-  const swipeRef = useSwipeTabs(SUMMARY_TABS, activeTab, setActiveTab)
+  // Swipe left for People, right for Groups, anywhere below the header
+  const { surface: swipeSurface, ...swipe } = useSwipeTabs(SUMMARY_TABS, activeTab, setActiveTab)
 
   // Overall combined net balances across all groups and direct splits
   // (with any live game discount applied for its 10 minutes)
@@ -124,9 +126,12 @@ function SplitSummaryContent() {
   const isError = expensesQuery.isError || groupsQuery.isError
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-5rem)] max-h-[calc(100dvh-5rem)] w-full max-w-4xl flex-col overflow-hidden bg-background text-foreground md:h-auto md:max-h-none md:min-h-[calc(100vh-4rem)] md:overflow-visible md:pb-12">
+    <div
+      ref={swipeSurface}
+      className="mx-auto flex h-[calc(100dvh-5rem)] max-h-[calc(100dvh-5rem)] w-full max-w-4xl flex-col overflow-hidden bg-background text-foreground md:h-auto md:max-h-none md:min-h-[calc(100vh-4rem)] md:overflow-visible md:pb-12"
+    >
       {/* Top Header */}
-      <header className="shrink-0 border-b bg-background">
+      <header data-no-swipe className="shrink-0 border-b bg-background">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2">
             <button
@@ -236,128 +241,191 @@ function SplitSummaryContent() {
             </Card>
 
             {/* Navigation Tabs (Groups | People) */}
-            <div className="mt-3 flex sm:mt-6 sm:border-b">
-              <button
-                type="button"
-                onClick={() => setActiveTab("groups")}
-                className={cn(
-                  "relative flex-1 pb-2.5 text-center text-sm font-medium transition-colors select-none sm:pb-3",
-                  activeTab === "groups"
-                    ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Groups
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("people")}
-                className={cn(
-                  "relative flex-1 pb-2.5 text-center text-sm font-medium transition-colors select-none sm:pb-3",
-                  activeTab === "people"
-                    ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                People
-              </button>
+            <div role="tablist" aria-label="Balances by" className="relative mt-3 flex sm:mt-6 sm:border-b">
+              {SUMMARY_TABS.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === t}
+                  onClick={() => setActiveTab(t)}
+                  className={cn(
+                    "flex-1 pb-2.5 text-center text-sm font-medium transition-colors select-none sm:pb-3",
+                    activeTab === t ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {t === "groups" ? "Groups" : "People"}
+                </button>
+              ))}
+              <SwipeTabIndicator swipe={swipe} />
             </div>
           </div>
 
-          {/* Scrollable Container for Tab Items */}
-          {/* Swipe left for People, right for Groups */}
-          <main
-            ref={swipeRef}
-            className="flex-1 min-h-0 overflow-y-auto px-4 py-3.5 overscroll-contain sm:px-6 sm:py-6 md:overflow-visible md:flex-initial"
-          >
-            <div className="pb-28 sm:pb-8">
+          {/* Scrollable Container for Tab Items; panels run edge to edge so they slide in from the screen edge */}
+          <main className="flex-1 min-h-0 overflow-y-auto py-3.5 overscroll-contain sm:py-6 md:overflow-visible md:flex-initial">
+            <SwipeTabPanels swipe={swipe} className="pb-28 sm:pb-8" panelClassName="px-4 sm:px-6">
               {/* Tab 1: Groups Content */}
-              {activeTab === "groups" && (
-                <div>
-                  {groupRows.length === 0 ? (
-                    <EmptyState
-                      icon={UserGroupIcon}
-                      title="No groups found"
-                      description="You are not part of any groups yet."
-                      action={{
-                        label: "Create a Group",
-                        onClick: () => router.push("/groups/new"),
-                      }}
-                    />
-                  ) : (
-                    <div className="flex flex-col divide-y overflow-hidden rounded-lg border bg-card">
-                      {groupRows.map((row) => {
-                        const youOwe = row.userOwesPaise > row.owedToUserPaise
-                        const amount = Math.abs(row.netPaise)
+              <div>
+                {groupRows.length === 0 ? (
+                  <EmptyState
+                    icon={UserGroupIcon}
+                    title="No groups found"
+                    description="You are not part of any groups yet."
+                    action={{
+                      label: "Create a Group",
+                      onClick: () => router.push("/groups/new"),
+                    }}
+                  />
+                ) : (
+                  <div className="flex flex-col divide-y overflow-hidden rounded-lg border bg-card">
+                    {groupRows.map((row) => {
+                      const youOwe = row.userOwesPaise > row.owedToUserPaise
+                      const amount = Math.abs(row.netPaise)
 
-                        return (
-                          <div
-                            key={row.group.id}
-                            onClick={() => setSelectedGroupId(row.group.id)}
-                            className="flex cursor-pointer flex-row items-center justify-between gap-3 px-4 py-3 text-card-foreground transition-colors hover:bg-muted/50"
-                          >
-                            <div className="flex min-w-0 flex-1 items-center gap-3">
-                              {/* Group Avatar / Icon */}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  router.push(`/groups/${row.group.id}`)
-                                }}
-                                title="View group expenses and members"
-                                className="shrink-0 rounded-full transition-opacity hover:opacity-80"
-                              >
-                                <GroupIcon
-                                  src={row.group.icon}
-                                  alt={row.group.name}
-                                  size="md"
-                                  className="size-10 rounded-full border"
-                                />
-                              </button>
+                      return (
+                        <div
+                          key={row.group.id}
+                          onClick={() => setSelectedGroupId(row.group.id)}
+                          className="flex cursor-pointer flex-row items-center justify-between gap-3 px-4 py-3 text-card-foreground transition-colors hover:bg-muted/50"
+                        >
+                          <div className="flex min-w-0 flex-1 items-center gap-3">
+                            {/* Group Avatar / Icon */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                router.push(`/groups/${row.group.id}`)
+                              }}
+                              title="View group expenses and members"
+                              className="shrink-0 rounded-full transition-opacity hover:opacity-80"
+                            >
+                              <GroupIcon
+                                src={row.group.icon}
+                                alt={row.group.name}
+                                size="md"
+                                className="size-10 rounded-full border"
+                              />
+                            </button>
 
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-sm font-semibold text-foreground">
-                                  {row.group.name}
-                                </div>
-                                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                                  <span>{row.group.members.length} members</span>
-                                  <span aria-hidden>·</span>
-                                  <span>
-                                    {row.expenseCount} {row.expenseCount === 1 ? "expense" : "expenses"}
-                                  </span>
-                                </div>
-                                {row.offsetPaise > 0 && (
-                                  <div className="mt-0.5 text-[11px] text-muted-foreground">
-                                    {formatPaise(row.offsetPaise)} cancelled out with other splits
-                                  </div>
-                                )}
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-semibold text-foreground">
+                                {row.group.name}
                               </div>
+                              <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <span>{row.group.members.length} members</span>
+                                <span aria-hidden>·</span>
+                                <span>
+                                  {row.expenseCount} {row.expenseCount === 1 ? "expense" : "expenses"}
+                                </span>
+                              </div>
+                              {row.offsetPaise > 0 && (
+                                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                                  {formatPaise(row.offsetPaise)} cancelled out with other splits
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Right side: You get / You owe + amount + arrow */}
+                          <div className="flex shrink-0 items-center gap-2 text-right">
+                            <div className="flex flex-col items-end">
+                              <span
+                                className={cn(
+                                  "text-[11px] font-medium",
+                                  !row.hasBalance ? "text-muted-foreground" : youOwe ? "text-destructive/80" : "text-success/80"
+                                )}
+                              >
+                                {!row.hasBalance ? "Settled" : youOwe ? "You owe" : "You get"}
+                              </span>
+                              <span
+                                className={cn(
+                                  "text-xl leading-tight font-bold tracking-tight tabular-nums",
+                                  !row.hasBalance
+                                    ? "text-muted-foreground"
+                                    : youOwe
+                                      ? "text-destructive"
+                                      : "text-success"
+                                )}
+                              >
+                                ₹{(amount / 100).toFixed(0)}
+                              </span>
                             </div>
 
-                            {/* Right side: You get / You owe + amount + arrow */}
+                            <HugeiconsIcon
+                              icon={ArrowRight01Icon}
+                              className="size-4 shrink-0 text-muted-foreground"
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Tab 2: People Content */}
+              <div>
+                {peopleRows.length === 0 ? (
+                  <EmptyState
+                    icon={Invoice01Icon}
+                    title="No pending balances"
+                    description="You are settled up with all your friends and group members!"
+                  />
+                ) : (
+                  <div className="flex flex-col divide-y overflow-hidden rounded-lg border bg-card">
+                    {peopleRows.map((person) => {
+                      return (
+                        <div
+                          key={person.userId}
+                          onClick={() => setSelectedPersonId(person.userId)}
+                          className="flex cursor-pointer flex-col px-4 py-3 text-card-foreground transition-colors hover:bg-muted/50"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            {/* Person Avatar */}
+                            <UserAvatar
+                              uid={person.userId}
+                              src={person.photoURL}
+                              name={person.name}
+                              size="md"
+                              className="size-10 shrink-0"
+                            />
+
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-semibold text-foreground">
+                                {person.name}
+                              </div>
+                              {person.upiId ? (
+                                <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+                                  {person.upiId}
+                                </div>
+                              ) : (
+                                <div className="mt-0.5 text-xs text-muted-foreground">Direct & groups</div>
+                              )}
+                            </div>
+
+                            {/* Right side: You owe / You get */}
                             <div className="flex shrink-0 items-center gap-2 text-right">
                               <div className="flex flex-col items-end">
                                 <span
                                   className={cn(
                                     "text-[11px] font-medium",
-                                    !row.hasBalance ? "text-muted-foreground" : youOwe ? "text-destructive/80" : "text-success/80"
+                                    person.youOwe ? "text-destructive/80" : "text-success/80"
                                   )}
                                 >
-                                  {!row.hasBalance ? "Settled" : youOwe ? "You owe" : "You get"}
+                                  {person.youOwe ? "You owe" : "You get"}
+                                  {gameDiscounts.byPerson.has(person.userId) && " (if paid now)"}
                                 </span>
-                                <span
+                                <GameDiscountAmount
+                                  amountPaise={person.amountPaise}
+                                  discount={gameDiscounts.byPerson.get(person.userId)}
+                                  now={gameDiscounts.now}
                                   className={cn(
-                                    "text-xl leading-tight font-bold tracking-tight tabular-nums",
-                                    !row.hasBalance
-                                      ? "text-muted-foreground"
-                                      : youOwe
-                                        ? "text-destructive"
-                                        : "text-success"
+                                    "text-xl leading-tight font-bold tracking-tight",
+                                    person.youOwe ? "text-destructive" : "text-success"
                                   )}
-                                >
-                                  ₹{(amount / 100).toFixed(0)}
-                                </span>
+                                />
+                                {person.awaitingConfirmation && <AwaitingConfirmationBadge className="mt-1" />}
+                                <PaymentDisputeLine className="mt-1" personId={person.userId} personName={person.name} />
                               </div>
 
                               <HugeiconsIcon
@@ -366,107 +434,28 @@ function SplitSummaryContent() {
                               />
                             </div>
                           </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
 
-              {/* Tab 2: People Content */}
-              {activeTab === "people" && (
-                <div>
-                  {peopleRows.length === 0 ? (
-                    <EmptyState
-                      icon={Invoice01Icon}
-                      title="No pending balances"
-                      description="You are settled up with all your friends and group members!"
-                    />
-                  ) : (
-                    <div className="flex flex-col divide-y overflow-hidden rounded-lg border bg-card">
-                      {peopleRows.map((person) => {
-                        return (
-                          <div
-                            key={person.userId}
-                            onClick={() => setSelectedPersonId(person.userId)}
-                            className="flex cursor-pointer flex-col px-4 py-3 text-card-foreground transition-colors hover:bg-muted/50"
-                          >
-                            <div className="flex min-w-0 items-center gap-3">
-                              {/* Person Avatar */}
-                              <UserAvatar
-                                src={person.photoURL}
-                                name={person.name}
-                                size="md"
-                                className="size-10 shrink-0"
-                              />
-
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-sm font-semibold text-foreground">
-                                  {person.name}
-                                </div>
-                                {person.upiId ? (
-                                  <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
-                                    {person.upiId}
-                                  </div>
-                                ) : (
-                                  <div className="mt-0.5 text-xs text-muted-foreground">Direct & groups</div>
-                                )}
-                              </div>
-
-                              {/* Right side: You owe / You get */}
-                              <div className="flex shrink-0 items-center gap-2 text-right">
-                                <div className="flex flex-col items-end">
-                                  <span
-                                    className={cn(
-                                      "text-[11px] font-medium",
-                                      person.youOwe ? "text-destructive/80" : "text-success/80"
-                                    )}
-                                  >
-                                    {person.youOwe ? "You owe" : "You get"}
-                                    {gameDiscounts.byPerson.has(person.userId) && " (if paid now)"}
-                                  </span>
-                                  <GameDiscountAmount
-                                    amountPaise={person.amountPaise}
-                                    discount={gameDiscounts.byPerson.get(person.userId)}
-                                    now={gameDiscounts.now}
-                                    className={cn(
-                                      "text-xl leading-tight font-bold tracking-tight",
-                                      person.youOwe ? "text-destructive" : "text-success"
-                                    )}
-                                  />
-                                  {person.awaitingConfirmation && <AwaitingConfirmationBadge className="mt-1" />}
-                                  <PaymentDisputeLine className="mt-1" personId={person.userId} personName={person.name} />
-                                </div>
-
-                                <HugeiconsIcon
-                                  icon={ArrowRight01Icon}
-                                  className="size-4 shrink-0 text-muted-foreground"
+                          {/* Actions on their own line, under the name */}
+                          <div className="pl-[3.25rem] empty:hidden">
+                            {/* They reported a payment: just ask if it arrived; otherwise challenge */}
+                            <PaymentReceivedOr className="mt-2" personId={person.userId} personName={person.name}>
+                              {!person.youOwe && (
+                                <ChallengeButton
+                                  className="mt-2.5 w-full justify-center"
+                                  person={{ uid: person.userId, name: person.name, photoURL: person.photoURL }}
+                                  owedPaise={person.amountPaise}
                                 />
-                              </div>
-                            </div>
-
-                            {/* Actions on their own line, under the name */}
-                            <div className="pl-[3.25rem] empty:hidden">
-                              {/* They reported a payment: just ask if it arrived; otherwise challenge */}
-                              <PaymentReceivedOr className="mt-2" personId={person.userId} personName={person.name}>
-                                {!person.youOwe && (
-                                  <ChallengeButton
-                                    className="mt-2.5 w-full justify-center"
-                                    person={{ uid: person.userId, name: person.name, photoURL: person.photoURL }}
-                                    owedPaise={person.amountPaise}
-                                  />
-                                )}
-                              </PaymentReceivedOr>
-                              <ChallengeInviteStrip className="mt-2.5" personId={person.userId} />
-                            </div>
+                              )}
+                            </PaymentReceivedOr>
+                            <ChallengeInviteStrip className="mt-2.5" personId={person.userId} />
                           </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </SwipeTabPanels>
           </main>
         </>
       )}

@@ -10,7 +10,7 @@ import { db, isFirebaseConfigured } from "@/lib/firebase/config"
 import { queryKeys } from "@/lib/query/keys"
 import { publish, publishError } from "@/lib/query/realtime"
 import { notificationHref, registerServiceWorker, showSystemNotification } from "@/lib/system-notifications"
-import type { AppNotification, Challenge, Expense, FriendRequest, Group, UserProfile } from "@/lib/types"
+import type { AppNotification, Challenge, Expense, FriendRequest, Friendship, Group, UserProfile } from "@/lib/types"
 import { toChallenge } from "@/services/challenges"
 import { fetchUserProfile } from "@/services/shared"
 import { useSession } from "./session-provider"
@@ -261,6 +261,11 @@ export function RealtimeSync() {
         query(collection(firestore, "friendships"), where("users", "array-contains", uid)),
         (snap) => {
           const active: { uid: string; activityAt?: string }[] = []
+          publish(
+            queryClient,
+            queryKeys.friendships(uid),
+            snap.docs.map((d) => ({ ...(d.data() as Friendship), id: d.id }))
+          )
           snap.forEach((d) => {
             const data = d.data()
             const other = (data.users as string[] | undefined)?.find((u) => u !== uid)

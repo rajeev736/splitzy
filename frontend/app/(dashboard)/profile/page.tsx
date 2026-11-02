@@ -7,6 +7,8 @@ import { useTheme } from "next-themes"
 import {
   ArrowRight01Icon,
   AtIcon,
+  BirthdayCakeIcon,
+  CrownIcon,
   Camera01Icon,
   Copy01Icon,
   HelpCircleIcon,
@@ -43,6 +45,11 @@ import { Switch } from "@/components/ui/switch"
 import { useUpdateProfile } from "@/hooks/mutations"
 import { useFriends, useUnreadCount } from "@/hooks/queries"
 import { cn } from "@/lib/utils"
+import { BadgeGrid } from "@/components/fun/badge-grid"
+import { Coins } from "@/components/fun/coin"
+import { FramedAvatar } from "@/components/fun/framed-avatar"
+import { useBadges, useFriendships, useWallet } from "@/hooks/use-fun"
+import { BirthdayDialog, MoodPicker } from "./_components/profile-fun"
 
 // Camera/crop dialog (~500 lines + canvas code) loads only when first opened
 const PhotoUploadDialog = dynamic(
@@ -72,6 +79,18 @@ export default function ProfilePage() {
   const [photoDialogLoaded, setPhotoDialogLoaded] = React.useState(false)
   if (isPhotoOpen && !photoDialogLoaded) setPhotoDialogLoaded(true)
   const [isLogoutOpen, setIsLogoutOpen] = React.useState(false)
+  const [isBirthdayOpen, setIsBirthdayOpen] = React.useState(false)
+  const wallet = useWallet()
+  const { data: friendships } = useFriendships()
+  const loveBonds = friendships.filter((f) => f.status === "ACTIVE" && f.bond?.type === "love").length
+  const badges = useBadges(user?.uid, loveBonds)
+
+  // From a "badge unlocked" notification: bring the badges into view
+  React.useEffect(() => {
+    if (window.location.hash !== "#badges") return
+    const t = window.setTimeout(() => document.getElementById("badges")?.scrollIntoView({ behavior: "smooth", block: "start" }), 300)
+    return () => window.clearTimeout(t)
+  }, [])
   const [nameInput, setNameInput] = React.useState(user?.displayName || "")
   const [upiInput, setUpiInput] = React.useState(user?.upiId || "")
 
@@ -117,7 +136,9 @@ export default function ProfilePage() {
       <PageContainer className="max-w-xl min-h-[calc(100svh-8.875rem-env(safe-area-inset-bottom,0px))] gap-4 py-4 md:min-h-0 md:py-6">
         {/* You: photo, name, email, UPI — one edit button for all of it */}
         <section className="flex items-center gap-3.5 px-1">
-          <UserAvatar src={user.photoURL} name={user.displayName} size="lg" className="size-16 border" />
+          <Link href="/profile/frames" data-tour="frame" aria-label="Profile frames" className="shrink-0 p-2.5">
+            <FramedAvatar src={user.photoURL} name={user.displayName} frame={user.frame} size={60} />
+          </Link>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-lg leading-tight font-semibold">{user.displayName}</h1>
             <p className="truncate text-xs text-muted-foreground">{user.email}</p>
@@ -144,12 +165,45 @@ export default function ProfilePage() {
           </Button>
         </section>
 
+        {/* How you're feeling: friends see it on your profile */}
+        <MoodPicker mood={user.mood?.id} />
+
         {/* Your JoySplit ID and QR: tap the code to show it big */}
         <IdCard
           user={user}
           onShowQr={() => setIsQrOpen(true)}
           onScan={() => setIsScanning(true)}
         />
+
+        <section id="badges" className="flex scroll-mt-20 flex-col gap-3">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-sm font-semibold">Your badges</h2>
+            {wallet && (
+              <Link
+                href="/profile/coins"
+                aria-label={`${wallet.balance} coins — see history`}
+                className="-mr-1 flex h-8 items-center gap-1 rounded-full border bg-card px-2.5 text-sm transition-colors hover:bg-muted"
+              >
+                <Coins amount={wallet.balance} iconClassName="size-4" />
+                <HugeiconsIcon icon={ArrowRight01Icon} className="size-3.5 text-muted-foreground" />
+              </Link>
+            )}
+          </div>
+          <BadgeGrid badges={badges?.summary} earlyBird={badges?.earlyBird} />
+        </section>
+
+        <section className="flex flex-col gap-2">
+          <h2 className="px-1 text-sm font-semibold">Make it yours</h2>
+          <Card className="gap-0 divide-y py-0">
+            <MenuRow icon={CrownIcon} label="Profile frames" render={<Link href="/profile/frames" />} />
+            <MenuRow
+              icon={BirthdayCakeIcon}
+              label="Birthday"
+              hint={user.birthday ? "Shown to friends" : "Hidden"}
+              render={<button type="button" onClick={() => setIsBirthdayOpen(true)} />}
+            />
+          </Card>
+        </section>
 
         {/* App */}
         <section className="flex flex-col gap-2">
@@ -199,7 +253,7 @@ export default function ProfilePage() {
             <DialogTitle>Edit profile</DialogTitle>
           </DialogHeader>
           <div className="flex items-center gap-3.5">
-            <UserAvatar src={user.photoURL} name={user.displayName} size="lg" className="size-14 border" />
+            <UserAvatar uid={user.uid} src={user.photoURL} name={user.displayName} size="lg" className="size-14 border" />
             <Button variant="outline" size="sm" onClick={() => setIsPhotoOpen(true)}>
               <HugeiconsIcon icon={Camera01Icon} data-icon="inline-start" />
               Change photo
@@ -253,6 +307,7 @@ export default function ProfilePage() {
       <MyIdDialog user={user} open={isQrOpen} onOpenChange={setIsQrOpen} />
       <QrScannerDialog open={isScanning} onOpenChange={setIsScanning} />
       <LogoutDialog open={isLogoutOpen} onOpenChange={setIsLogoutOpen} />
+      <BirthdayDialog open={isBirthdayOpen} onOpenChange={setIsBirthdayOpen} />
     </>
   )
 }
@@ -315,11 +370,13 @@ function MenuRow({
   icon,
   label,
   value,
+  hint,
   render,
 }: {
   icon: React.ComponentProps<typeof HugeiconsIcon>["icon"]
   label: string
   value?: number
+  hint?: string
   render: React.ComponentProps<typeof Item>["render"]
 }) {
   return (
@@ -332,6 +389,7 @@ function MenuRow({
       </ItemContent>
       <ItemActions>
         {value !== undefined && <span className="text-xs tabular-nums text-muted-foreground">{value}</span>}
+        {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
         <HugeiconsIcon icon={ArrowRight01Icon} className="size-4 text-muted-foreground" />
       </ItemActions>
     </Item>

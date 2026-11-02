@@ -1,19 +1,35 @@
 "use client"
 
+import { Cancel01Icon, Tick02Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
+
 import { CoinRow } from "@/components/games/coin-toss-picker"
 import { GridBoard } from "@/components/games/grid-board"
+import { NumberBoard } from "@/components/games/number-board"
+import { KickSummary } from "@/components/games/penalty-pitch"
+import { CardFace } from "@/components/games/playing-card"
 import { TreasureGrid } from "@/components/games/treasure-picker"
 import {
   GOLD_DIGS,
   GRID_CELLS,
+  HILO_GUESSES,
+  HUNT_GUESSES,
+  huntHint,
   LUCKY_FRIEND_RANGE,
   MINEFIELD_BOMBS,
+  PENALTY_KICKS,
+  PENALTY_LABEL,
   RPS_LABEL,
   scoreCoin,
   scoreGrid,
+  scoreHilo,
+  scoreHunt,
+  scorePenalty,
   scoreRps,
   type CoinSide,
   type GridGameId,
+  type HiloCall,
+  type PenaltyDir,
   type RpsMove,
   type RpsPlay,
 } from "@/lib/games"
@@ -34,8 +50,22 @@ export function GameResult({ challenge, viewerId }: { challenge: Challenge; view
     case "minefield":
     case "gold_rush":
       return <GridResult challenge={challenge} viewerId={viewerId} />
+    case "penalty":
+      return <PenaltyResult challenge={challenge} viewerId={viewerId} />
+    case "hilo":
+      return <HiloResult challenge={challenge} viewerId={viewerId} />
+    case "number_hunt":
+      return <HuntResult challenge={challenge} viewerId={viewerId} />
   }
 }
+
+/** Whose game to show in detail: the viewer if they played, or the only player. */
+const focusOf = (c: Challenge, viewerId: string) =>
+  c.players.includes(viewerId) && c.moves[viewerId] !== undefined
+    ? viewerId
+    : c.players.length === 1 && c.moves[c.players[0]] !== undefined
+      ? c.players[0]
+      : null
 
 const played = (c: Challenge) => c.players.filter((p) => c.moves[p] !== undefined)
 const missed = (c: Challenge) => c.players.filter((p) => c.moves[p] === undefined)
@@ -284,6 +314,156 @@ function GridResult({ challenge, viewerId }: { challenge: Challenge; viewerId: s
       {focus && (
         <p className="text-center text-xs text-muted-foreground tabular-nums">{tally(focus)}</p>
       )}
+      {challenge.players.length > 1 && (
+        <ul className="flex flex-col divide-y border-y">
+          {played(challenge).map((p) => (
+            <PlayerRow key={p} name={nameOf(challenge, p, viewerId)} won={challenge.result?.winners.includes(p) ?? false}>
+              <span className="text-xs text-muted-foreground tabular-nums">{tally(p)}</span>
+            </PlayerRow>
+          ))}
+        </ul>
+      )}
+      <Missed challenge={challenge} />
+    </div>
+  )
+}
+
+/** Penalty Shootout: each kick of the viewer (or the only player), then everyone's goals in a group. */
+function PenaltyResult({ challenge, viewerId }: { challenge: Challenge; viewerId: string }) {
+  const dives = challenge.result?.dives as PenaltyDir[] | undefined
+  if (!dives) return null
+  const focus = focusOf(challenge, viewerId)
+  const score = focus ? scorePenalty(dives, challenge.moves[focus] as PenaltyDir[]) : null
+
+  return (
+    <div className="flex flex-col gap-3">
+      {focus && score && (
+        <div className="flex flex-col gap-2">
+          {focus !== viewerId && (
+            <p className="text-center text-xs text-muted-foreground">{challenge.playerNames[focus]}&apos;s kicks</p>
+          )}
+          <div className="grid grid-cols-5 gap-1">
+            {score.kicks.map((k, i) => (
+              <div
+                key={i}
+                className="animate-in fade-in slide-in-from-bottom-2"
+                style={{ animationDelay: `${i * 120}ms`, animationFillMode: "both" }}
+              >
+                <KickSummary shot={k.shot} dive={k.dive} label={k.goal ? "Goal" : "Saved"} />
+              </div>
+            ))}
+          </div>
+          <p className="text-center text-xs font-medium text-muted-foreground tabular-nums">
+            {score.goals} of {PENALTY_KICKS} scored
+          </p>
+        </div>
+      )}
+      <p className="text-center text-xs text-muted-foreground">
+        {challenge.hostName}&apos;s keeper dived: {dives.map((d) => PENALTY_LABEL[d]).join(", ")}
+      </p>
+      {challenge.players.length > 1 && (
+        <ul className="flex flex-col divide-y border-y">
+          {played(challenge).map((p) => (
+            <PlayerRow key={p} name={nameOf(challenge, p, viewerId)} won={challenge.result?.winners.includes(p) ?? false}>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {scorePenalty(dives, challenge.moves[p] as PenaltyDir[]).goals}/{PENALTY_KICKS} goals
+              </span>
+            </PlayerRow>
+          ))}
+        </ul>
+      )}
+      <Missed challenge={challenge} />
+    </div>
+  )
+}
+
+/** Higher or Lower: the whole deal, the viewer's calls marked right or wrong, and everyone's tally. */
+function HiloResult({ challenge, viewerId }: { challenge: Challenge; viewerId: string }) {
+  const cards = challenge.result?.cards
+  if (!cards) return null
+  const focus = focusOf(challenge, viewerId)
+  const score = focus ? scoreHilo(cards, challenge.moves[focus] as HiloCall[]) : null
+
+  return (
+    <div className="flex flex-col gap-3">
+      {focus && focus !== viewerId && (
+        <p className="text-center text-xs text-muted-foreground">{challenge.playerNames[focus]}&apos;s calls</p>
+      )}
+      <div className="flex items-start justify-center gap-1.5">
+        {cards.map((v, i) => {
+          const round = i > 0 ? score?.rounds[i - 1] : undefined
+          return (
+            <div
+              key={i}
+              className="flex animate-in flex-col items-center gap-1 fade-in zoom-in-90"
+              style={{ animationDelay: `${i * 110}ms`, animationFillMode: "both" }}
+            >
+              <CardFace value={v} index={i} size="xs" />
+              {round ? (
+                <span
+                  className={cn(
+                    "flex items-center gap-0.5 text-[10px] font-semibold",
+                    round.right ? "text-success" : "text-destructive"
+                  )}
+                >
+                  <HugeiconsIcon icon={round.right ? Tick02Icon : Cancel01Icon} className="size-2.5" strokeWidth={3} />
+                  {round.call === "H" ? "Hi" : "Lo"}
+                </span>
+              ) : (
+                <span className="text-[10px] text-muted-foreground">{i === 0 ? "Start" : ""}</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {score && (
+        <p className="text-center text-xs font-medium text-muted-foreground tabular-nums">
+          {score.right} of {HILO_GUESSES} called right
+        </p>
+      )}
+      {challenge.players.length > 1 && (
+        <ul className="flex flex-col divide-y border-y">
+          {played(challenge).map((p) => (
+            <PlayerRow key={p} name={nameOf(challenge, p, viewerId)} won={challenge.result?.winners.includes(p) ?? false}>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {scoreHilo(cards, challenge.moves[p] as HiloCall[]).right}/{HILO_GUESSES} right
+              </span>
+            </PlayerRow>
+          ))}
+        </ul>
+      )}
+      <Missed challenge={challenge} />
+    </div>
+  )
+}
+
+/** Number Hunt: the secret on the board with the viewer's guesses, then how fast everyone found it. */
+function HuntResult({ challenge, viewerId }: { challenge: Challenge; viewerId: string }) {
+  const secret = challenge.result?.number
+  if (secret === undefined) return null
+  const focus = focusOf(challenge, viewerId)
+  const focusGuesses = focus ? ((challenge.moves[focus] as number[] | undefined) ?? []) : []
+  const tally = (p: string) => {
+    const s = scoreHunt(secret, challenge.moves[p] as number[])
+    return s.won ? `found in ${s.foundAt + 1}` : `not found in ${HUNT_GUESSES}`
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col items-center gap-1 py-1">
+        <span className="text-xs text-muted-foreground">Secret number</span>
+        <span className="animate-in text-4xl font-semibold tabular-nums duration-500 zoom-in-50">{secret}</span>
+        {focus && (
+          <span className="text-xs text-muted-foreground">
+            {focus === viewerId ? "Your" : `${challenge.playerNames[focus]}'s`} guesses: {focusGuesses.join(" → ")}
+          </span>
+        )}
+      </div>
+      <NumberBoard
+        mode="reveal"
+        secret={secret}
+        hints={Object.fromEntries(focusGuesses.map((g) => [g, huntHint(secret, g)]))}
+      />
       {challenge.players.length > 1 && (
         <ul className="flex flex-col divide-y border-y">
           {played(challenge).map((p) => (

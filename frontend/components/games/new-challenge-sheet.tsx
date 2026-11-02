@@ -18,16 +18,24 @@ import {
   useGroups,
 } from "@/hooks/queries"
 import { useLiveGameDiscounts } from "@/hooks/use-game-discounts"
+import { useWallet } from "@/hooks/use-fun"
+import { Coins } from "@/components/fun/coin"
+import { STAKE_PRESETS } from "@/lib/fun/catalog"
 import {
   GAME_IDS,
   GAMES,
   GRID_CELLS,
   gridCellsToHide,
   isGridGame,
+  isHiloCards,
+  randomDives,
   randomFlips,
+  randomHiloCards,
+  randomHuntNumber,
   randomLuckyNumber,
   randomTreasureBoxes,
   TREASURE_PRIZES,
+  type PenaltyDir,
   type GameSecret,
   MAX_GROUP_PLAYERS,
   type GameId,
@@ -49,6 +57,9 @@ import { LuckyNumberPicker } from "./lucky-number-picker"
 import { emptyRpsMoves, isComplete, RpsPicker } from "./rps-picker"
 import { TreasureGrid } from "./treasure-picker"
 import { GameGlyph } from "./game-glyph"
+import { emptyHiloCards, HiloCardPicker } from "./hilo-card-picker"
+import { NumberBoard } from "./number-board"
+import { emptyDives, isDivesComplete, PenaltyDivePicker } from "./penalty-pitch"
 
 type Mode = "friend" | "group"
 type Stake = "fun" | "discount"
@@ -95,11 +106,16 @@ export function NewChallengeSheet({
   const [groupId, setGroupId] = React.useState<string | null>(null)
   const [stake, setStake] = React.useState<Stake>(initialStake)
   const [discount, setDiscount] = React.useState(20)
+  const [coinStake, setCoinStake] = React.useState(0)
+  const wallet = useWallet()
   const [moves, setMoves] = React.useState(emptyRpsMoves)
   const [cells, setCells] = React.useState<number[]>([])
   const [flips, setFlips] = React.useState(emptyCoinCalls)
   const [boxes, setBoxes] = React.useState<number[]>([])
   const [secretNumber, setSecretNumber] = React.useState(50)
+  const [dives, setDives] = React.useState<(PenaltyDir | null)[]>(emptyDives)
+  const [cards, setCards] = React.useState<(number | null)[]>(emptyHiloCards)
+  const [huntNumber, setHuntNumber] = React.useState<number | null>(null)
   const [drawer, setDrawer] = React.useState<
     "game" | "friend" | "group" | null
   >(null)
@@ -113,11 +129,15 @@ export function NewChallengeSheet({
       setMode("friend")
       setFriendId(initialPerson?.uid ?? null)
       setStake(initialStake)
+      setCoinStake(0)
       setMoves(emptyRpsMoves())
       setCells([])
       setFlips(emptyCoinCalls())
       setBoxes([])
       setSecretNumber(50)
+      setDives(emptyDives())
+      setCards(emptyHiloCards())
+      setHuntNumber(null)
       setDrawer(null)
     }
   }
@@ -263,6 +283,26 @@ export function NewChallengeSheet({
               value: null,
               missing: `Hide ${toHide - cells.length} more ${GRID_ITEM[game].plural}`,
             }
+      case "penalty":
+        return isDivesComplete(dives)
+          ? { value: { dives }, missing: "" }
+          : {
+              value: null,
+              missing: `Pick ${dives.filter((d) => d === null).length} more dives`,
+            }
+      case "hilo": {
+        const left = cards.filter((c) => c === null).length
+        return isHiloCards(cards)
+          ? { value: { cards }, missing: "" }
+          : {
+              value: null,
+              missing: left > 0 ? `Pick ${left} more cards` : "No two cards in a row can match",
+            }
+      }
+      case "number_hunt":
+        return huntNumber !== null
+          ? { value: { number: huntNumber }, missing: "" }
+          : { value: null, missing: "Pick your secret number" }
     }
   })()
   const ready = players.length > 0 && !tooMany && secret.value !== null
@@ -287,6 +327,7 @@ export function NewChallengeSheet({
         game,
         discountPercent: effectiveStake === "discount" ? discount : 0,
         players,
+        ...(mode === "friend" && effectiveStake === "fun" && coinStake > 0 ? { stake: coinStake } : {}),
         ...(secret.value ? { hostSecret: secret.value } : {}),
         ...(mode === "group" && group
           ? { group: { id: group.id, name: group.name } }
@@ -393,6 +434,7 @@ export function NewChallengeSheet({
                   media={
                     friend ? (
                       <UserAvatar
+                        uid={friend.uid}
                         src={friend.photoURL}
                         name={friend.displayName}
                         size="sm"
@@ -430,6 +472,7 @@ export function NewChallengeSheet({
                         ),
                       media: (
                         <UserAvatar
+                          uid={f.uid}
                           src={f.photoURL}
                           name={f.displayName}
                           size="sm"
@@ -526,10 +569,37 @@ export function NewChallengeSheet({
                   : `${players.length} ${players.length === 1 ? "person owes" : "people owe"} you in this group. Winners get ${discount}% off what they owe if they pay right after the game.`}
               </p>
             </div>
+          ) : mode === "friend" ? (
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Coins">
+                {STAKE_PRESETS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    role="radio"
+                    aria-checked={coinStake === c}
+                    disabled={c > 0 && !!wallet && wallet.balance < c}
+                    onClick={() => setCoinStake(c)}
+                    className={cn(
+                      "inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors disabled:opacity-40",
+                      coinStake === c ? "border-primary bg-primary/5 text-primary" : "hover:bg-muted/60"
+                    )}
+                  >
+                    {c === 0 ? "No coins" : <Coins amount={c} iconClassName="size-3.5" />}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {coinStake > 0
+                  ? `You both put in ${coinStake} coins — the winner takes ${coinStake * 2}. A draw gives them back.`
+                  : "No money involved — just bragging rights. Add coins to make it interesting."}
+                {discountReason && friend ? ` (Discount: ${discountReason.toLowerCase()}.)` : ""}
+              </p>
+            </div>
           ) : (
             <p className="text-xs text-muted-foreground">
               No money involved — just bragging rights.
-              {discountReason && (mode === "friend" ? friend : group)
+              {discountReason && group
                 ? ` (Discount: ${discountReason.toLowerCase()}.)`
                 : ""}
             </p>
@@ -548,6 +618,9 @@ export function NewChallengeSheet({
                   lucky_number: "Your secret number",
                   minefield: `Hide ${toHide} bombs`,
                   gold_rush: `Bury ${toHide} gold coins`,
+                  penalty: "Your keeper's dives",
+                  hilo: "Deal 6 cards",
+                  number_hunt: "Your secret number",
                 }[game]
               }
             </h3>
@@ -564,6 +637,10 @@ export function NewChallengeSheet({
                   else if (game === "lucky_number")
                     setSecretNumber(randomLuckyNumber())
                   else if (isGridGame(game)) setCells(randomCells(toHide))
+                  else if (game === "penalty") setDives(randomDives())
+                  else if (game === "hilo") setCards(randomHiloCards())
+                  else if (game === "number_hunt")
+                    setHuntNumber(randomHuntNumber())
                 }}
               >
                 Pick for me
@@ -582,6 +659,11 @@ export function NewChallengeSheet({
                     : "The closest guess wins.",
                 minefield: "Tap the tiles to hide them under.",
                 gold_rush: "Tap the tiles to bury them under.",
+                penalty:
+                  "The others take 5 penalties — 3 goals wins. Sides are as the shooter sees the goal.",
+                hilo: "The others call each next card higher or lower — 3 right wins.",
+                number_hunt:
+                  "The others get 5 guesses from 1 to 60, with a higher / lower hint after each.",
               }[game]
             }{" "}
             Locked in now and hidden until the others play.
@@ -608,6 +690,25 @@ export function NewChallengeSheet({
             <LuckyNumberPicker
               value={secretNumber}
               onChange={setSecretNumber}
+              disabled={createChallenge.isPending}
+            />
+          ) : game === "penalty" ? (
+            <PenaltyDivePicker
+              value={dives}
+              onChange={setDives}
+              disabled={createChallenge.isPending}
+            />
+          ) : game === "hilo" ? (
+            <HiloCardPicker
+              value={cards}
+              onChange={setCards}
+              disabled={createChallenge.isPending}
+            />
+          ) : game === "number_hunt" ? (
+            <NumberBoard
+              mode="setup"
+              selected={huntNumber}
+              onSelect={setHuntNumber}
               disabled={createChallenge.isPending}
             />
           ) : (

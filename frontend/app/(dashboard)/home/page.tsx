@@ -154,8 +154,9 @@ export default function HomePage() {
                 />
               </div>
 
+              {/* Each side opens the split summary on People: who owes you, who you owe */}
               <div className="grid grid-cols-2 divide-x border-t">
-                <div className="flex items-center gap-3 px-5 py-3.5 sm:px-6">
+                <Link href="/split-summary?tab=people" className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-muted/60 sm:px-6">
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-success/12 text-success">
                     <HugeiconsIcon icon={ArrowDownLeft01Icon} className="size-4" strokeWidth={2} />
                   </span>
@@ -165,8 +166,8 @@ export default function HomePage() {
                       {formatPaise(totalOwedToYouPaise)}
                     </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-3 px-5 py-3.5 sm:px-6">
+                </Link>
+                <Link href="/split-summary?tab=people" className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-muted/60 sm:px-6">
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-destructive/12 text-destructive">
                     <HugeiconsIcon icon={ArrowUpRight01Icon} className="size-4" strokeWidth={2} />
                   </span>
@@ -176,7 +177,7 @@ export default function HomePage() {
                       {formatPaise(totalYouOwePaise)}
                     </div>
                   </div>
-                </div>
+                </Link>
               </div>
 
               <button
@@ -492,7 +493,7 @@ function FriendBalanceSection({
               className="cursor-pointer flex-nowrap px-2 transition-colors hover:bg-muted/60"
             >
               <ItemMedia>
-                <UserAvatar src={photoURL} name={name} size="sm" />
+                <UserAvatar uid={userId} src={photoURL} name={name} size="sm" />
               </ItemMedia>
               <ItemContent className="min-w-0 gap-0">
                 <ItemTitle className="text-sm font-medium">{name}</ItemTitle>
