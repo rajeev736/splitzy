@@ -12,7 +12,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
 
-import { PaymentDoneDialog } from "./payment-done-dialog"
+import { useUpiPay, type PaidVia } from "./upi-pay"
 import { useSession } from "@/components/providers/session-provider"
 import { AwaitingConfirmationBadge } from "@/components/shared/awaiting-confirmation-badge"
 import { ChallengeButton } from "@/components/games/challenge-button"
@@ -36,12 +36,13 @@ import {
 import {
   PaymentDisputeLine,
   PaymentReceivedPrompt,
+  RemindToConfirm,
   usePendingPaymentFrom,
 } from "@/components/shared/payment-received-prompt"
 import { useExpenses, useFriends, useGroups } from "@/hooks/queries"
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
 import { calculatePersonNetBreakdown, type SettlementScope } from "@/lib/money"
-import { isValidUpiId, openUpiPayment } from "@/lib/upi"
+
 import { cn } from "@/lib/utils"
 
 export interface SettleExpensesDialogProps {
@@ -83,8 +84,8 @@ export function SettleExpensesDialog({
     successMessage: "Settlement reported! Notified recipient for confirmation.",
   })
 
-  // Back from the UPI app: "Did you pay?" — only a yes tells them
-  const [confirmPaidOpen, setConfirmPaidOpen] = React.useState(false)
+  // Paying: their UPI app (or a QR / cash); only "yes, I paid" tells them
+  const upi = useUpiPay()
 
   // Find friend profile if available
   const friendProfile = React.useMemo(
@@ -232,7 +233,7 @@ export function SettleExpensesDialog({
       )?.key
     : undefined
 
-  const handleReport = (noteText?: string) => {
+  const handleReport = (noteText?: string, via: PaidVia = "upi") => {
     if (!user || selectedKeys.length === 0) return
     const amountToSettle = netPayablePaise > 0 ? payPaise : netReceivablePaise
     if (amountToSettle <= 0) {
@@ -254,13 +255,14 @@ export function SettleExpensesDialog({
           contextKeys: selectedKeys,
         },
         note,
+        ...(via === "cash" ? { method: "cash" as const } : {}),
         ...(gameDiscount?.role === "winner" && payOff > 0
           ? { challengeId: gameDiscount.challengeId }
           : {}),
       },
       {
         onSuccess: () => {
-          setConfirmPaidOpen(false)
+          upi.done()
           onSettled?.()
           onOpenChange(false)
         },
@@ -274,17 +276,15 @@ export function SettleExpensesDialog({
       return
     }
 
-    // The phone lists the UPI apps it has; the chosen one opens with everything filled in
-    const opened = openUpiPayment(
-      { upiId: targetUpiId, payeeName: targetName, amountPaise: payPaise, note: `JoySplit settlement to ${targetName}` },
-      toast.warning
-    )
-    if (!opened) {
-      // No usable UPI ID: they pay some other way (cash, their own app), then confirm
-      toast.info(`${targetName} hasn't added a UPI ID. Pay them another way, then confirm here.`)
-    }
-    // Waiting when they come back from the UPI app; nothing is reported until they say it went through
-    setConfirmPaidOpen(true)
+    upi.pay(payment)
+  }
+
+  const payment = {
+    upiId: targetUpiId,
+    payeeName: targetName,
+    amountPaise: payPaise,
+    note: `JoySplit settlement to ${targetName}`,
+    onReport: (via: PaidVia) => handleReport(`JoySplit Settlement to ${targetName}`, via),
   }
 
   return (
@@ -611,6 +611,7 @@ export function SettleExpensesDialog({
                   You reported this payment. {targetName} will confirm once they
                   receive it.
                 </p>
+                <RemindToConfirm className="mt-1" personId={personId} personName={targetName} />
               </div>
             ) : isUserOwing ? (
               <div className="flex flex-col gap-2">
@@ -667,6 +668,18 @@ export function SettleExpensesDialog({
                     )}
                   </Button>
                 )}
+                {!settlesFree && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={reportSettlement.isPending || selectedKeys.length === 0}
+                    onClick={() => upi.payInCash(payment)}
+                    className="self-center text-xs text-muted-foreground"
+                  >
+                    Paid in cash instead
+                  </Button>
+                )}
               </div>
             ) : netReceivablePaise > 0 ? (
               <div className="flex flex-col gap-2">
@@ -716,16 +729,7 @@ export function SettleExpensesDialog({
         </SheetContent>
       </Sheet>
 
-      <PaymentDoneDialog
-        open={confirmPaidOpen}
-        onOpenChange={setConfirmPaidOpen}
-        amountPaise={payPaise}
-        payeeName={targetName}
-        isPending={reportSettlement.isPending}
-        onConfirm={() => handleReport(`JoySplit Settlement to ${targetName}`)}
-        onPayAgain={isValidUpiId(targetUpiId) ? handlePayViaUPI : undefined}
-        upiId={isValidUpiId(targetUpiId) ? targetUpiId : undefined}
-      />
+      {upi.render(reportSettlement.isPending)}
 
     </>
   )

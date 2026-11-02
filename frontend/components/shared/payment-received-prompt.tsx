@@ -16,6 +16,8 @@ import {
 import { useExpenses, useNotifications } from "@/hooks/queries"
 import { disputedPaymentBetween, formatPaise, reportedPaymentFrom } from "@/lib/money"
 import { cn } from "@/lib/utils"
+import { sendConfirmReminder } from "@/services/settlement"
+import { useNow } from "@/hooks/use-now"
 
 /**
  * Payment status between you and one person, both directions:
@@ -49,6 +51,7 @@ export function usePendingPaymentFrom(personId: string) {
       notifId: notif?.id,
       // Match it with your bank SMS
       utr: notif?.data?.utr,
+      cash: notif?.data?.method === "cash",
     }
   }, [user, personId, expenses, notifications])
 }
@@ -146,6 +149,7 @@ export function PaymentReceivedPrompt({
       >
         {size === "inline" ? "Paid you " : `${personName.split(" ")[0]} says they paid `}
         <span className="font-semibold text-foreground tabular-nums">{formatPaise(pending.amountPaise)}</span>
+        {pending.cash && " in cash"}
         {size === "inline" ? " · Received?" : ". Received it?"}
         {pending.utr && (
           <span className="block font-mono text-[11px] tracking-wide text-muted-foreground">
@@ -284,3 +288,64 @@ export function PaymentDisputeLine({
     </span>
   )
 }
+
+const remindKey = (settlementId: string) => `joysplit_confirm_reminded_${settlementId}`
+const REMIND_EVERY_MS = 4 * 60 * 60 * 1000
+
+/**
+ * You reported paying this person and they haven't confirmed yet: a nudge to
+ * check their UPI app and confirm (at most every 4 hours per payment).
+ */
+export function RemindToConfirm({ personId, personName, className }: { personId: string; personName: string; className?: string }) {
+  const { user } = useSession()
+  const { data: expenses } = useExpenses()
+  const [sentAt, setSentAt] = React.useState<number | null>(null)
+  const [busy, setBusy] = React.useState(false)
+  const now = useNow(0)
+  const report = React.useMemo(
+    () => (user ? reportedPaymentFrom(personId, user.uid, expenses) : null),
+    [user, personId, expenses]
+  )
+  const key = report?.settlementId ? remindKey(report.settlementId) : null
+  // Recently reminded (this device): read lazily so prerendering never touches storage
+  const last = React.useSyncExternalStore(
+    noopSubscribe,
+    () => {
+      try {
+        return key ? Number(localStorage.getItem(key) ?? 0) : 0
+      } catch {
+        return 0
+      }
+    },
+    () => 0
+  )
+  if (!user || !report?.settlementId) return null
+  const recent = (sentAt ?? last) > 0 && now - (sentAt ?? last) < REMIND_EVERY_MS
+  const first = personName.split(" ")[0]
+
+  const remind = async () => {
+    setBusy(true)
+    try {
+      await sendConfirmReminder(user, personId, report.settlementId!, report.paidPaise)
+      const now = Date.now()
+      try {
+        localStorage.setItem(key!, String(now))
+      } catch {}
+      setSentAt(now)
+      toast.success(`Reminded ${first} to confirm`)
+    } catch {
+      toast.error("Couldn't send the reminder — try again")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Button variant="outline" size="lg" className={cn("w-full", className)} disabled={busy || recent} onClick={remind}>
+      {busy && <Spinner />}
+      {recent ? `Reminded ${first}` : `Remind ${first} to confirm`}
+    </Button>
+  )
+}
+
+const noopSubscribe = () => () => {}

@@ -14,6 +14,7 @@ import { isBirthdayToday } from "@/lib/fun/birthday"
 import { burstFromNotification, endBurst, playBurst, useBurst } from "@/lib/fun/burst"
 import { systemNotificationPermission } from "@/lib/system-notifications"
 import { GAMES } from "@/lib/games"
+import { formatPaise, payeeOf } from "@/lib/money"
 import { collectStake, stakePayout } from "@/services/challenges"
 import {
   awardEarnedBadges,
@@ -139,6 +140,40 @@ export function FunSync() {
         })
     }
   }, [user, challenges.data])
+
+  // A payment someone reported to you hours ago and you haven't answered: ask again
+  // when you open the app (once a day per payment), so nothing hangs unconfirmed
+  React.useEffect(() => {
+    if (!uid || expenses.isPending) return
+    const waiting = new Map<string, { name: string; paise: number; at: string; settlementId?: string }>()
+    for (const e of expenses.data) {
+      if (e.deletedAt) continue
+      for (const s of e.shares ?? []) {
+        if (s.status !== "PAYMENT_REPORTED" || !s.reportedAt || payeeOf(e, s.userId) !== uid) continue
+        const w = waiting.get(s.userId) ?? { name: s.userName, paise: 0, at: s.reportedAt, settlementId: s.settlementId }
+        w.paise += s.amountPaise
+        if (s.reportedAt < w.at) w.at = s.reportedAt
+        waiting.set(s.userId, w)
+      }
+    }
+    const stamp = new Date().toISOString().slice(0, 10)
+    for (const [debtorId, w] of waiting) {
+      if (Date.now() - new Date(w.at).getTime() < 2 * 60 * 60 * 1000) continue
+      const key = `joysplit_confirm_nudge_${stamp}_${w.settlementId ?? debtorId}`
+      try {
+        if (localStorage.getItem(key)) continue
+        localStorage.setItem(key, "1")
+      } catch {
+        continue
+      }
+      const first = (w.name || "Someone").split(" ")[0]
+      toast(`Did you get ${formatPaise(w.paise)} from ${first}?`, {
+        description: "They're waiting for you to confirm. Check your UPI app or bank SMS.",
+        duration: 10000,
+        action: { label: "Review", onClick: () => router.push(`/friends/${debtorId}`) },
+      })
+    }
+  }, [uid, expenses.data, expenses.isPending, router])
 
   // Friends' birthdays: a reminder once a day each
   React.useEffect(() => {

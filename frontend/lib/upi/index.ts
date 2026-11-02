@@ -2,11 +2,10 @@
  * JoySplit UPI payment links (NPCI standard):
  * upi://pay?pa={upiId}&pn={payeeName}&am={rupees}&cu=INR&tn={transactionNote}
  *
- * Only the standard `upi://pay` link is used. On Android it makes the phone
- * show the UPI apps that are actually installed, and whichever one the user
- * picks opens on its payment screen with the payee, amount and note filled in.
- * (App-specific schemes like `phonepe://…` aren't documented and don't prefill
- * reliably — that's why PhonePe used to open empty.)
+ * Android: the standard `upi://pay` link makes the phone show the UPI apps that
+ * are installed, and the chosen one opens on its payment screen, prefilled.
+ * iPhone has no such chooser, so we offer the big apps by their own links
+ * (with the same prefilled query). Computers can't open UPI apps: they get a QR.
  */
 
 export interface UPITransactionParams {
@@ -31,26 +30,74 @@ const cleanNote = (note: string) =>
     .trim()
     .slice(0, 50)
 
-/**
- * Opens the payment in the phone's UPI apps. Returns false (nothing opened)
- * when the payee has no usable UPI ID; warns when the amount is over what one
- * UPI payment usually allows.
- */
-export function openUpiPayment(params: UPITransactionParams, warn: (message: string) => void): boolean {
-  if (!isValidUpiId(params.upiId)) return false
-  if (params.amountPaise > UPI_MAX_PAYMENT_PAISE) {
-    warn("UPI usually allows up to ₹1,00,000 per payment — your app may ask you to pay in parts.")
-  }
-  window.location.href = buildUPILink(params)
-  return true
-}
-
-export function buildUPILink({ upiId, payeeName, amountPaise, note = "JoySplit settlement" }: UPITransactionParams): string {
+/** The prefilled part every UPI link shares. */
+function upiQuery({ upiId, payeeName, amountPaise, note = "JoySplit settlement" }: UPITransactionParams): string {
   // The UPI ID comes from the other person's profile: keep only characters a
   // VPA can have, so it can't smuggle extra parameters (e.g. "&am=…&pa=…") into the link
   const pa = upiId.trim().replace(/[^a-zA-Z0-9._\-@]/g, "")
   const pn = encodeURIComponent(payeeName.trim().slice(0, 50) || "JoySplit friend")
   const am = (amountPaise / 100).toFixed(2)
   const tn = encodeURIComponent(cleanNote(note) || "JoySplit settlement")
-  return `upi://pay?pa=${pa}&pn=${pn}&am=${am}&cu=INR&tn=${tn}`
+  return `pa=${pa}&pn=${pn}&am=${am}&cu=INR&tn=${tn}`
+}
+
+export function buildUPILink(params: UPITransactionParams, scheme = "upi://pay"): string {
+  return `${scheme}?${upiQuery(params)}`
+}
+
+export type Platform = "android" | "ios" | "desktop"
+
+export function detectPlatform(): Platform {
+  if (typeof navigator === "undefined") return "desktop"
+  const ua = navigator.userAgent
+  if (/android/i.test(ua)) return "android"
+  // iPadOS reports itself as a Mac with touch
+  if (/iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1)) return "ios"
+  return "desktop"
+}
+
+/** UPI apps an iPhone can open directly, each with its own link (same prefilled query). */
+export const IOS_UPI_APPS = [
+  { id: "gpay", name: "Google Pay", scheme: "gpay://upi/pay" },
+  { id: "phonepe", name: "PhonePe", scheme: "phonepe://pay" },
+  { id: "paytm", name: "Paytm", scheme: "paytmmp://pay" },
+  { id: "other", name: "Other UPI app", scheme: "upi://pay" },
+] as const
+
+/**
+ * Opens a UPI app and waits: "returned" once the person comes back to
+ * JoySplit from it, "not-opened" if nothing took over the screen within a
+ * couple of seconds (no app installed, or a computer).
+ */
+export function launchUpi(link: string, waitMs = 2500): Promise<"returned" | "not-opened"> {
+  return new Promise((resolve) => {
+    let left = false
+    let settled = false
+    const finish = (result: "returned" | "not-opened") => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timer)
+      document.removeEventListener("visibilitychange", onVisibility)
+      window.removeEventListener("blur", onBlur)
+      window.removeEventListener("focus", onFocus)
+      resolve(result)
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") left = true
+      else if (left) finish("returned")
+    }
+    const onBlur = () => {
+      left = true
+    }
+    const onFocus = () => {
+      if (left && document.visibilityState === "visible") finish("returned")
+    }
+    document.addEventListener("visibilitychange", onVisibility)
+    window.addEventListener("blur", onBlur)
+    window.addEventListener("focus", onFocus)
+    const timer = window.setTimeout(() => {
+      if (!left) finish("not-opened")
+    }, waitMs)
+    window.location.href = link
+  })
 }

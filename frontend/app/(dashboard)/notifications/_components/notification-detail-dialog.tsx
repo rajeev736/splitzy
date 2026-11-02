@@ -150,6 +150,15 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
     )
   }
 
+  // "Did you get ₹500 from Rajeev?": answer on their profile (Yes / No)
+  if (notif.type === "PAYMENT_REMINDER" && data?.awaitingConfirm && data.actorId) {
+    return (
+      <Button size="lg" className={CTA} onClick={() => go(`/friends/${data.actorId}`)}>
+        Review payment
+      </Button>
+    )
+  }
+
   if (notif.type === "BADGE") {
     return (
       <Button size="lg" className={CTA} onClick={() => go(data?.frame ? "/profile/frames#milestones" : "/profile#badges")}>

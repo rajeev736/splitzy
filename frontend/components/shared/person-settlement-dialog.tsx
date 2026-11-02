@@ -14,7 +14,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
 
-import { PaymentDoneDialog } from "@/components/settlement/payment-done-dialog"
+import { useUpiPay, type PaidVia } from "@/components/settlement/upi-pay"
 import { useSession } from "@/components/providers/session-provider"
 import { useLiveGameDiscounts } from "@/hooks/use-game-discounts"
 import { formatCountdown, useNow } from "@/hooks/use-now"
@@ -39,8 +39,8 @@ import {
   formatPaise,
   type SettlementScope,
 } from "@/lib/money"
-import { isValidUpiId, openUpiPayment } from "@/lib/upi"
 import { cn } from "@/lib/utils"
+import { RemindToConfirm } from "./payment-received-prompt"
 
 export interface PersonSettlementDialogProps {
   open: boolean
@@ -97,7 +97,7 @@ export function PersonSettlementDialog({
   })
 
   // Back from the UPI app (or "I already paid"): confirm before they're told
-  const [confirmPaidOpen, setConfirmPaidOpen] = React.useState(false)
+  const upi = useUpiPay()
   const [showBreakdown, setShowBreakdown] = React.useState(false)
 
   // Find friend profile if available for freshest UPI ID / avatar
@@ -178,7 +178,7 @@ export function PersonSettlementDialog({
     breakdown.aOwesBLines.every((l) => l.status === "PAYMENT_REPORTED")
   const isAllSettled = netPayablePaise === 0 && !canCancelOut
 
-  const handleReport = () => {
+  const handleReport = (via: PaidVia = "upi") => {
     if (awaitingConfirmation) {
       toast.info(`Already reported — waiting for ${targetName} to confirm.`)
       return
@@ -190,29 +190,25 @@ export function PersonSettlementDialog({
         amountPaise: payPaise,
         scope: resolvedScope,
         note: paymentNote,
+        ...(via === "cash" ? { method: "cash" as const } : {}),
         ...(discountPaise > 0 ? { challengeId: activeGame?.challengeId } : {}),
       },
       {
         onSuccess: () => {
-          setConfirmPaidOpen(false)
+          upi.done()
           onSettled?.()
         },
       }
     )
   }
 
-  /** The phone lists the UPI apps it has; the chosen one opens with everything filled in. */
-  const handlePayViaUPI = () => {
-    const opened = openUpiPayment(
-      { upiId: targetUpiId, payeeName: targetName, amountPaise: payPaise, note: paymentNote },
-      toast.warning
-    )
-    if (!opened) {
-      // No usable UPI ID: they pay some other way (cash, their own app), then confirm
-      toast.info(`${targetName} hasn't added a UPI ID. Pay them another way, then confirm here.`)
-    }
-    // Waiting when they come back from the UPI app; nothing is reported until they say it went through
-    setConfirmPaidOpen(true)
+  /** Their UPI app (or a QR / cash) does the paying; only "yes, I paid" tells them. */
+  const payment = {
+    upiId: targetUpiId,
+    payeeName: targetName,
+    amountPaise: payPaise,
+    note: paymentNote,
+    onReport: (via: PaidVia) => handleReport(via),
   }
 
   const contextTitle =
@@ -497,6 +493,7 @@ export function PersonSettlementDialog({
                 You reported this payment. {targetName} will confirm once they
                 receive it.
               </p>
+              <RemindToConfirm personId={effectivePersonId} personName={targetName} />
               <Button
                 variant="outline"
                 size="lg"
@@ -537,20 +534,28 @@ export function PersonSettlementDialog({
               <Button
                 size="lg"
                 className="h-11 w-full"
-                onClick={handlePayViaUPI}
+                onClick={() => upi.pay(payment)}
               >
                 <HugeiconsIcon icon={CreditCardIcon} data-icon="inline-start" />
                 Pay {formatPaise(payPaise)} via UPI
               </Button>
 
-              <Button
-                variant="outline"
-                className="w-full"
-                disabled={reportSettlement.isPending}
-                onClick={() => setConfirmPaidOpen(true)}
-              >
-                I already paid
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  disabled={reportSettlement.isPending}
+                  onClick={() => upi.alreadyPaid(payment)}
+                >
+                  I already paid
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={reportSettlement.isPending}
+                  onClick={() => upi.payInCash(payment)}
+                >
+                  Paid in cash
+                </Button>
+              </div>
 
               <div className="flex items-center justify-center gap-1.5 pt-1 text-[11px] text-muted-foreground">
                 <HugeiconsIcon
@@ -586,16 +591,7 @@ export function PersonSettlementDialog({
         </div>
       </BottomSheet>
 
-      <PaymentDoneDialog
-        open={confirmPaidOpen}
-        onOpenChange={setConfirmPaidOpen}
-        amountPaise={payPaise}
-        payeeName={targetName}
-        isPending={reportSettlement.isPending}
-        onConfirm={() => handleReport()}
-        onPayAgain={isValidUpiId(targetUpiId) ? handlePayViaUPI : undefined}
-        upiId={isValidUpiId(targetUpiId) ? targetUpiId : undefined}
-      />
+      {upi.render(reportSettlement.isPending)}
     </>
   )
 }

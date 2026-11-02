@@ -29,6 +29,7 @@ export async function enableSystemNotifications(): Promise<boolean> {
 export function notificationHref(n: AppNotification): string {
   const d = n.data
   if (d?.challengeId) return `/challenges/${d.challengeId}`
+  if (n.type === "PAYMENT_REMINDER" && d?.awaitingConfirm && d.actorId) return `/friends/${d.actorId}`
   if (n.type === "BADGE") return d?.frame ? "/profile/frames#milestones" : "/profile#badges"
   if ((n.type === "MOMENT" || n.type.startsWith("PLAN") || n.type.startsWith("BOND")) && d?.actorId) return `/friends/${d.actorId}`
   if (n.type === "FRIEND_REQUEST") return "/friends/requests"

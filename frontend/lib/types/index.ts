@@ -365,6 +365,10 @@ export interface AppNotification {
     discountPaise?: number;
     /** UPI transaction reference the payer gave for a reported payment. */
     utr?: string;
+    /** How a reported payment was made, when not by UPI. */
+    method?: "cash";
+    /** A reminder to confirm a payment you were told about. */
+    awaitingConfirm?: boolean;
     /** Moments, plans and bonds between friends. */
     friendshipId?: string;
     momentId?: string;

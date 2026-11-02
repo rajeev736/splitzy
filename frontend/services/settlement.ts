@@ -19,6 +19,30 @@ export interface ReportSettlementInput {
   challengeId?: string
   /** The UPI transaction reference (12 digits) of the payment, for the creditor to match. */
   utr?: string
+  /** Paid in cash rather than by UPI (told to the creditor). */
+  method?: "upi" | "cash"
+}
+
+/**
+ * "Rajeev is waiting for you to confirm the ₹500 he paid" — a nudge to the
+ * person you reported paying, pointing them back to Yes / No.
+ */
+export async function sendConfirmReminder(user: UserProfile, creditorId: string, settlementId: string, amountPaise: number) {
+  await sendNotification({
+    userId: creditorId,
+    type: "PAYMENT_REMINDER",
+    title: `Did you get ₹${rupees(amountPaise)} from ${user.displayName.split(" ")[0]}?`,
+    message: `${user.displayName} paid you and is waiting for you to confirm. Check your UPI app or bank SMS, then tap Yes or No.`,
+    data: {
+      actorId: user.uid,
+      actorName: user.displayName,
+      debtorId: user.uid,
+      creditorId,
+      settlementId,
+      amountPaise,
+      awaitingConfirm: true,
+    },
+  })
 }
 
 export interface ConfirmSettlementInput {
@@ -130,7 +154,9 @@ export async function reportPersonSettlement(
 
   const settlementId = newSettlementId()
   const now = nowIso()
-  const note = input.note || `JoySplit settlement to ${input.creditorName || breakdown.userBName}`
+  const cash = input.method === "cash"
+  const note = cash ? "Paid in cash" : input.note || `JoySplit settlement to ${input.creditorName || breakdown.userBName}`
+  const viaLabel = cash ? " in cash" : ""
   const utr = input.utr?.replace(/\s/g, "")
   if (utr && !/^\d{12}$/.test(utr)) throw new AppError("A UTR has 12 digits — check the payment details in your UPI app.")
   const utrLabel = utr ? ` (UTR ${utr})` : ""
@@ -194,8 +220,8 @@ export async function reportPersonSettlement(
     message:
       net > 0
         ? discountPaise > 0
-          ? `${user.displayName} paid ₹${rupees(paid)}${utrLabel} to settle your ₹${rupees(net)} balance${contextLabel} — ${formatPaise(discountPaise)} off for winning your game. Did you receive ₹${rupees(paid)}?`
-          : `${user.displayName} paid ₹${rupees(net)}${utrLabel} to settle your balance${contextLabel}. Did you receive it?`
+          ? `${user.displayName} paid ₹${rupees(paid)}${viaLabel}${utrLabel} to settle your ₹${rupees(net)} balance${contextLabel} — ${formatPaise(discountPaise)} off for winning your game. Did you receive ₹${rupees(paid)}?`
+          : `${user.displayName} paid ₹${rupees(net)}${viaLabel}${utrLabel} to settle your balance${contextLabel}. Did you receive it?`
         : `${user.displayName} cancelled out your mutual splits${contextLabel} (₹${rupees(breakdown.offsetPaise)} each way). Please confirm.`,
     type: "PAYMENT_REPORTED",
     data: {
@@ -207,6 +233,7 @@ export async function reportPersonSettlement(
       amountPaise: paid,
       offsetPaise: breakdown.offsetPaise,
       ...(utr ? { utr } : {}),
+      ...(cash ? { method: "cash" } : {}),
       ...(discountPaise > 0 ? { challengeId: input.challengeId, discountPaise } : {}),
       ...(input.scope?.type === "group" ? { groupId: input.scope.groupId } : {}),
     },
