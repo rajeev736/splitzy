@@ -14,7 +14,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
 
-import { UpiAppSheet } from "@/app/(dashboard)/expenses/[expenseId]/pay/_components/upi-app-sheet"
 import { PaymentDoneDialog } from "@/components/settlement/payment-done-dialog"
 import { useSession } from "@/components/providers/session-provider"
 import { useLiveGameDiscounts } from "@/hooks/use-game-discounts"
@@ -40,7 +39,7 @@ import {
   formatPaise,
   type SettlementScope,
 } from "@/lib/money"
-import { buildUPILink, type UPITransactionParams } from "@/lib/upi"
+import { isValidUpiId, openUpiPayment } from "@/lib/upi"
 import { cn } from "@/lib/utils"
 
 export interface PersonSettlementDialogProps {
@@ -97,7 +96,6 @@ export function PersonSettlementDialog({
     successMessage: "Settlement reported! Waiting for recipient confirmation.",
   })
 
-  const [showAppChooser, setShowAppChooser] = React.useState(false)
   // Back from the UPI app (or "I already paid"): confirm before they're told
   const [confirmPaidOpen, setConfirmPaidOpen] = React.useState(false)
   const [showBreakdown, setShowBreakdown] = React.useState(false)
@@ -203,26 +201,16 @@ export function PersonSettlementDialog({
     )
   }
 
-  const handleLaunchApp = (appId: string) => {
-    if (!targetUpiId) {
-      toast.error(
-        "Recipient UPI ID is not available. Please enter it manually."
-      )
-      setShowAppChooser(false)
-      return
+  /** The phone lists the UPI apps it has; the chosen one opens with everything filled in. */
+  const handlePayViaUPI = () => {
+    const opened = openUpiPayment(
+      { upiId: targetUpiId, payeeName: targetName, amountPaise: payPaise, note: paymentNote },
+      toast.warning
+    )
+    if (!opened) {
+      // No usable UPI ID: they pay some other way (cash, their own app), then confirm
+      toast.info(`${targetName} hasn't added a UPI ID. Pay them another way, then confirm here.`)
     }
-
-    const upiUri = buildUPILink({
-      upiId: targetUpiId,
-      payeeName: targetName,
-      amountPaise: payPaise,
-      note: paymentNote,
-      app: appId as UPITransactionParams["app"],
-    })
-
-    setShowAppChooser(false)
-    window.location.href = upiUri
-
     // Waiting when they come back from the UPI app; nothing is reported until they say it went through
     setConfirmPaidOpen(true)
   }
@@ -342,7 +330,7 @@ export function PersonSettlementDialog({
             <CardContent className="flex flex-col gap-3 p-4">
               <div className="flex items-center justify-between">
                 <div className="flex min-w-0 items-center gap-3">
-                  <UserAvatar src={targetPhoto} name={targetName} size="md" />
+                  <UserAvatar uid={effectivePersonId} src={targetPhoto} name={targetName} size="md" />
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold">
                       {targetName}
@@ -549,7 +537,7 @@ export function PersonSettlementDialog({
               <Button
                 size="lg"
                 className="h-11 w-full"
-                onClick={() => setShowAppChooser(true)}
+                onClick={handlePayViaUPI}
               >
                 <HugeiconsIcon icon={CreditCardIcon} data-icon="inline-start" />
                 Pay {formatPaise(payPaise)} via UPI
@@ -605,13 +593,8 @@ export function PersonSettlementDialog({
         payeeName={targetName}
         isPending={reportSettlement.isPending}
         onConfirm={() => handleReport()}
-        onPayAgain={targetUpiId ? () => setShowAppChooser(true) : undefined}
-      />
-
-      <UpiAppSheet
-        open={showAppChooser}
-        onOpenChange={setShowAppChooser}
-        onSelect={handleLaunchApp}
+        onPayAgain={isValidUpiId(targetUpiId) ? handlePayViaUPI : undefined}
+        upiId={isValidUpiId(targetUpiId) ? targetUpiId : undefined}
       />
     </>
   )

@@ -12,7 +12,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
 
-import { UpiAppSheet } from "@/app/(dashboard)/expenses/[expenseId]/pay/_components/upi-app-sheet"
 import { PaymentDoneDialog } from "./payment-done-dialog"
 import { useSession } from "@/components/providers/session-provider"
 import { AwaitingConfirmationBadge } from "@/components/shared/awaiting-confirmation-badge"
@@ -42,7 +41,7 @@ import {
 import { useExpenses, useFriends, useGroups } from "@/hooks/queries"
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
 import { calculatePersonNetBreakdown, type SettlementScope } from "@/lib/money"
-import { buildUPILink, type UPITransactionParams } from "@/lib/upi"
+import { isValidUpiId, openUpiPayment } from "@/lib/upi"
 import { cn } from "@/lib/utils"
 
 export interface SettleExpensesDialogProps {
@@ -84,7 +83,6 @@ export function SettleExpensesDialog({
     successMessage: "Settlement reported! Notified recipient for confirmation.",
   })
 
-  const [showAppChooser, setShowAppChooser] = React.useState(false)
   // Back from the UPI app: "Did you pay?" — only a yes tells them
   const [confirmPaidOpen, setConfirmPaidOpen] = React.useState(false)
 
@@ -276,31 +274,15 @@ export function SettleExpensesDialog({
       return
     }
 
-    if (!targetUpiId) {
-      // Paid some other way (cash, another app): confirm it with the UTR
-      toast.info(`${targetName} has no UPI ID here. Pay them directly, then confirm below.`)
-      setConfirmPaidOpen(true)
-      return
+    // The phone lists the UPI apps it has; the chosen one opens with everything filled in
+    const opened = openUpiPayment(
+      { upiId: targetUpiId, payeeName: targetName, amountPaise: payPaise, note: `JoySplit settlement to ${targetName}` },
+      toast.warning
+    )
+    if (!opened) {
+      // No usable UPI ID: they pay some other way (cash, their own app), then confirm
+      toast.info(`${targetName} hasn't added a UPI ID. Pay them another way, then confirm here.`)
     }
-
-    setShowAppChooser(true)
-  }
-
-  const handleLaunchApp = (appId: string) => {
-    if (!targetUpiId) return
-
-    const note = `JoySplit Settlement to ${targetName}`
-    const upiUri = buildUPILink({
-      upiId: targetUpiId,
-      payeeName: targetName,
-      amountPaise: payPaise,
-      note,
-      app: appId as UPITransactionParams["app"],
-    })
-
-    setShowAppChooser(false)
-    window.location.href = upiUri
-
     // Waiting when they come back from the UPI app; nothing is reported until they say it went through
     setConfirmPaidOpen(true)
   }
@@ -342,6 +324,7 @@ export function SettleExpensesDialog({
             <div className="flex flex-row items-center justify-between gap-4 rounded-lg border bg-card p-4 text-card-foreground">
               <div className="flex min-w-0 flex-1 items-center gap-3.5">
                 <UserAvatar
+                  uid={personId}
                   src={targetPhoto}
                   name={targetName}
                   size="lg"
@@ -740,15 +723,10 @@ export function SettleExpensesDialog({
         payeeName={targetName}
         isPending={reportSettlement.isPending}
         onConfirm={() => handleReport(`JoySplit Settlement to ${targetName}`)}
-        onPayAgain={targetUpiId ? () => setShowAppChooser(true) : undefined}
+        onPayAgain={isValidUpiId(targetUpiId) ? handlePayViaUPI : undefined}
+        upiId={isValidUpiId(targetUpiId) ? targetUpiId : undefined}
       />
 
-      {/* UPI App Chooser Sheet */}
-      <UpiAppSheet
-        open={showAppChooser}
-        onOpenChange={setShowAppChooser}
-        onSelect={handleLaunchApp}
-      />
     </>
   )
 }
