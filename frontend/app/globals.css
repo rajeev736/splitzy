@@ -153,6 +153,21 @@
     @apply bg-background text-foreground antialiased;
     -webkit-tap-highlight-color: transparent;
     touch-action: pan-x pan-y;
+    /* Feels like an app: tapping or long-pressing text never selects it or
+       pops up the copy / translate bar (also covers dialogs and sheets) */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* Typing stays normal: fields can still be selected, copied and pasted.
+     Anything else that should be selectable can opt in with `select-text`. */
+  input,
+  textarea,
+  [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
   }
   html {
     @apply font-sans;
