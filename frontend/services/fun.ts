@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   deleteField,
   doc,
   getDoc,
@@ -506,4 +507,20 @@ export async function notifyFrameUnlocked(user: UserProfile, frameId: FrameId) {
     read: false,
     createdAt: nowIso(),
   }).catch(() => {})
+}
+
+/* ── Birthday excitement ──────────────────────────────────────────────── */
+
+/**
+ * "Excited for your birthday": one tap per friend per birthday (that
+ * birthday's year), shown as a count only to the birthday person. Tap again
+ * to take it back.
+ */
+export async function setBirthdayCheer(user: UserProfile, friendUid: string, year: number, on: boolean) {
+  const ref = doc(db(), "users", friendUid, "cheers", `${year}_${user.uid}`)
+  if (on) {
+    await setDoc(ref, { from: user.uid, fromName: user.displayName.slice(0, 100), year, at: nowIso() })
+  } else {
+    await deleteDoc(ref)
+  }
 }

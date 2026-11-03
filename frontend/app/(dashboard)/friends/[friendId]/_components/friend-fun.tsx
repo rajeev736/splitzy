@@ -11,7 +11,12 @@ import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { useAnswerPlan, useSendMoment } from "@/hooks/use-fun-mutations"
 import { useNow } from "@/hooks/use-now"
-import { birthdayCountdown, formatBirthday, isBirthdayToday } from "@/lib/fun/birthday"
+import { birthdayCountdown, formatBirthday, isBirthdayToday, nextBirthday } from "@/lib/fun/birthday"
+import { PopperButton } from "@/components/fun/party-popper"
+import { useMyBirthdayCheer } from "@/hooks/use-fun"
+import { getErrorMessage } from "@/lib/errors"
+import { setBirthdayCheer } from "@/services/fun"
+import { toast } from "sonner"
 import { GIFTS, isGiftId, NUDGE_LABEL, type GiftId, type LoveNudge, type PlanKind } from "@/lib/fun/catalog"
 import type { Friendship, Moment, UserProfile } from "@/lib/types"
 import { burstFromMoment, playBurst } from "@/lib/fun/burst"
@@ -37,7 +42,11 @@ export function BirthdayCard({
   const send = useSendMoment()
   const now = useNow(Number.MAX_SAFE_INTEGER)
   const b = friend.birthday
+  // Excitement counts per birthday: this coming one (today's, on the day)
+  const year = b && now ? nextBirthday(b, new Date(now)).getFullYear() : undefined
+  const cheered = useMyBirthdayCheer(friend.uid, year)
   if (!b || !now) return null
+  const cheer = year ? <ExcitedButton friend={friend} year={year} cheered={!!cheered} /> : null
   const first = friend.displayName.split(" ")[0]
   const today = isBirthdayToday(b, new Date(now))
 
@@ -49,6 +58,7 @@ export function BirthdayCard({
           <div className="text-sm font-semibold">It&apos;s {first}&apos;s birthday today</div>
           <div className="text-xs text-muted-foreground">{wishedToday ? "You sent your wish." : "Make their day."}</div>
         </div>
+        {cheer}
         {!wishedToday && (
           <Button
             size="sm"
@@ -79,8 +89,31 @@ export function BirthdayCard({
         <div className="text-xs text-muted-foreground">{first}&apos;s birthday · {formatBirthday(b)}</div>
         <div className="truncate text-sm font-semibold tabular-nums">{parts.join(" ")}</div>
       </div>
+      {cheer}
     </div>
   )
+}
+
+/**
+ * "Excited for your birthday" — like a like, but only the birthday person
+ * ever sees how many. Shows your own tap instantly, then follows the server.
+ */
+function ExcitedButton({ friend, year, cheered }: { friend: UserProfile; year: number; cheered: boolean }) {
+  const { user } = useSession()
+  const [pending, setPending] = React.useState<{ from: boolean; to: boolean } | null>(null)
+  const on = pending && pending.from === cheered ? pending.to : cheered
+
+  const toggle = () => {
+    if (!user) return
+    const next = !on
+    setPending({ from: cheered, to: next })
+    setBirthdayCheer(user, friend.uid, year, next).catch((e) => {
+      setPending(null)
+      toast.error(getErrorMessage(e))
+    })
+  }
+
+  return <PopperButton active={on} onToggle={toggle} />
 }
 
 /* ── Between you two ──────────────────────────────────────────────────── */

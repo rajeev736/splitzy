@@ -350,6 +350,24 @@ service cloud.firestore {
              (c.hostId == uid() || uid() in c.moves);
     }
 
+    // "Excited for your birthday": one tap per friend per birthday (id {year}_{uid}).
+    // The birthday person sees them all; a friend sees only their own tap.
+    match /users/{userId}/cheers/{cheerId} {
+      allow read: if signedIn() && (uid() == userId || resource.data.from == uid());
+      allow create: if signedIn() && uid() != userId &&
+                    request.resource.data.keys().hasOnly(['from', 'fromName', 'year', 'at']) &&
+                    request.resource.data.from == uid() &&
+                    request.resource.data.year is int &&
+                    cheerId == string(request.resource.data.year) + '_' + uid() &&
+                    request.resource.data.get('fromName', '') is string &&
+                    request.resource.data.get('fromName', '').size() <= 100 &&
+                    request.resource.data.at is string &&
+                    get(/databases/$(database)/documents/friendships/$(uid() < userId ? uid() + '_' + userId : userId + '_' + uid())).data.status == 'ACTIVE';
+      allow update: if false;
+      // Take your tap back; the owner can clear theirs when the account goes
+      allow delete: if signedIn() && (resource.data.from == uid() || uid() == userId);
+    }
+
     // Private profile bits (full date of birth): only the owner.
     match /users/{userId}/private/{docId} {
       allow read, write: if signedIn() && uid() == userId;

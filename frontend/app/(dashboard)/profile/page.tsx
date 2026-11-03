@@ -50,6 +50,10 @@ import { Coins } from "@/components/fun/coin"
 import { FramedAvatar } from "@/components/fun/framed-avatar"
 import { useBadges, useFriendships, useWallet } from "@/hooks/use-fun"
 import { BirthdayDialog, MoodPicker } from "./_components/profile-fun"
+import { PartyPopperIcon } from "@/components/fun/party-popper"
+import { useMyBirthdayCheers } from "@/hooks/use-fun"
+import { useNow } from "@/hooks/use-now"
+import { nextBirthday } from "@/lib/fun/birthday"
 
 // Camera/crop dialog (~500 lines + canvas code) loads only when first opened
 const PhotoUploadDialog = dynamic(
@@ -84,6 +88,10 @@ export default function ProfilePage() {
   const { data: friendships } = useFriendships()
   const loveBonds = friendships.filter((f) => f.status === "ACTIVE" && f.bond?.type === "love").length
   const badges = useBadges(user?.uid, loveBonds)
+  // Friends excited for your coming birthday (only you see the count)
+  const now = useNow(0)
+  const cheerYear = user?.birthday && now ? nextBirthday(user.birthday, new Date(now)).getFullYear() : undefined
+  const cheers = useMyBirthdayCheers(cheerYear)
 
   // From a "badge unlocked" notification: bring the badges into view
   React.useEffect(() => {
@@ -199,7 +207,18 @@ export default function ProfilePage() {
             <MenuRow
               icon={BirthdayCakeIcon}
               label="Birthday"
-              hint={user.birthday ? "Shown to friends" : "Hidden"}
+              hint={
+                user.birthday && cheers && cheers.length > 0 ? (
+                  <span className="inline-flex items-center gap-1 font-medium text-amber-600 dark:text-amber-400">
+                    <PartyPopperIcon active className="size-4" />
+                    {cheers.length} excited
+                  </span>
+                ) : user.birthday ? (
+                  "Shown to friends"
+                ) : (
+                  "Hidden"
+                )
+              }
               render={<button type="button" onClick={() => setIsBirthdayOpen(true)} />}
             />
           </Card>
@@ -307,7 +326,7 @@ export default function ProfilePage() {
       <MyIdDialog user={user} open={isQrOpen} onOpenChange={setIsQrOpen} />
       <QrScannerDialog open={isScanning} onOpenChange={setIsScanning} />
       <LogoutDialog open={isLogoutOpen} onOpenChange={setIsLogoutOpen} />
-      <BirthdayDialog open={isBirthdayOpen} onOpenChange={setIsBirthdayOpen} />
+      <BirthdayDialog open={isBirthdayOpen} onOpenChange={setIsBirthdayOpen} cheers={cheers} />
     </>
   )
 }
@@ -376,7 +395,7 @@ function MenuRow({
   icon: React.ComponentProps<typeof HugeiconsIcon>["icon"]
   label: string
   value?: number
-  hint?: string
+  hint?: React.ReactNode
   render: React.ComponentProps<typeof Item>["render"]
 }) {
   return (

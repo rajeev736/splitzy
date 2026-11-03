@@ -163,3 +163,37 @@ export function useMyPlayed() {
     )
   )
 }
+
+/** Whether you've tapped "excited" for a friend's birthday this year (live). */
+export function useMyBirthdayCheer(friendUid: string | undefined, year: number | undefined) {
+  const { user } = useSession()
+  const me = user?.uid
+  const key = me && friendUid && year ? `cheer:${friendUid}:${year}:${me}` : null
+  return useLive<boolean>(key, (set) =>
+    onSnapshot(
+      doc(db!, "users", friendUid!, "cheers", `${year}_${me}`),
+      (snap) => set(snap.exists()),
+      () => set(false)
+    )
+  )
+}
+
+export interface BirthdayCheer {
+  from: string
+  fromName?: string
+  year: number
+  at: string
+}
+
+/** Friends excited for your next birthday (only you can read these). */
+export function useMyBirthdayCheers(year: number | undefined) {
+  const { user } = useSession()
+  const uid = user?.uid
+  return useLive<BirthdayCheer[]>(uid && year ? `cheers:${uid}:${year}` : null, (set) =>
+    onSnapshot(
+      query(collection(db!, "users", uid!, "cheers"), where("year", "==", year!), limit(500)),
+      (snap) => set(snap.docs.map((d) => d.data() as BirthdayCheer).sort((a, b) => b.at.localeCompare(a.at))),
+      () => set([])
+    )
+  )
+}

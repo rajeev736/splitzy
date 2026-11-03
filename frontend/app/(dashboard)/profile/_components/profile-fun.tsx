@@ -5,6 +5,9 @@ import { SmileIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { MoodFace } from "@/components/fun/mood-face"
+import { PartyPopperIcon } from "@/components/fun/party-popper"
+import { UserAvatar } from "@/components/shared/user-avatar"
+import type { BirthdayCheer } from "@/hooks/use-fun"
 import { useSession } from "@/components/providers/session-provider"
 import { BottomSheet } from "@/components/shared/bottom-sheet"
 import { Button } from "@/components/ui/button"
@@ -98,7 +101,16 @@ export function MoodPicker({ mood }: { mood?: string }) {
 }
 
 /** Date of birth (kept private) and whether friends see the day. */
-export function BirthdayDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function BirthdayDialog({
+  open,
+  onOpenChange,
+  cheers,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** Friends excited for your coming birthday. */
+  cheers?: BirthdayCheer[]
+}) {
   const { user } = useSession()
   const save = useSaveBirthday()
   const [loaded, setLoaded] = React.useState<{ dob: string; show: boolean } | null>(null)
@@ -141,6 +153,23 @@ export function BirthdayDialog({ open, onOpenChange }: { open: boolean; onOpenCh
               <FieldLabel htmlFor="dob">Date of birth</FieldLabel>
               <Input id="dob" type="date" max={new Date().toISOString().slice(0, 10)} value={dob} onChange={(e) => setDob(e.target.value)} className="h-10" />
             </Field>
+            {cheers && cheers.length > 0 && (
+              <div className="flex flex-col gap-2 rounded-lg bg-amber-50/70 p-3 dark:bg-amber-500/10">
+                <div className="flex items-center gap-1.5 text-sm font-semibold">
+                  <PartyPopperIcon active className="size-4.5" />
+                  {cheers.length} {cheers.length === 1 ? "friend is" : "friends are"} excited for your birthday
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {cheers.slice(0, 12).map((c) => (
+                    <span key={c.from} className="inline-flex items-center gap-1.5 rounded-full bg-background py-0.5 pr-2.5 pl-0.5 text-xs">
+                      <UserAvatar uid={c.from} name={c.fromName ?? "Friend"} size="xs" />
+                      {(c.fromName ?? "Friend").split(" ")[0]}
+                    </span>
+                  ))}
+                  {cheers.length > 12 && <span className="self-center text-xs text-muted-foreground">+{cheers.length - 12} more</span>}
+                </div>
+              </div>
+            )}
             <Field orientation="horizontal" className="items-center justify-between">
               <div>
                 <FieldLabel htmlFor="show-birthday">Show to friends</FieldLabel>
