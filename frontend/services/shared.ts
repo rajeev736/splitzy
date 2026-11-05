@@ -2,6 +2,7 @@ import { doc, getDoc, setDoc, updateDoc, type Firestore } from "firebase/firesto
 
 import { db, isFirebaseConfigured } from "@/lib/firebase/config"
 import { AppError } from "@/lib/errors"
+import { pushNotification } from "@/lib/push"
 import type { AppNotification, Expense, Group, UserProfile } from "@/lib/types"
 
 /** Firestore instance, or `null` when Firebase is not configured (offline/demo mode). */
@@ -42,6 +43,8 @@ export async function sendNotification(input: NotificationInput) {
     read: false,
     createdAt: input.createdAt ?? nowIso(),
   })
+  // To their phone too, even if JoySplit is closed there (best effort)
+  void pushNotification(id)
   const actorId = input.data?.actorId
   if (typeof actorId === "string") await touchFriendship(actorId, input.userId)
 }

@@ -4,12 +4,14 @@
 self.addEventListener("install", () => self.skipWaiting())
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()))
 
-// Web Push (for when the app is closed) — payload: { title, body, url, tag }
+// Web Push (for when the app is closed) — { title, body, url, tag }, sent by
+// /api/push through Firebase Cloud Messaging (which wraps it in { data })
 self.addEventListener("push", (event) => {
   if (!event.data) return
   let data = {}
   try {
-    data = event.data.json()
+    const payload = event.data.json()
+    data = payload.data && payload.data.title ? payload.data : payload.notification || payload
   } catch {
     data = { title: "JoySplit", body: event.data.text() }
   }

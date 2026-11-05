@@ -15,6 +15,7 @@ import { burstFromNotification, endBurst, playBurst, useBurst } from "@/lib/fun/
 import { systemNotificationPermission } from "@/lib/system-notifications"
 import { GAMES } from "@/lib/games"
 import { formatPaise, payeeOf } from "@/lib/money"
+import { registerPush } from "@/lib/push"
 import { collectStake, stakePayout } from "@/services/challenges"
 import {
   awardEarnedBadges,
@@ -62,6 +63,12 @@ export function FunSync() {
   // Starting coins the first time
   React.useEffect(() => {
     if (uid) ensureWallet(uid).catch((e) => console.warn("Wallet:", e))
+  }, [uid])
+
+  // This phone gets pushes even while JoySplit is closed (once notifications are allowed);
+  // re-registered each visit since push tokens can change
+  React.useEffect(() => {
+    if (uid) void registerPush(uid)
   }, [uid])
 
   // Badges earned (Swift Payer, Game Champ) and not recorded yet

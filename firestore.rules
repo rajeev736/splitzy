@@ -368,6 +368,17 @@ service cloud.firestore {
       allow delete: if signedIn() && (resource.data.from == uid() || uid() == userId);
     }
 
+    // This phone's push token (Web Push via Firebase Cloud Messaging): only the
+    // owner writes it; the server reads it to deliver notifications.
+    match /users/{userId}/pushTokens/{tokenId} {
+      allow read, delete: if signedIn() && uid() == userId;
+      allow create, update: if signedIn() && uid() == userId &&
+                            request.resource.data.keys().hasOnly(['token', 'platform', 'updatedAt']) &&
+                            request.resource.data.token == tokenId &&
+                            request.resource.data.token.size() <= 600 &&
+                            request.resource.data.get('platform', '') in ['android', 'ios', 'web'];
+    }
+
     // Private profile bits (full date of birth): only the owner.
     match /users/{userId}/private/{docId} {
       allow read, write: if signedIn() && uid() == userId;

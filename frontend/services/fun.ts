@@ -35,6 +35,7 @@ import {
   type BadgeId,
 } from "@/lib/fun/catalog"
 import type { Challenge, CoinTx, Expense, Friendship, Moment, UserProfile, Wallet } from "@/lib/types"
+import { pushNotification } from "@/lib/push"
 import { friendshipId, getDb, nowIso, sendNotification } from "./shared"
 
 /*
@@ -443,7 +444,9 @@ export async function notifyBadgeUnlocked(user: UserProfile, badge: BadgeId, tie
     data: { actorId: user.uid, actorName: user.displayName, badge, tier },
     read: false,
     createdAt: nowIso(),
-  }).catch(() => {})
+  })
+    .then(() => pushNotification(`badge_${user.uid}_${badge}_${tier}`))
+    .catch(() => {})
 }
 
 /* ── Milestones ───────────────────────────────────────────────────────── */
@@ -506,7 +509,9 @@ export async function notifyFrameUnlocked(user: UserProfile, frameId: FrameId) {
     data: { actorId: user.uid, actorName: user.displayName, frame: frameId },
     read: false,
     createdAt: nowIso(),
-  }).catch(() => {})
+  })
+    .then(() => pushNotification(id))
+    .catch(() => {})
 }
 
 /* ── Birthday excitement ──────────────────────────────────────────────── */

@@ -5,7 +5,9 @@ import { Notification01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
 
+import { useSession } from "@/components/providers/session-provider"
 import { Button } from "@/components/ui/button"
+import { registerPush } from "@/lib/push"
 import { enableSystemNotifications, systemNotificationPermission } from "@/lib/system-notifications"
 import { cn } from "@/lib/utils"
 
@@ -14,6 +16,7 @@ const noopSubscribe = () => () => {}
 
 /** Browser permission for notification-bar alerts ("unsupported" during SSR / old browsers). */
 function useNotificationPermission() {
+  const { user } = useSession()
   const initial = React.useSyncExternalStore(noopSubscribe, systemNotificationPermission, () => "unsupported" as const)
   const [asked, setAsked] = React.useState<NotificationPermission | null>(null)
   const permission = asked ?? initial
@@ -21,6 +24,7 @@ function useNotificationPermission() {
   const enable = async () => {
     const granted = await enableSystemNotifications()
     setAsked(systemNotificationPermission() as NotificationPermission)
+    if (granted && user) void registerPush(user.uid)
     if (granted) toast.success("Notifications on — you'll see JoySplit alerts in your notification bar")
     else toast.info("Notifications are blocked. You can allow them from your browser's site settings.")
   }
