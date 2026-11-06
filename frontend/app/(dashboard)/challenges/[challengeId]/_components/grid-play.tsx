@@ -10,6 +10,7 @@ import {
   GOLD_DIGS,
   GOLD_TO_WIN,
   GRID_CELLS,
+  gridMaxDigs,
   howToWin,
   isForFun,
   MINEFIELD_BOMBS,
@@ -35,10 +36,12 @@ export function GridPlay({ challenge, uid }: { challenge: Challenge; uid: string
 
   // What each dug tile hid. Tiles dug in an earlier visit are read back once.
   const [hits, setHits] = React.useState<Record<number, boolean>>({})
-  const [pending, setPending] = React.useState<number | null>(null)
+  /** Tiles tapped, opening one after another in tap order (the head is being dug). */
+  const [queue, setQueue] = React.useState<number[]>([])
   const dugKey = dug.join(",")
   React.useEffect(() => {
-    const unknown = dugKey ? dugKey.split(",").map(Number).filter((c) => !(c in hits)) : []
+    // Tiles from an earlier visit; the ones being dug right now read themselves
+    const unknown = dugKey ? dugKey.split(",").map(Number).filter((c) => !(c in hits) && !queue.includes(c)) : []
     if (unknown.length === 0) return
     let cancelled = false
     Promise.all(unknown.map(async (c) => [c, await readTile(challenge.id, c)] as const))
@@ -65,17 +68,51 @@ export function GridPlay({ challenge, uid }: { challenge: Challenge; uid: string
     submit.mutate({ challenge, move: dug }, { onError: () => (submitted.current = false) })
   }, [over, dug, challenge, submit])
 
-  const onDig = (cell: number) => {
-    if (over || pending !== null) return
-    // One dig at a time, so the order recorded is the order you tapped
-    setPending(cell)
-    dig.mutate(
-      { challenge, cell },
-      {
-        onSuccess: (hit) => setHits((h) => ({ ...h, [cell]: hit })),
-        onSettled: () => setPending(null),
+  // Taps never get lost: each one joins a queue, and tiles open one at a time
+  // in the order tapped (that's the order recorded). Once the game is decided
+  // — 3rd bomb, every safe tile, 2nd coin, last dig — the rest are dropped.
+  const latest = React.useRef({ challenge, hits })
+  React.useEffect(() => {
+    latest.current = { challenge, hits }
+  })
+  /** Source of truth for the queue (the state copy above is for drawing it). */
+  const pendingRef = React.useRef<number[]>([])
+  const running = React.useRef(false)
+  const setPending = (next: number[]) => {
+    pendingRef.current = next
+    setQueue(next)
+  }
+
+  const run = React.useCallback(async () => {
+    if (running.current) return
+    running.current = true
+    const known: Record<number, boolean> = { ...latest.current.hits }
+    const done: number[] = [...(latest.current.challenge.progress?.[uid] ?? [])]
+    try {
+      while (pendingRef.current.length > 0) {
+        const cell = pendingRef.current[0]
+        const hit = await dig.mutateAsync({ challenge: latest.current.challenge, cell })
+        known[cell] = hit
+        if (!done.includes(cell)) done.push(cell)
+        setHits((h) => ({ ...h, [cell]: hit }))
+        const decided = scoreGrid(game, done.filter((c) => known[c]), done).over
+        setPending(decided ? [] : pendingRef.current.slice(1))
       }
-    )
+    } catch {
+      // The error is shown by the mutation; stop here and let them tap again
+      setPending([])
+    } finally {
+      running.current = false
+    }
+  }, [dig, game, uid])
+
+  const onDig = (cell: number) => {
+    const waiting = pendingRef.current
+    if (over || cell in hits || waiting.includes(cell)) return
+    const digsLeft = gridMaxDigs(game) - dug.length - waiting.filter((c) => !dug.includes(c)).length
+    if (digsLeft <= 0) return
+    setPending([...waiting, cell])
+    void run()
   }
 
   const stats =
@@ -118,9 +155,9 @@ export function GridPlay({ challenge, uid }: { challenge: Challenge; uid: string
           game={game}
           mode="play"
           opened={opened}
-          pending={pending}
+          pending={queue}
           onDig={onDig}
-          disabled={over || submit.isPending || !allKnown}
+          disabled={over || submit.isPending}
         />
 
         {over ? (

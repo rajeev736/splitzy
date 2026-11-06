@@ -52,6 +52,51 @@ export interface CreateChallengeInput {
   stake?: number
 }
 
+const isDenied = (e: unknown) => (e as { code?: string })?.code === "permission-denied"
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * Game reads that depend on a move you just made (a tile, a hint, the host's
+ * round): the screen can ask a moment before the server has the move, and the
+ * rules then refuse. Wait a little and ask again instead of failing.
+ */
+async function readWhenAllowed<T>(read: () => Promise<T>, tries = 4): Promise<T> {
+  for (let i = 0; ; i++) {
+    try {
+      return await read()
+    } catch (e) {
+      if (!isDenied(e) || i >= tries - 1) throw e
+      await pause(350 * (i + 1))
+    }
+  }
+}
+
+/**
+ * A game move written to the challenge. If the rules refuse it, it may simply
+ * be in already (a double tap, or a retry after a lost reply): check the
+ * server, and only if it isn't there try once more after a moment (e.g. your
+ * stake was still on its way). Never shows a bare "permission" error.
+ */
+async function writeMove(challengeId: string, data: Record<string, unknown>, isIn: (c: Challenge) => boolean) {
+  const firestore = getDb()
+  if (!firestore) throw new AppError("Games need an internet connection")
+  const ref = doc(firestore, "challenges", challengeId)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await updateDoc(ref, data)
+      return
+    } catch (e) {
+      if (!isDenied(e)) throw e
+      const latest = await getDoc(ref).catch(() => null)
+      const server = latest?.exists() ? toChallenge(latest.data()) : null
+      if (server && isIn(server)) return
+      if (server && server.status !== "OPEN") throw new AppError("This game is already over")
+      if (attempt === 0) await pause(700)
+    }
+  }
+  throw new AppError("Couldn't save that move — check your connection and tap again")
+}
+
 export const newChallengeId = () => `chl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 
 /** Firestore → app shape (server timestamps become ISO strings). */
@@ -174,7 +219,9 @@ export async function digTile(user: UserProfile, challenge: Challenge, cell: num
   const firestore = getDb()
   if (!firestore) throw new AppError("Games need an internet connection")
   if (!dug.includes(cell)) {
-    await updateDoc(doc(firestore, "challenges", challenge.id), { [`progress.${user.uid}`]: arrayUnion(cell) })
+    await writeMove(challenge.id, { [`progress.${user.uid}`]: arrayUnion(cell) }, (c) =>
+      (c.progress?.[user.uid] ?? []).includes(cell)
+    )
   }
   return readTile(challenge.id, cell)
 }
@@ -183,7 +230,7 @@ export async function digTile(user: UserProfile, challenge: Challenge, cell: num
 export async function readTile(challengeId: string, cell: number): Promise<boolean> {
   const firestore = getDb()
   if (!firestore) throw new AppError("Games need an internet connection")
-  const snap = await getDoc(doc(firestore, "challenges", challengeId, "tiles", String(cell)))
+  const snap = await readWhenAllowed(() => getDoc(doc(firestore, "challenges", challengeId, "tiles", String(cell))))
   if (!snap.exists()) throw new AppError("This tile is missing")
   return snap.data().hit === true
 }
@@ -206,7 +253,10 @@ async function saveRoundPlays(user: UserProfile, challenge: Challenge, plays: st
   if (!firestore) throw new AppError("Games need an internet connection")
   const recorded = challenge.roundPlays?.[user.uid] ?? []
   if (plays.length > recorded.length) {
-    await updateDoc(doc(firestore, "challenges", challenge.id), { [`roundPlays.${user.uid}`]: plays })
+    await writeMove(challenge.id, { [`roundPlays.${user.uid}`]: plays }, (c) => {
+      const saved = c.roundPlays?.[user.uid] ?? []
+      return saved.length >= plays.length && plays.every((p, i) => saved[i] === p)
+    })
   }
 }
 
@@ -232,7 +282,9 @@ async function readHostRoundField(challengeId: string, round: number, field: "mo
   const firestore = getDb()
   if (!firestore) return null
   try {
-    const snap = await getDoc(doc(firestore, "challenges", challengeId, "hostRounds", String(round)))
+    const snap = await readWhenAllowed(() =>
+      getDoc(doc(firestore, "challenges", challengeId, "hostRounds", String(round)))
+    )
     return snap.exists() ? ((snap.data()[field] as unknown) ?? null) : null
   } catch {
     return null
@@ -294,7 +346,9 @@ export async function huntGuess(user: UserProfile, challenge: Challenge, guess: 
   const firestore = getDb()
   if (!firestore) throw new AppError("Games need an internet connection")
   if (!guessed.includes(guess)) {
-    await updateDoc(doc(firestore, "challenges", challenge.id), { [`progress.${user.uid}`]: arrayUnion(guess) })
+    await writeMove(challenge.id, { [`progress.${user.uid}`]: arrayUnion(guess) }, (c) =>
+      (c.progress?.[user.uid] ?? []).includes(guess)
+    )
   }
   return readHuntHint(challenge.id, guess)
 }
@@ -303,7 +357,7 @@ export async function huntGuess(user: UserProfile, challenge: Challenge, guess: 
 export async function readHuntHint(challengeId: string, guess: number): Promise<HuntHint> {
   const firestore = getDb()
   if (!firestore) throw new AppError("Games need an internet connection")
-  const snap = await getDoc(doc(firestore, "challenges", challengeId, "tiles", String(guess)))
+  const snap = await readWhenAllowed(() => getDoc(doc(firestore, "challenges", challengeId, "tiles", String(guess))))
   if (!snap.exists()) throw new AppError("This number is missing")
   return snap.data().hint as HuntHint
 }
@@ -319,7 +373,7 @@ export async function submitMove(user: UserProfile, challenge: Challenge, move: 
   const updated: Challenge = { ...challenge, moves: { ...challenge.moves, [user.uid]: move } }
   if (!firestore) return updated
 
-  await updateDoc(doc(firestore, "challenges", challenge.id), { [`moves.${user.uid}`]: move })
+  await writeMove(challenge.id, { [`moves.${user.uid}`]: move }, (c) => c.moves?.[user.uid] !== undefined)
   if (allPlayed(updated)) return resolveChallenge(user, updated)
   return updated
 }
@@ -337,7 +391,8 @@ export async function resolveChallenge(user: UserProfile, challenge: Challenge):
 
   const firestore = getDb()
   if (!firestore) throw new AppError("Games need an internet connection")
-  const secretSnap = await getDoc(doc(firestore, "challenges", challenge.id, "secret", "value"))
+  // Readable once the server has everyone's move (which may be a moment behind this screen)
+  const secretSnap = await readWhenAllowed(() => getDoc(doc(firestore, "challenges", challenge.id, "secret", "value")))
   if (!secretSnap.exists()) throw new AppError("This game's secret is missing")
   const result = computeResult(challenge, secretSnap.data() as GameSecret)
 

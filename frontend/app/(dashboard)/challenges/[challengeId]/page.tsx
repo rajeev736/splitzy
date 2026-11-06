@@ -85,7 +85,8 @@ function ChallengeBody({ challenge, uid }: { challenge: Challenge; uid: string }
   React.useEffect(() => {
     if (challenge.status !== "OPEN" || !allPlayed(challenge) || triedResolve.current) return
     triedResolve.current = true
-    resolve.mutate(challenge)
+    // If it was too early (the last move still on its way), try again on the next update
+    resolve.mutate(challenge, { onError: () => window.setTimeout(() => (triedResolve.current = false), 2500) })
   }, [challenge, resolve])
 
   return (

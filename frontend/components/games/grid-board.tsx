@@ -33,13 +33,14 @@ export function GridBoard({
   onToggle?: (cell: number) => void
   /** Dug cells → whether they hid a bomb / gold. */
   opened?: Record<number, boolean>
-  /** The tile being dug right now. */
-  pending?: number | null
+  /** Tiles tapped and being dug (in order); they show a pulse until they open. */
+  pending?: number | number[] | null
   onDig?: (cell: number) => void
   cells?: number[]
   disabled?: boolean
 }) {
   const item = GRID_ITEM[game]
+  const digging = pending == null ? [] : Array.isArray(pending) ? pending : [pending]
   return (
     <div
       className="mx-auto grid w-full max-w-xs gap-1.5"
@@ -51,7 +52,7 @@ export function GridBoard({
         const hit = opened[cell]
         const isSelected = selected.includes(cell)
         const hidden = cells?.includes(cell)
-        const isPending = pending === cell
+        const isPending = digging.includes(cell)
 
         let face: React.ReactNode = null
         let tone = "bg-muted/60 hover:bg-muted"
@@ -75,7 +76,8 @@ export function GridBoard({
           tone = hidden ? "bg-muted/40 opacity-70" : "bg-card"
         }
 
-        const clickable = !disabled && (mode === "setup" || (mode === "play" && !isOpen && pending == null))
+        // Play: any closed tile can be tapped, even while others are still opening (they queue up)
+        const clickable = !disabled && (mode === "setup" || (mode === "play" && !isOpen && !isPending))
         return (
           <button
             key={cell}
