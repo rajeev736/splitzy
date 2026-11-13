@@ -27,7 +27,7 @@
           ".read": "auth != null",
           "$uid": {
             ".write": "auth != null && ($uid === auth.uid || root.child('rooms/' + $code + '/meta/hostId').val() === auth.uid)",
-            ".validate": "newData.hasChildren(['uid', 'name', 'seat', 'joinedAt', 'online', 'lastSeen']) && newData.child('uid').val() === $uid && newData.child('name').isString() && newData.child('name').val().length <= 60 && newData.child('seat').isNumber() && newData.child('seat').val() >= 0 && newData.child('seat').val() < 8 && newData.child('joinedAt').isNumber() && newData.child('online').isBoolean() && newData.child('lastSeen').isNumber() && (data.exists() || (root.child('rooms/' + $code + '/meta').exists() && root.child('rooms/' + $code + '/meta/status').val().matches(/^(lobby|countdown)$/) && root.child('rooms/' + $code + '/players').numChildren() < root.child('rooms/' + $code + '/meta/maxPlayers').val()))",
+            ".validate": "newData.hasChildren(['uid', 'name', 'seat', 'joinedAt', 'online', 'lastSeen']) && newData.child('uid').val() === $uid && newData.child('name').isString() && newData.child('name').val().length <= 60 && newData.child('seat').isNumber() && newData.child('seat').val() >= 0 && newData.child('seat').val() < 8 && newData.child('joinedAt').isNumber() && newData.child('online').isBoolean() && newData.child('lastSeen').isNumber() && (data.exists() || (root.child('rooms/' + $code + '/meta').exists() && root.child('rooms/' + $code + '/meta/status').val().matches(/^(lobby|countdown)$/) && newData.child('seat').val() < root.child('rooms/' + $code + '/meta/maxPlayers').val()))",
             "photo": { ".validate": "newData.isString() && newData.val().length <= 2000" },
             "left": { ".validate": "newData.isBoolean()" }
           }
