@@ -31,9 +31,12 @@ export const metadata: Metadata = {
     locale: "en_IN",
     images: [
       {
-        url: "/og.jpg",
+        // One small card for every page (WhatsApp skips previews over ~300 KB).
+        // Bump ?v= whenever the image changes, so apps fetch it again.
+        url: "/og.jpg?v=2",
         width: 1200,
-        height: 630,
+        height: 670,
+        type: "image/jpeg",
         alt: `${SITE.name} — ${SITE.tagline}`,
       },
     ],
@@ -42,7 +45,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: `${SITE.name} — ${SITE.tagline}`,
     description: SITE.description,
-    images: ["/og.jpg"],
+    images: [{ url: "/og.jpg?v=2", alt: `${SITE.name} — ${SITE.tagline}` }],
   },
   robots: { index: true, follow: true },
 }
