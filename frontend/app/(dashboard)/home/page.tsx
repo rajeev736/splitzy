@@ -37,15 +37,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import {
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemMedia,
-  ItemTitle,
-} from "@/components/ui/item"
+import { ItemGroup } from "@/components/ui/item"
 import { Separator } from "@/components/ui/separator"
 import {
   useExpenses,
@@ -191,29 +183,29 @@ export default function HomePage() {
             </Card>
 
             {/* PhonePe-style entry points: one tap per kind of split */}
-            <div className="grid grid-cols-4 divide-x overflow-hidden rounded-lg border bg-card">
+            <div className="grid grid-cols-4 gap-1 rounded-xl border border-border/70 bg-card p-1.5 shadow-[0_1px_2px_rgb(0_0_0/0.03)] dark:border-border">
               <QuickAction
                 icon={UserGroupIcon}
                 label="Group"
-                tone="bg-primary/12 text-primary"
+                tone="bg-primary/10 text-primary"
                 onClick={() => router.push("/expenses/new?tab=group")}
               />
               <QuickAction
                 icon={UserMultipleIcon}
                 label="Friend"
-                tone="bg-success/12 text-success"
+                tone="bg-primary/10 text-primary"
                 onClick={() => router.push("/expenses/new?tab=friend")}
               />
               <QuickAction
                 icon={Wallet01Icon}
                 label="Personal"
-                tone="bg-warning/12 text-warning"
+                tone="bg-primary/10 text-primary"
                 onClick={() => router.push("/expenses/new?tab=personal")}
               />
               <QuickAction
                 icon={QrCodeIcon}
                 label="My ID"
-                tone="bg-violet-500/12 text-violet-600 dark:text-violet-400"
+                tone="bg-primary/10 text-primary"
                 onClick={() => setShowIdModal(true)}
               />
             </div>
@@ -449,9 +441,9 @@ function QuickAction({
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col items-center justify-center gap-2 px-1 py-4 text-foreground transition-colors hover:bg-muted/60 active:bg-muted"
+      className="flex flex-col items-center justify-center gap-2 rounded-lg px-1 py-3 text-foreground transition-[background-color,transform] duration-150 hover:bg-muted/60 active:scale-[0.96] active:bg-muted"
     >
-      <span className={cn("flex size-10 items-center justify-center rounded-lg", tone)}>
+      <span className={cn("flex size-11 items-center justify-center rounded-xl", tone)}>
         <HugeiconsIcon icon={icon} className="size-5" strokeWidth={1.9} />
       </span>
       <span className="text-center text-xs leading-tight font-medium">{label}</span>
@@ -484,58 +476,67 @@ function FriendBalanceSection({
     <div className="flex flex-col gap-2">
       <div className="text-xs font-medium text-muted-foreground">{title}</div>
       {rows.length > 0 ? (
-        <ItemGroup className="-mx-2 gap-0.5">
+        <div className="-mx-2 flex flex-col">
           {rows.map(({ userId, name, photoURL, subtitle, upiId, netBalancePaise }) => (
-            <Item
+            // Line 1: who and how much (never overlapping); line 2: what to do about it
+            <div
               key={userId}
-              size="sm"
+              role="button"
+              tabIndex={0}
               onClick={() => onSelectPerson?.(userId)}
-              className="cursor-pointer flex-nowrap px-2 transition-colors hover:bg-muted/60"
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  onSelectPerson?.(userId)
+                }
+              }}
+              className="flex cursor-pointer flex-col gap-2.5 rounded-xl px-2 py-3 transition-colors outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50 active:bg-muted/70"
             >
-              <ItemMedia>
-                <UserAvatar uid={userId} src={photoURL} name={name} size="sm" />
-              </ItemMedia>
-              <ItemContent className="min-w-0 gap-0">
-                <ItemTitle className="text-sm font-medium">{name}</ItemTitle>
-                <ItemDescription className="font-mono text-[11px]">
-                  {subtitle}
-                </ItemDescription>
-              </ItemContent>
-              <ItemActions className="gap-2">
-                <span className="flex flex-col items-end gap-0.5">
+              <div className="flex min-w-0 items-center gap-3">
+                <UserAvatar uid={userId} src={photoURL} name={name} size="md" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold">{name}</div>
+                  <div className="truncate font-mono text-[11px] text-muted-foreground">{subtitle}</div>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-0.5">
                   <GameDiscountAmount
                     amountPaise={Math.abs(netBalancePaise)}
                     discount={gameDiscounts.byPerson.get(userId)}
                     now={gameDiscounts.now}
                     prefix={netBalancePaise > 0 ? "+" : "-"}
                     className={cn(
-                      "text-lg leading-tight font-bold tracking-tight",
+                      "text-base leading-tight font-bold tracking-tight tabular-nums",
                       netBalancePaise > 0 ? "text-success" : "text-destructive"
                     )}
                   />
                   <PaymentDisputeLine personId={userId} personName={name} />
-                </span>
-                {/* Someone owes you: challenge them to a game */}
-                <PaymentReceivedOr personId={userId} personName={name}>
-                {netBalancePaise > 0 && (
-                  <ChallengeButton person={{ uid: userId, name, photoURL }} owedPaise={netBalancePaise} />
-                )}
-                {/* Where you owe someone, settle right here instead of hunting for the expense */}
-                {netBalancePaise < 0 && (
-                  <div onClick={(e) => e.stopPropagation()}>
+                </div>
+              </div>
+              <div className="pl-[3.25rem]" onClick={(e) => e.stopPropagation()}>
+                {/* They reported paying you: Received? Yes / No; otherwise Challenge / Pay */}
+                <PaymentReceivedOr personId={userId} personName={name} className="w-full">
+                  {netBalancePaise > 0 && (
+                    <ChallengeButton
+                      className="w-full justify-center"
+                      person={{ uid: userId, name, photoURL }}
+                      owedPaise={netBalancePaise}
+                    />
+                  )}
+                  {netBalancePaise < 0 && (
                     <PayPersonButton
                       personId={userId}
                       personName={name}
                       personPhoto={photoURL}
                       personUpiId={upiId}
+                      className="w-full"
                     />
-                  </div>
-                )}
+                  )}
                 </PaymentReceivedOr>
-              </ItemActions>
-            </Item>
+              </div>
+            </div>
           ))}
-        </ItemGroup>
+        </div>
       ) : (
         <p className="py-1 text-xs text-muted-foreground">{emptyText}</p>
       )}
