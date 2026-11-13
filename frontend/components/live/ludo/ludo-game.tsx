@@ -85,11 +85,6 @@ function shownDice(state: LudoState): number | null {
   return "value" in last ? last.value : null
 }
 
-/** Pips take the colour of whoever the dice belongs to right now. */
-function diceColour(state: LudoState): string | undefined {
-  const owner = state.players[state.last?.by ?? state.turn]
-  return owner ? TOKEN_COLOURS[owner.colour] : undefined
-}
 
 function moveLabel(pos: number, dice: number) {
   if (pos < 0) return "Out of base"
@@ -315,6 +310,36 @@ export function LudoGame({
     const rp = id ? byId[id] : undefined
     if (!id || !lp || !rp) return <div key={colour} aria-hidden />
     const isTurn = state.phase !== "over" && state.turn === id
+    const canRoll = isTurn && id === uid && state.phase === "roll"
+    // Ludo King style: the dice sits next to whoever's turn it is; on yours, tap it to roll
+    const face = (
+      <LudoDice
+        value={isTurn ? shownDice(state) : null}
+        spin={isTurn && isRollEvent(state) ? state.seq : null}
+        colour={TOKEN_COLOURS[colour]}
+        className={cn("size-12 p-1.5", canRoll && "border-2")}
+      />
+    )
+    const dice = !isTurn ? null : canRoll ? (
+      <button
+        type="button"
+        onClick={roll}
+        disabled={rollLock === state.seq}
+        aria-label="Roll the dice"
+        className="relative shrink-0 rounded-xl transition-transform active:scale-90 disabled:opacity-60"
+        style={{ boxShadow: `0 0 0 3px ${TOKEN_COLOURS[colour]}` }}
+      >
+        {/* A pulse inviting the tap */}
+        <span
+          aria-hidden
+          className="absolute -inset-1 animate-ping rounded-xl border-2 [animation-duration:1.4s]"
+          style={{ borderColor: TOKEN_COLOURS[colour] }}
+        />
+        {face}
+      </button>
+    ) : (
+      face
+    )
     return (
       <PlayerChip
         key={colour}
@@ -324,6 +349,7 @@ export function LudoGame({
         isMe={id === uid}
         countdown={isTurn ? countdown : null}
         align={align}
+        dice={dice}
       />
     )
   }
@@ -350,32 +376,19 @@ export function LudoGame({
         {chip("yellow", "right")}
       </div>
 
-      {/* Dice & what to do */}
+      {/* What's happening (the dice itself sits on the player's chip) */}
       <Card size="sm" className="gap-0 py-0">
-        <div className="flex items-center gap-3 p-3">
-          <LudoDice
-            value={shownDice(state)}
-            spin={isRollEvent(state) ? state.seq : null}
-            colour={diceColour(state)}
-          />
-          <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-3 px-3 py-2.5">
+          <div className="min-w-0 flex-1 text-center">
             <p className="truncate text-sm font-semibold">{headline}</p>
             {caption && (
               <p className="truncate text-xs text-muted-foreground">
-                {caption}
+                {myTurn && state.phase === "roll"
+                  ? "Tap your dice to roll"
+                  : caption}
               </p>
             )}
           </div>
-          {myTurn && state.phase === "roll" && (
-            <Button
-              size="lg"
-              className="h-12 min-w-24"
-              onClick={roll}
-              disabled={rollLock === state.seq}
-            >
-              {rollLock === state.seq ? <Spinner /> : "Roll"}
-            </Button>
-          )}
         </div>
         {/* Also a tap target off the board — and the fallback if the auto-move didn't land */}
         {options.length > 0 && diceValue !== null && mine && (
@@ -422,6 +435,7 @@ function PlayerChip({
   isMe,
   countdown,
   align,
+  dice,
 }: {
   player: RoomPlayer
   ludo: LudoPlayer
@@ -430,6 +444,8 @@ function PlayerChip({
   /** 1 → 0 share of the decision time left, while a timer runs for them. */
   countdown: number | null
   align: "left" | "right"
+  /** The dice, shown on the chip of whoever's turn it is. */
+  dice?: React.ReactNode
 }) {
   const colour = TOKEN_COLOURS[ludo.colour]
   const home = homeCount(ludo)
@@ -445,7 +461,7 @@ function PlayerChip({
   return (
     <div
       className={cn(
-        "relative flex min-h-12 items-center gap-2 overflow-hidden rounded-lg border bg-card px-2 py-1.5 transition-[box-shadow,opacity] duration-200",
+        "relative flex min-h-16 items-center gap-2 rounded-lg border bg-card px-2 py-1.5 transition-[box-shadow,opacity] duration-200",
         align === "right" && "flex-row-reverse text-right",
         dim && "opacity-60"
       )}
@@ -480,6 +496,7 @@ function PlayerChip({
           {status}
         </p>
       </div>
+      {dice}
       {countdown !== null && (
         <span
           className={cn(

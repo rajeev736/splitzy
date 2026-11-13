@@ -259,7 +259,7 @@ export function ChessBoard({
         ref={boardRef}
         role="grid"
         aria-label="Chess board"
-        className="@container relative grid aspect-square w-full grid-cols-8 overflow-hidden rounded-lg border border-black/15 shadow-sm select-none dark:border-white/10"
+        className="@container relative grid aspect-square w-full grid-cols-[repeat(8,minmax(0,1fr))] grid-rows-[repeat(8,minmax(0,1fr))] overflow-hidden rounded-lg border border-black/15 shadow-sm select-none dark:border-white/10"
         style={{ touchAction: "manipulation" }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -290,7 +290,8 @@ export function ChessBoard({
               role="gridcell"
               aria-label={`${sq}${piece ? `, ${piece.color === "w" ? "white" : "black"} ${PIECE_NAME[piece.type]}` : ""}`}
               className={cn(
-                "relative flex items-center justify-center",
+                // min-w/h-0 + overflow: a piece glyph can never stretch its square
+                "relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden",
                 light ? "bg-[#e9edf2]" : "bg-[#8ea4b1]",
                 own && "cursor-grab"
               )}

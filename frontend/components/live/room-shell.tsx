@@ -25,7 +25,12 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import { Spinner } from "@/components/ui/spinner"
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
 import { useLiveRoom, type LiveRoom } from "@/hooks/use-live-room"
@@ -65,13 +70,23 @@ export function RoomShell({ code }: { code: string }) {
   const router = useRouter()
   const { user } = useSession()
   const room = useLiveRoom(code)
-  const { meta, players, me, isReferee, loaded, notFound, now, serverNow } = room
+  const { meta, players, me, isReferee, loaded, notFound, now, serverNow } =
+    room
 
   // Take a seat (or come back to yours) as soon as the room is known
   const [join, setJoin] = React.useState<"idle" | JoinOutcome>("idle")
   const joining = React.useRef(false)
   React.useEffect(() => {
-    if (!loaded || notFound || !user || !meta || me || join !== "idle" || joining.current) return
+    if (
+      !loaded ||
+      notFound ||
+      !user ||
+      !meta ||
+      me ||
+      join !== "idle" ||
+      joining.current
+    )
+      return
     joining.current = true
     joinRoom(user, code)
       .then(setJoin)
@@ -90,7 +105,12 @@ export function RoomShell({ code }: { code: string }) {
       void startCountdown(code, serverNow()).catch(() => undefined)
     } else if (meta.status === "countdown" && active < meta.maxPlayers) {
       void cancelCountdown(code).catch(() => undefined)
-    } else if (meta.status === "countdown" && meta.startsAt && now >= meta.startsAt && !starting.current) {
+    } else if (
+      meta.status === "countdown" &&
+      meta.startsAt &&
+      now >= meta.startsAt &&
+      !starting.current
+    ) {
       starting.current = true
       startGame(code, meta, players).catch(() => {
         starting.current = false
@@ -110,7 +130,12 @@ export function RoomShell({ code }: { code: string }) {
     return <FullScreenLoader label="Opening the room…" />
   }
   if (notFound || !meta || join === "not_found") {
-    return <Blocked title="Room not found" text="This room may have ended and been cleared, or the code is wrong." />
+    return (
+      <Blocked
+        title="Room not found"
+        text="This room may have ended and been cleared, or the code is wrong."
+      />
+    )
   }
   if (!me) {
     if (join === "full") {
@@ -122,15 +147,31 @@ export function RoomShell({ code }: { code: string }) {
       )
     }
     if (join === "started") {
-      return <Blocked title="Already playing" text="This game started without you. Ask for a rematch when it's over!" />
+      return (
+        <Blocked
+          title="Already playing"
+          text="This game started without you. Ask for a rematch when it's over!"
+        />
+      )
     }
     // Ended: anyone with the link can see how it went
   }
 
   if (meta.status === "ended") return <EndedView room={room} meta={meta} />
-  if (!me) return <Blocked title="Already playing" text="This game started without you." />
-  if (meta.status === "playing") return <PlayingView room={room} meta={meta} me={me} />
-  return <LobbyView room={room} meta={meta} me={me} onLeft={() => router.replace(GAMES_TAB)} />
+  if (!me)
+    return (
+      <Blocked title="Already playing" text="This game started without you." />
+    )
+  if (meta.status === "playing")
+    return <PlayingView room={room} meta={meta} me={me} />
+  return (
+    <LobbyView
+      room={room}
+      meta={meta}
+      me={me}
+      onLeft={() => router.replace(GAMES_TAB)}
+    />
+  )
 }
 
 /* ── Lobby ───────────────────────────────────────────────────────────── */
@@ -155,7 +196,10 @@ function LobbyView({
   const [startPending, setStartPending] = React.useState(false)
   const active = players.filter((p) => !p.left)
   const canStart = isHost && active.length >= meta.minPlayers
-  const countdown = meta.status === "countdown" && meta.startsAt ? Math.max(0, Math.ceil((meta.startsAt - now) / 1000)) : null
+  const countdown =
+    meta.status === "countdown" && meta.startsAt
+      ? Math.max(0, Math.ceil((meta.startsAt - now) / 1000))
+      : null
 
   const leave = async () => {
     setLeaving(true)
@@ -180,7 +224,11 @@ function LobbyView({
     const link = roomLink(code)
     if (typeof navigator.share === "function") {
       navigator
-        .share({ title: `Play ${game.name} on JoySplit`, text: `Join my ${game.name} room — code ${code}`, url: link })
+        .share({
+          title: `Play ${game.name} on JoySplit`,
+          text: `Join my ${game.name} room — code ${code}`,
+          url: link,
+        })
         .catch(() => undefined)
     } else void copy(link, "Link copied!")
   }
@@ -193,7 +241,12 @@ function LobbyView({
         showBack
         onBack={() => setConfirmLeave(true)}
         rightAction={
-          <Button variant="ghost" size="icon" aria-label="Leave room" onClick={() => setConfirmLeave(true)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Leave room"
+            onClick={() => setConfirmLeave(true)}
+          >
             <HugeiconsIcon icon={Logout01Icon} className="size-5" />
           </Button>
         }
@@ -203,7 +256,13 @@ function LobbyView({
         {/* Code + share: the way friends get in */}
         <Card className="gap-0 py-0">
           <div className="flex flex-col items-center gap-3 p-5 text-center">
-            <span className={cn("flex size-14 items-center justify-center rounded-xl text-3xl", game.tone)} aria-hidden>
+            <span
+              className={cn(
+                "flex size-14 items-center justify-center rounded-xl text-3xl",
+                game.tone
+              )}
+              aria-hidden
+            >
               {game.emoji}
             </span>
             <div>
@@ -218,8 +277,15 @@ function LobbyView({
               </button>
             </div>
             <div className="grid w-full grid-cols-3 gap-2">
-              <Button variant="outline" size="sm" onClick={() => copy(roomLink(code), "Link copied!")}>
-                <HugeiconsIcon icon={copied ? Tick02Icon : Copy01Icon} data-icon="inline-start" />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => copy(roomLink(code), "Link copied!")}
+              >
+                <HugeiconsIcon
+                  icon={copied ? Tick02Icon : Copy01Icon}
+                  data-icon="inline-start"
+                />
                 Link
               </Button>
               <Button variant="outline" size="sm" onClick={share}>
@@ -244,14 +310,23 @@ function LobbyView({
               </span>
             </h2>
             {meta.minPlayers > active.length && (
-              <span className="text-xs text-muted-foreground">Need {meta.minPlayers - active.length} more</span>
+              <span className="text-xs text-muted-foreground">
+                Need {meta.minPlayers - active.length} more
+              </span>
             )}
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {Array.from({ length: meta.maxPlayers }, (_, seat) => {
               const p = players.find((x) => x.seat === seat && !x.left)
               return p ? (
-                <Seat key={seat} player={p} isYou={p.uid === uid} isHost={p.uid === meta.hostId} canKick={isHost && p.uid !== uid} code={code} />
+                <Seat
+                  key={seat}
+                  player={p}
+                  isYou={p.uid === uid}
+                  isHost={p.uid === meta.hostId}
+                  canKick={isHost && p.uid !== uid}
+                  code={code}
+                />
               ) : (
                 <div
                   key={seat}
@@ -270,9 +345,13 @@ function LobbyView({
           <div className="flex flex-wrap gap-1.5">
             {game.options.map((o) => {
               const v = meta.options[o.key]
-              const label = o.choices.find((c) => c.value === v)?.label ?? String(v)
+              const label =
+                o.choices.find((c) => c.value === v)?.label ?? String(v)
               return (
-                <span key={o.key} className="rounded-md border bg-card px-2 py-1 text-xs">
+                <span
+                  key={o.key}
+                  className="rounded-md border bg-card px-2 py-1 text-xs"
+                >
                   <span className="text-muted-foreground">{o.label}: </span>
                   <span className="font-medium">{label}</span>
                 </span>
@@ -292,19 +371,38 @@ function LobbyView({
           {countdown !== null ? (
             <>
               <p className="text-center text-sm font-medium">
-                Everyone&apos;s here — starting in <span className="tabular-nums text-primary">{countdown}s</span>
+                Everyone&apos;s here — starting in{" "}
+                <span className="text-primary tabular-nums">{countdown}s</span>
               </p>
               {isHost && (
-                <Button size="lg" className="h-11 w-full" onClick={start} disabled={startPending}>
-                  {startPending ? <Spinner /> : <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />}
+                <Button
+                  size="lg"
+                  className="h-11 w-full"
+                  onClick={start}
+                  disabled={startPending}
+                >
+                  {startPending ? (
+                    <Spinner />
+                  ) : (
+                    <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />
+                  )}
                   Start now
                 </Button>
               )}
             </>
           ) : isHost ? (
             <>
-              <Button size="lg" className="h-11 w-full" onClick={start} disabled={!canStart || startPending}>
-                {startPending ? <Spinner /> : <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />}
+              <Button
+                size="lg"
+                className="h-11 w-full"
+                onClick={start}
+                disabled={!canStart || startPending}
+              >
+                {startPending ? (
+                  <Spinner />
+                ) : (
+                  <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />
+                )}
                 {canStart
                   ? active.length < meta.maxPlayers
                     ? `Start with ${active.length} players`
@@ -331,7 +429,11 @@ function LobbyView({
         open={confirmLeave}
         onOpenChange={setConfirmLeave}
         title="Leave the room?"
-        description={isHost && active.length > 1 ? "The next player becomes the host." : undefined}
+        description={
+          isHost && active.length > 1
+            ? "The next player becomes the host."
+            : undefined
+        }
         confirmLabel="Leave"
         isPending={leaving}
         onConfirm={leave}
@@ -358,7 +460,12 @@ function Seat({
   return (
     <div className="relative flex min-h-20 flex-col items-center justify-center gap-1 rounded-lg border bg-card px-2 py-3">
       <span className="relative">
-        <UserAvatar src={player.photo} name={player.name} size="sm" className="size-9" />
+        <UserAvatar
+          src={player.photo}
+          name={player.name}
+          size="sm"
+          className="size-9"
+        />
         <span
           className={cn(
             "absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-card",
@@ -368,14 +475,26 @@ function Seat({
         />
       </span>
       <span className="flex max-w-full items-center gap-1 text-xs font-medium">
-        {isHost && <HugeiconsIcon icon={CrownIcon} className="size-3.5 shrink-0 text-warning" aria-label="Host" />}
-        <span className="truncate">{isYou ? "You" : player.name.split(" ")[0]}</span>
+        {isHost && (
+          <HugeiconsIcon
+            icon={CrownIcon}
+            className="size-3.5 shrink-0 text-warning"
+            aria-label="Host"
+          />
+        )}
+        <span className="truncate">
+          {isYou ? "You" : player.name.split(" ")[0]}
+        </span>
       </span>
       {canKick && (
         <button
           type="button"
           aria-label={`Remove ${player.name}`}
-          onClick={() => void kickPlayer(code, player.uid).catch(() => toast.error("Couldn't remove them"))}
+          onClick={() =>
+            void kickPlayer(code, player.uid).catch(() =>
+              toast.error("Couldn't remove them")
+            )
+          }
           className="absolute top-1 right-1 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
@@ -387,11 +506,33 @@ function Seat({
 
 /* ── Playing ─────────────────────────────────────────────────────────── */
 
-function PlayingView({ room, meta, me }: { room: LiveRoom; meta: RoomMeta; me: RoomPlayer }) {
+function PlayingView({
+  room,
+  meta,
+  me,
+}: {
+  room: LiveRoom
+  meta: RoomMeta
+  me: RoomPlayer
+}) {
   const router = useRouter()
   const { code, players, uid, isReferee, now, serverNow, voice } = room
   const game = LIVE_GAMES[meta.game]
   const [stickers, setStickers] = React.useState(false)
+  // While someone types (chat / guesses) the phone keyboard is up: the dock steps aside
+  const [typing, setTyping] = React.useState(false)
+  React.useEffect(() => {
+    const isField = (t: EventTarget | null) =>
+      t instanceof HTMLElement && t.matches("input, textarea")
+    const onIn = (e: FocusEvent) => isField(e.target) && setTyping(true)
+    const onOut = (e: FocusEvent) => isField(e.target) && setTyping(false)
+    document.addEventListener("focusin", onIn)
+    document.addEventListener("focusout", onOut)
+    return () => {
+      document.removeEventListener("focusin", onIn)
+      document.removeEventListener("focusout", onOut)
+    }
+  }, [])
   const [chat, setChat] = React.useState(false)
   const [confirmLeave, setConfirmLeave] = React.useState(false)
   const [leaving, setLeaving] = React.useState(false)
@@ -416,13 +557,24 @@ function PlayingView({ room, meta, me }: { room: LiveRoom; meta: RoomMeta; me: R
         showBack
         onBack={() => setConfirmLeave(true)}
         rightAction={
-          <Button variant="ghost" size="icon" aria-label="Leave game" onClick={() => setConfirmLeave(true)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Leave game"
+            onClick={() => setConfirmLeave(true)}
+          >
             <HugeiconsIcon icon={Logout01Icon} className="size-5" />
           </Button>
         }
       />
       <ReactionsOverlay code={code} />
-      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-2 pt-2 pb-28 sm:px-6 sm:pt-4">
+      <div
+        className={cn(
+          "mx-auto flex w-full max-w-3xl flex-1 flex-col px-2 pt-2 sm:px-6 sm:pt-4",
+          // Room under the dock, which grows when the sticker row is open
+          typing ? "pb-4" : stickers ? "pb-44" : "pb-28"
+        )}
+      >
         {me.left ? (
           <Card>
             <CardContent className="py-10 text-center text-sm text-muted-foreground">
@@ -430,11 +582,25 @@ function PlayingView({ room, meta, me }: { room: LiveRoom; meta: RoomMeta; me: R
             </CardContent>
           </Card>
         ) : null}
-        <GameView code={code} meta={meta} players={players} uid={uid} me={me} isReferee={isReferee} now={now} serverNow={serverNow} />
+        <GameView
+          code={code}
+          meta={meta}
+          players={players}
+          uid={uid}
+          me={me}
+          isReferee={isReferee}
+          now={now}
+          serverNow={serverNow}
+        />
       </div>
 
       {/* Dock: voice, stickers, chat */}
-      <div className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur-sm">
+      <div
+        className={cn(
+          "pb-safe fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur-sm",
+          typing && "hidden md:block"
+        )}
+      >
         {stickers && (
           <div className="mx-auto max-w-3xl border-b px-3">
             <StickerBar code={code} />
@@ -452,7 +618,12 @@ function PlayingView({ room, meta, me }: { room: LiveRoom; meta: RoomMeta; me: R
             Stickers
           </Button>
           {!hasOwnChat && (
-            <Button variant="outline" size="sm" className="ml-auto" onClick={() => setChat(true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto"
+              onClick={() => setChat(true)}
+            >
               <HugeiconsIcon icon={ChatIcon} data-icon="inline-start" />
               Chat
             </Button>
@@ -462,9 +633,14 @@ function PlayingView({ room, meta, me }: { room: LiveRoom; meta: RoomMeta; me: R
 
       {!hasOwnChat && (
         <Sheet open={chat} onOpenChange={setChat}>
-          <SheetContent side="bottom" className="mx-auto flex h-[70svh] w-full max-w-xl flex-col gap-0 rounded-t-lg p-0">
+          <SheetContent
+            side="bottom"
+            className="mx-auto flex h-[70svh] w-full max-w-xl flex-col gap-0 rounded-t-lg p-0"
+          >
             <SheetHeader className="border-b px-4 py-3">
-              <SheetTitle className="text-sm font-semibold">Room chat</SheetTitle>
+              <SheetTitle className="text-sm font-semibold">
+                Room chat
+              </SheetTitle>
             </SheetHeader>
             <RoomChat code={code} className="min-h-0 flex-1" autoFocus />
           </SheetContent>
@@ -475,7 +651,11 @@ function PlayingView({ room, meta, me }: { room: LiveRoom; meta: RoomMeta; me: R
         open={confirmLeave}
         onOpenChange={setConfirmLeave}
         title="Leave the game?"
-        description={me.left ? undefined : "Leaving now counts as giving up — the others play on without you."}
+        description={
+          me.left
+            ? undefined
+            : "Leaving now counts as giving up — the others play on without you."
+        }
         destructive={!me.left}
         confirmLabel="Leave"
         isPending={leaving}
@@ -506,7 +686,8 @@ function EndedView({ room, meta }: { room: LiveRoom; meta: RoomMeta }) {
           ? "You share the win!"
           : "You won!"
         : `${winners.map((w) => nameOf(w).split(" ")[0]).join(" & ")} ${winners.length > 1 ? "win" : "wins"}`
-  const ranking = result?.ranking ?? players.filter((p) => !p.left).map((p) => p.uid)
+  const ranking =
+    result?.ranking ?? players.filter((p) => !p.left).map((p) => p.uid)
 
   const startRematch = async () => {
     if (!user) return
@@ -522,19 +703,34 @@ function EndedView({ room, meta }: { room: LiveRoom; meta: RoomMeta }) {
 
   return (
     <>
-      <AppHeader title={game.name} subtitle={`Room ${code}`} showBack onBack={() => router.replace(GAMES_TAB)} />
+      <AppHeader
+        title={game.name}
+        subtitle={`Room ${code}`}
+        showBack
+        onBack={() => router.replace(GAMES_TAB)}
+      />
       <ReactionsOverlay code={code} />
       <PageContainer className="max-w-xl gap-4">
         <Card className="gap-0 py-0">
           <div className="flex flex-col items-center gap-3 p-6 text-center">
             <div className="flex -space-x-3">
               {(winners.length ? winners : ranking.slice(0, 1)).map((w) => (
-                <UserAvatar key={w} src={playersById[w]?.photo} name={nameOf(w)} size="lg" className="size-16 ring-4 ring-card" />
+                <UserAvatar
+                  key={w}
+                  src={playersById[w]?.photo}
+                  name={nameOf(w)}
+                  size="lg"
+                  className="size-16 ring-4 ring-card"
+                />
               ))}
             </div>
             <div>
               <p className="text-2xl font-bold">{headline}</p>
-              {result?.reason && <p className="text-xs text-muted-foreground">{reasonText(result.reason)}</p>}
+              {result?.reason && (
+                <p className="text-xs text-muted-foreground">
+                  {reasonText(result.reason)}
+                </p>
+              )}
             </div>
           </div>
           <ol className="divide-y border-t">
@@ -542,15 +738,34 @@ function EndedView({ room, meta }: { room: LiveRoom; meta: RoomMeta }) {
               const p = playersById[id]
               const score = result?.scores?.[id]
               return (
-                <li key={id} className={cn("flex items-center gap-3 px-4 py-2.5", id === uid && "bg-primary/5")}>
-                  <span className="w-5 text-center text-sm font-semibold tabular-nums text-muted-foreground">{i + 1}</span>
+                <li
+                  key={id}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-2.5",
+                    id === uid && "bg-primary/5"
+                  )}
+                >
+                  <span className="w-5 text-center text-sm font-semibold text-muted-foreground tabular-nums">
+                    {i + 1}
+                  </span>
                   <UserAvatar src={p?.photo} name={p?.name ?? "?"} size="sm" />
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">
                     {p?.name ?? "Someone"}
-                    {id === uid && <span className="text-muted-foreground"> (you)</span>}
+                    {id === uid && (
+                      <span className="text-muted-foreground"> (you)</span>
+                    )}
                   </span>
-                  {score !== undefined && <span className="text-sm font-semibold tabular-nums">{score}</span>}
-                  {winners.includes(id) && <HugeiconsIcon icon={CrownIcon} className="size-4 text-warning" />}
+                  {score !== undefined && (
+                    <span className="text-sm font-semibold tabular-nums">
+                      {score}
+                    </span>
+                  )}
+                  {winners.includes(id) && (
+                    <HugeiconsIcon
+                      icon={CrownIcon}
+                      className="size-4 text-warning"
+                    />
+                  )}
                 </li>
               )
             })}
@@ -559,21 +774,42 @@ function EndedView({ room, meta }: { room: LiveRoom; meta: RoomMeta }) {
 
         <div className="flex flex-col gap-2">
           {meta.rematchCode ? (
-            <Button size="lg" className="h-11 w-full" nativeButton={false} render={<Link href={`/play/${meta.rematchCode}`} />}>
+            <Button
+              size="lg"
+              className="h-11 w-full"
+              nativeButton={false}
+              render={<Link href={`/play/${meta.rematchCode}`} />}
+            >
               <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />
               Join the rematch
             </Button>
           ) : isHost ? (
-            <Button size="lg" className="h-11 w-full" onClick={startRematch} disabled={pending}>
-              {pending ? <Spinner /> : <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />}
+            <Button
+              size="lg"
+              className="h-11 w-full"
+              onClick={startRematch}
+              disabled={pending}
+            >
+              {pending ? (
+                <Spinner />
+              ) : (
+                <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />
+              )}
               Rematch
             </Button>
           ) : (
             <p className="text-center text-xs text-muted-foreground">
-              {meta.hostName.split(" ")[0]} can start a rematch — you&apos;ll see it here.
+              {meta.hostName.split(" ")[0]} can start a rematch — you&apos;ll
+              see it here.
             </p>
           )}
-          <Button variant="outline" size="lg" className="h-11 w-full" nativeButton={false} render={<Link href={GAMES_TAB} />}>
+          <Button
+            variant="outline"
+            size="lg"
+            className="h-11 w-full"
+            nativeButton={false}
+            render={<Link href={GAMES_TAB} />}
+          >
             Back to games
           </Button>
         </div>
@@ -614,7 +850,11 @@ function Blocked({ title, text }: { title: string; text: string }) {
           <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
             <p className="text-lg font-semibold">{title}</p>
             <p className="text-sm text-muted-foreground">{text}</p>
-            <Button className="mt-2" nativeButton={false} render={<Link href={GAMES_TAB} />}>
+            <Button
+              className="mt-2"
+              nativeButton={false}
+              render={<Link href={GAMES_TAB} />}
+            >
               Back to games
             </Button>
           </CardContent>

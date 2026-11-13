@@ -499,8 +499,8 @@ export function ScribbleGame({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_18rem] md:items-start md:gap-4">
       <div className="flex min-w-0 flex-col gap-2 md:max-w-[640px]">
-        {/* Round, the hint, the clock */}
-        <div className="flex items-center gap-3 rounded-xl border bg-card px-3 py-2">
+        {/* Round, the hint, the clock: pinned under the header, so the word stays in view while typing */}
+        <div className="sticky top-[calc(3.875rem+env(safe-area-inset-top,0px))] z-20 -mx-2 flex items-center gap-3 border-b bg-background/95 px-3 py-2 backdrop-blur-sm sm:mx-0 sm:rounded-xl sm:border sm:bg-card md:static">
           <div className="min-w-0 flex-1">
             <p className="truncate text-[11px] text-muted-foreground">
               Round {game.round} of {game.rounds} ·{" "}

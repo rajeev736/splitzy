@@ -123,7 +123,7 @@ export function CheckersBoard({
       <div
         role="grid"
         aria-label="Checkers board"
-        className="@container grid aspect-square w-full grid-cols-8 overflow-hidden rounded-lg border border-black/15 shadow-sm select-none dark:border-white/10"
+        className="@container grid aspect-square w-full grid-cols-[repeat(8,minmax(0,1fr))] grid-rows-[repeat(8,minmax(0,1fr))] overflow-hidden rounded-lg border border-black/15 shadow-sm select-none dark:border-white/10"
         data-no-swipe
       >
         {Array.from({ length: 64 }, (_, i) => {
@@ -152,7 +152,8 @@ export function CheckersBoard({
               role="gridcell"
               aria-label={playable ? label : undefined}
               className={cn(
-                "relative flex items-center justify-center",
+                // min-w/h-0 + overflow: a piece can never stretch its square
+                "relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden",
                 playable ? "bg-[#9c6b47]" : "bg-[#efe3cc]"
               )}
             >
