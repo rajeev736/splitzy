@@ -20,7 +20,8 @@ import {
 } from "@/lib/live/games"
 import type { LiveGameId, RoomOptions } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
-import { createRoom } from "@/services/live-rooms"
+import { createRoom, registerGroupRoom } from "@/services/live-rooms"
+import type { UserProfile } from "@/lib/types"
 import { FriendPicker, sendRoomInvites } from "./invite-friends-sheet"
 
 /** "2 players" / "2–8 players". */
@@ -38,10 +39,13 @@ export function CreateRoomSheet({
   open,
   onOpenChange,
   game,
+  group,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   game: LiveGameId
+  /** Started from a group: every member is invited and the room shows on the group page. */
+  group?: { id: string; name: string; members: string[] }
 }) {
   const router = useRouter()
   const { user } = useSession()
@@ -58,6 +62,28 @@ export function CreateRoomSheet({
     setPending(true)
     try {
       const code = await createRoom(user, game, picks)
+      if (group) {
+        // The room is open either way; listing it and the invites are best effort
+        await registerGroupRoom(group.id, code, game, user).catch(
+          () => undefined
+        )
+        const members = group.members
+          .filter((m) => m !== user.uid)
+          .map((uid) => ({ uid }) as UserProfile)
+        if (members.length > 0) {
+          const { sent } = await sendRoomInvites(
+            user,
+            game,
+            code,
+            members,
+            group.name
+          )
+          if (sent > 0)
+            toast.success(`Everyone in ${group.name} has been invited`)
+        }
+        router.push(`/play/${code}`)
+        return
+      }
       // The room is open either way; invites are best effort
       const picked = friends.filter((f) => selected.includes(f.uid))
       if (picked.length > 0) {
@@ -136,32 +162,41 @@ export function CreateRoomSheet({
           />
         ))}
 
-        <section className="flex flex-col gap-2">
-          <h3 className="text-sm font-medium">
-            Invite friends{" "}
-            <span className="font-normal text-muted-foreground">
-              (optional)
-            </span>
-          </h3>
-          {friends.length === 0 ? (
-            <p className="rounded-lg border border-dashed px-3 py-3 text-xs text-muted-foreground">
-              No friends on JoySplit yet — share the room link from the lobby
-              instead.
-            </p>
-          ) : (
-            <>
-              <FriendPicker
-                friends={friends}
-                selected={selected}
-                onChange={setSelected}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                They get a notification with the code. You can invite more, or
-                share the link, from the lobby.
+        {group ? (
+          <p className="rounded-lg border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
+            Everyone in{" "}
+            <span className="font-medium text-foreground">{group.name}</span>{" "}
+            gets a notification, and the room shows on the group page until it
+            ends.
+          </p>
+        ) : (
+          <section className="flex flex-col gap-2">
+            <h3 className="text-sm font-medium">
+              Invite friends{" "}
+              <span className="font-normal text-muted-foreground">
+                (optional)
+              </span>
+            </h3>
+            {friends.length === 0 ? (
+              <p className="rounded-lg border border-dashed px-3 py-3 text-xs text-muted-foreground">
+                No friends on JoySplit yet — share the room link from the lobby
+                instead.
               </p>
-            </>
-          )}
-        </section>
+            ) : (
+              <>
+                <FriendPicker
+                  friends={friends}
+                  selected={selected}
+                  onChange={setSelected}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  They get a notification with the code. You can invite more, or
+                  share the link, from the lobby.
+                </p>
+              </>
+            )}
+          </section>
+        )}
       </div>
     </BottomSheet>
   )

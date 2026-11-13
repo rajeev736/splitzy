@@ -694,7 +694,8 @@ function EndedView({ room, meta }: { room: LiveRoom; meta: RoomMeta }) {
     setPending(true)
     try {
       const next = await rematch(user, meta)
-      router.push(`/play/${next}`)
+      // Replace, not push: Back from the rematch goes to Games, not through old results
+      router.replace(`/play/${next}`)
     } catch (e) {
       toast.error(getErrorMessage(e, "Couldn't start a rematch"))
       setPending(false)
@@ -778,7 +779,7 @@ function EndedView({ room, meta }: { room: LiveRoom; meta: RoomMeta }) {
               size="lg"
               className="h-11 w-full"
               nativeButton={false}
-              render={<Link href={`/play/${meta.rematchCode}`} />}
+              render={<Link href={`/play/${meta.rematchCode}`} replace />}
             >
               <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />
               Join the rematch
@@ -808,7 +809,7 @@ function EndedView({ room, meta }: { room: LiveRoom; meta: RoomMeta }) {
             size="lg"
             className="h-11 w-full"
             nativeButton={false}
-            render={<Link href={GAMES_TAB} />}
+            render={<Link href={GAMES_TAB} replace />}
           >
             Back to games
           </Button>
@@ -853,7 +854,7 @@ function Blocked({ title, text }: { title: string; text: string }) {
             <Button
               className="mt-2"
               nativeButton={false}
-              render={<Link href={GAMES_TAB} />}
+              render={<Link href={GAMES_TAB} replace />}
             >
               Back to games
             </Button>

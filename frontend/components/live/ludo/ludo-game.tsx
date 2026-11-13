@@ -85,7 +85,6 @@ function shownDice(state: LudoState): number | null {
   return "value" in last ? last.value : null
 }
 
-
 function moveLabel(pos: number, dice: number) {
   if (pos < 0) return "Out of base"
   if (pos + dice === HOME) return "Into home"

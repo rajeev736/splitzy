@@ -30,7 +30,13 @@ const THROTTLE_MS = 700
 const LIFETIME_MS = 2800
 
 /** Horizontal row of sticker buttons. */
-export function StickerBar({ code, className }: { code: string; className?: string }) {
+export function StickerBar({
+  code,
+  className,
+}: {
+  code: string
+  className?: string
+}) {
   const { user } = useSession()
   const last = React.useRef(0)
   const throw_ = (id: string) => {
@@ -38,7 +44,14 @@ export function StickerBar({ code, className }: { code: string; className?: stri
     void sendReaction(code, user, id).catch(() => undefined)
   }
   return (
-    <div className={cn("no-scrollbar flex gap-1.5 overflow-x-auto py-1", className)} role="toolbar" aria-label="Stickers">
+    <div
+      className={cn(
+        "no-scrollbar flex gap-1.5 overflow-x-auto py-1",
+        className
+      )}
+      role="toolbar"
+      aria-label="Stickers"
+    >
       {STICKERS.map((s) => (
         <button
           key={s.id}
@@ -47,7 +60,7 @@ export function StickerBar({ code, className }: { code: string; className?: stri
           aria-label={s.label}
           onClick={() => throw_(s.id)}
           className={cn(
-            "flex size-10 shrink-0 items-center justify-center rounded-lg border bg-card transition-transform active:scale-90 hover:bg-muted",
+            "flex size-10 shrink-0 items-center justify-center rounded-lg border bg-card transition-transform hover:bg-muted active:scale-90",
             s.glyph.length > 2 ? "text-xs font-bold text-primary" : "text-xl"
           )}
         >
@@ -77,11 +90,19 @@ export function ReactionsOverlay({ code }: { code: string }) {
     const id = window.setInterval(() => setNow(serverNow()), 250)
     return () => window.clearInterval(id)
   }, [items.length])
-  const fresh = since === null ? [] : items.filter((r) => r.value.at >= since && now - r.value.at < LIFETIME_MS)
+  const fresh =
+    since === null
+      ? []
+      : items.filter(
+          (r) => r.value.at >= since && now - r.value.at < LIFETIME_MS
+        )
 
   if (fresh.length === 0) return null
   return (
-    <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden" aria-live="polite">
+    <div
+      className="pointer-events-none fixed inset-0 z-50 overflow-hidden"
+      aria-live="polite"
+    >
       <style>{`@keyframes js-sticker-float{0%{transform:translate3d(0,0,0) scale(.6);opacity:0}12%{opacity:1;transform:translate3d(0,-10vh,0) scale(1.15)}100%{transform:translate3d(var(--drift),-62vh,0) scale(1);opacity:0}}`}</style>
       {fresh.map((r, i) => {
         const s = BY_ID[r.value.sticker]
@@ -103,7 +124,14 @@ export function ReactionsOverlay({ code }: { code: string }) {
               } as React.CSSProperties
             }
           >
-            <span className={cn("drop-shadow-md", s.glyph.length > 2 ? "text-2xl font-black text-primary" : "text-5xl")}>
+            <span
+              className={cn(
+                "drop-shadow-md",
+                s.glyph.length > 2
+                  ? "text-2xl font-black text-primary"
+                  : "text-5xl"
+              )}
+            >
               {s.glyph}
             </span>
             <span className="mt-0.5 rounded-full bg-background/85 px-2 py-0.5 text-[11px] font-medium shadow-sm">

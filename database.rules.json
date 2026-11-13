@@ -96,6 +96,16 @@
       }
     },
 
+    "groupRooms": {
+      "$groupId": {
+        ".read": "auth != null",
+        "$code": {
+          ".write": "auth != null",
+          ".validate": "$code.matches(/^[A-HJ-NP-Z2-9]{6}$/) && newData.hasChildren(['game', 'hostId', 'hostName', 'at']) && newData.child('hostId').val() === auth.uid && newData.child('game').val().matches(/^(scribble|ludo|chess|checkers|tictactoe)$/) && newData.child('hostName').isString() && newData.child('hostName').val().length <= 60 && newData.child('at').isNumber()"
+        }
+      }
+    },
+
     "userRooms": {
       "$uid": {
         ".read": "auth != null && $uid === auth.uid",

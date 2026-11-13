@@ -76,16 +76,24 @@ export function RoomChat({
         ref={listRef}
         onScroll={(e) => {
           const el = e.currentTarget
-          stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+          stickToBottom.current =
+            el.scrollHeight - el.scrollTop - el.clientHeight < 40
         }}
         className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain px-3 py-2"
       >
         {messages.length === 0 && (
-          <p className="my-auto text-center text-xs text-muted-foreground">No messages yet.</p>
+          <p className="my-auto text-center text-xs text-muted-foreground">
+            No messages yet.
+          </p>
         )}
         {messages.map((m) => {
           const mine = m.value.uid === uid
-          if (renderMessage) return <React.Fragment key={m.key}>{renderMessage(m, mine)}</React.Fragment>
+          if (renderMessage)
+            return (
+              <React.Fragment key={m.key}>
+                {renderMessage(m, mine)}
+              </React.Fragment>
+            )
           return <DefaultMessage key={m.key} msg={m.value} mine={mine} />
         })}
       </div>
@@ -108,7 +116,12 @@ export function RoomChat({
           className="h-10 bg-card"
           data-no-swipe
         />
-        <Button type="submit" size="icon" aria-label="Send" disabled={disabled || !text.trim() || sending}>
+        <Button
+          type="submit"
+          size="icon"
+          aria-label="Send"
+          disabled={disabled || !text.trim() || sending}
+        >
           <HugeiconsIcon icon={SentIcon} />
         </Button>
       </form>
@@ -119,7 +132,11 @@ export function RoomChat({
 /** A plain chat line; system / correct / close kinds read as notices. */
 export function DefaultMessage({ msg, mine }: { msg: Msg; mine: boolean }) {
   if (msg.kind === "system") {
-    return <p className="py-0.5 text-center text-[11px] text-muted-foreground">{msg.text}</p>
+    return (
+      <p className="py-0.5 text-center text-[11px] text-muted-foreground">
+        {msg.text}
+      </p>
+    )
   }
   if (msg.kind === "correct") {
     return (
@@ -129,11 +146,22 @@ export function DefaultMessage({ msg, mine }: { msg: Msg; mine: boolean }) {
     )
   }
   if (msg.kind === "close") {
-    return <p className="py-0.5 text-center text-xs font-medium text-warning">&ldquo;{msg.text}&rdquo; is close!</p>
+    return (
+      <p className="py-0.5 text-center text-xs font-medium text-warning">
+        &ldquo;{msg.text}&rdquo; is close!
+      </p>
+    )
   }
   return (
     <p className="text-sm leading-snug break-words">
-      <span className={cn("font-semibold", mine ? "text-primary" : "text-foreground")}>{msg.name.split(" ")[0]}</span>
+      <span
+        className={cn(
+          "font-semibold",
+          mine ? "text-primary" : "text-foreground"
+        )}
+      >
+        {msg.name.split(" ")[0]}
+      </span>
       <span className="text-muted-foreground">: </span>
       {msg.text}
     </p>

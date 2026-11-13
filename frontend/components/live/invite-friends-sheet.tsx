@@ -34,14 +34,18 @@ export async function sendRoomInvites(
   user: UserProfile,
   game: LiveGameId,
   code: string,
-  friends: UserProfile[]
+  friends: UserProfile[],
+  /** The group it was started from, for the message. */
+  groupName?: string
 ): Promise<{ sent: number; failed: number }> {
   const name = LIVE_GAMES[game].name
   const results = await Promise.allSettled(
     friends.map((f) =>
       sendNotification({
         userId: f.uid,
-        title: `${user.displayName} invited you to ${name}`,
+        title: groupName
+          ? `${user.displayName} started ${name} in ${groupName}`
+          : `${user.displayName} invited you to ${name}`,
         message: `Join the room now — code ${code}. Tap to jump in.`,
         type: "ROOM_INVITE",
         data: {

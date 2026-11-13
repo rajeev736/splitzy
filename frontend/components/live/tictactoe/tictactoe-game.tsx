@@ -162,7 +162,7 @@ export function TicTacToeGame({
 
       {/* Board */}
       <div
-        className="grid aspect-square w-full max-w-[min(88vw,22rem)] grid-cols-3 gap-2"
+        className="grid aspect-square w-full max-w-[min(88vw,22rem)] grid-cols-[repeat(3,minmax(0,1fr))] grid-rows-[repeat(3,minmax(0,1fr))] gap-2"
         role="grid"
         aria-label="Board"
       >
@@ -182,7 +182,7 @@ export function TicTacToeGame({
               disabled={!myTurn || !empty || busy}
               onClick={() => void play(i)}
               className={cn(
-                "flex items-center justify-center rounded-xl border-2 bg-card text-5xl font-black transition-all",
+                "flex min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-xl border-2 bg-card text-5xl leading-none font-black transition-all",
                 empty &&
                   myTurn &&
                   "hover:border-primary/50 hover:bg-primary/5 active:scale-95",

@@ -37,7 +37,10 @@ import type { UserProfile } from "@/lib/types"
  */
 
 export function liveDb(): Database {
-  if (!rtdb) throw new AppError("Live games aren't set up on this server yet (Realtime Database URL missing)")
+  if (!rtdb)
+    throw new AppError(
+      "Live games aren't set up on this server yet (Realtime Database URL missing)"
+    )
   return rtdb
 }
 
@@ -66,7 +69,11 @@ function playerEntry(user: UserProfile, seat: number): RoomPlayer {
 /* ── Rooms ───────────────────────────────────────────────────────────── */
 
 /** Opens a room for `game` with you in seat 0. Returns its code. */
-export async function createRoom(user: UserProfile, game: LiveGameId, picked: RoomOptions = {}): Promise<string> {
+export async function createRoom(
+  user: UserProfile,
+  game: LiveGameId,
+  picked: RoomOptions = {}
+): Promise<string> {
   const info = LIVE_GAMES[game]
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = randomRoomCode()
@@ -82,10 +89,14 @@ export async function createRoom(user: UserProfile, game: LiveGameId, picked: Ro
       options: defaultOptions(game, picked),
     }
     // Only claim a code nobody else has
-    const res = await runTransaction(roomRef(code, "meta"), (current) => (current === null ? meta : undefined))
+    const res = await runTransaction(roomRef(code, "meta"), (current) =>
+      current === null ? meta : undefined
+    )
     if (!res.committed) continue
     await set(roomRef(code, `players/${user.uid}`), playerEntry(user, 0))
-    await set(ref(liveDb(), `userRooms/${user.uid}/${code}`), ts()).catch(() => undefined)
+    await set(ref(liveDb(), `userRooms/${user.uid}/${code}`), ts()).catch(
+      () => undefined
+    )
     return code
   }
   throw new AppError("Couldn't open a room — please try again")
@@ -98,8 +109,14 @@ export type JoinOutcome = "joined" | "not_found" | "full" | "started" | "ended"
  * checked by the security rules; the re-read afterwards settles the rare race
  * of two people grabbing the last seat at the same moment.
  */
-export async function joinRoom(user: UserProfile, code: string): Promise<JoinOutcome> {
-  const [metaSnap, playersSnap] = await Promise.all([get(roomRef(code, "meta")), get(roomRef(code, "players"))])
+export async function joinRoom(
+  user: UserProfile,
+  code: string
+): Promise<JoinOutcome> {
+  const [metaSnap, playersSnap] = await Promise.all([
+    get(roomRef(code, "meta")),
+    get(roomRef(code, "players")),
+  ])
   if (!metaSnap.exists()) return "not_found"
   const meta = metaSnap.val() as RoomMeta
   const players = (playersSnap.val() ?? {}) as Record<string, RoomPlayer>
@@ -108,11 +125,17 @@ export async function joinRoom(user: UserProfile, code: string): Promise<JoinOut
 
   if (me) {
     // Back again: in the lobby a change of heart un-leaves you; mid-game "left" stands
-    const patch: Record<string, unknown> = { online: true, lastSeen: ts(), name: user.displayName }
+    const patch: Record<string, unknown> = {
+      online: true,
+      lastSeen: ts(),
+      name: user.displayName,
+    }
     if (user.photoURL) patch.photo = user.photoURL
     if (isJoinable(meta) && me.left) patch.left = null
     await update(playerRef, patch)
-    void set(ref(liveDb(), `userRooms/${user.uid}/${code}`), ts()).catch(() => undefined)
+    void set(ref(liveDb(), `userRooms/${user.uid}/${code}`), ts()).catch(
+      () => undefined
+    )
     return "joined"
   }
   if (!isJoinable(meta)) return meta.status === "ended" ? "ended" : "started"
@@ -129,16 +152,31 @@ export async function joinRoom(user: UserProfile, code: string): Promise<JoinOut
     // The rules refused: the room filled up or started between the read and the write
     const again = await get(roomRef(code, "meta"))
     const m = again.val() as RoomMeta | null
-    return !m ? "not_found" : !isJoinable(m) ? (m.status === "ended" ? "ended" : "started") : "full"
+    return !m
+      ? "not_found"
+      : !isJoinable(m)
+        ? m.status === "ended"
+          ? "ended"
+          : "started"
+        : "full"
   }
   // Two people may have taken the last seat together: the later joiner steps back out
-  const after = seatOrder(((await get(roomRef(code, "players"))).val() ?? {}) as Record<string, RoomPlayer>)
-  const byArrival = [...after].sort((a, b) => a.joinedAt - b.joinedAt || a.uid.localeCompare(b.uid))
+  const after = seatOrder(
+    ((await get(roomRef(code, "players"))).val() ?? {}) as Record<
+      string,
+      RoomPlayer
+    >
+  )
+  const byArrival = [...after].sort(
+    (a, b) => a.joinedAt - b.joinedAt || a.uid.localeCompare(b.uid)
+  )
   if (byArrival.findIndex((p) => p.uid === user.uid) >= meta.maxPlayers) {
     await remove(playerRef)
     return "full"
   }
-  void set(ref(liveDb(), `userRooms/${user.uid}/${code}`), ts()).catch(() => undefined)
+  void set(ref(liveDb(), `userRooms/${user.uid}/${code}`), ts()).catch(
+    () => undefined
+  )
   return "joined"
 }
 
@@ -148,18 +186,27 @@ export async function joinRoom(user: UserProfile, code: string): Promise<JoinOut
  * entry stays flagged `left` so the game can skip / award accordingly.
  */
 export async function leaveRoom(uid: string, code: string): Promise<void> {
-  const [metaSnap, playersSnap] = await Promise.all([get(roomRef(code, "meta")), get(roomRef(code, "players"))])
+  const [metaSnap, playersSnap] = await Promise.all([
+    get(roomRef(code, "meta")),
+    get(roomRef(code, "players")),
+  ])
   if (!metaSnap.exists()) return
   const meta = metaSnap.val() as RoomMeta
   const players = (playersSnap.val() ?? {}) as Record<string, RoomPlayer>
   if (!players[uid]) return
 
   if (meta.status === "playing") {
-    await update(roomRef(code, `players/${uid}`), { left: true, online: false, lastSeen: ts() })
+    await update(roomRef(code, `players/${uid}`), {
+      left: true,
+      online: false,
+      lastSeen: ts(),
+    })
     return
   }
   if (meta.status === "ended") {
-    await remove(ref(liveDb(), `userRooms/${uid}/${code}`)).catch(() => undefined)
+    await remove(ref(liveDb(), `userRooms/${uid}/${code}`)).catch(
+      () => undefined
+    )
     return
   }
 
@@ -189,14 +236,23 @@ export async function kickPlayer(code: string, uid: string): Promise<void> {
 
 /** Every seat is taken: the game starts by itself in a few seconds. */
 export const startCountdown = (code: string, serverNow: number) =>
-  update(roomRef(code, "meta"), { status: "countdown", startsAt: serverNow + AUTO_START_SECONDS * 1000 })
+  update(roomRef(code, "meta"), {
+    status: "countdown",
+    startsAt: serverNow + AUTO_START_SECONDS * 1000,
+  })
 
-export const cancelCountdown = (code: string) => update(roomRef(code, "meta"), { status: "lobby", startsAt: null })
+export const cancelCountdown = (code: string) =>
+  update(roomRef(code, "meta"), { status: "lobby", startsAt: null })
 
 /** Writes the first game state and flips the room to playing, in one go. */
-export async function startGame(code: string, meta: RoomMeta, players: RoomPlayer[]): Promise<void> {
+export async function startGame(
+  code: string,
+  meta: RoomMeta,
+  players: RoomPlayer[]
+): Promise<void> {
   const active = players.filter((p) => !p.left)
-  if (active.length < meta.minPlayers) throw new AppError(`Need at least ${meta.minPlayers} players`)
+  if (active.length < meta.minPlayers)
+    throw new AppError(`Need at least ${meta.minPlayers} players`)
   await update(roomRef(code), {
     "meta/status": "playing",
     "meta/startedAt": ts(),
@@ -207,10 +263,13 @@ export async function startGame(code: string, meta: RoomMeta, players: RoomPlaye
 
 /** Game over for everyone. Does nothing if the room already ended. */
 export async function endGame(code: string, result: LiveResult): Promise<void> {
-  const res = await runTransaction(roomRef(code, "meta"), (meta: RoomMeta | null) => {
-    if (!meta || meta.status === "ended") return undefined
-    return { ...meta, status: "ended", endedAt: ts(), result }
-  })
+  const res = await runTransaction(
+    roomRef(code, "meta"),
+    (meta: RoomMeta | null) => {
+      if (!meta || meta.status === "ended") return undefined
+      return { ...meta, status: "ended", endedAt: ts(), result }
+    }
+  )
   if (!res.committed) return
 }
 
@@ -219,18 +278,27 @@ export async function endGame(code: string, result: LiveResult): Promise<void> {
  * signalling go. Run by the referee a minute after the end.
  */
 export async function cleanupRoom(code: string): Promise<void> {
-  await update(roomRef(code), { state: null, chat: null, reactions: null, signals: null, secret: null }).catch(
-    () => undefined
-  )
+  await update(roomRef(code), {
+    state: null,
+    chat: null,
+    reactions: null,
+    signals: null,
+    secret: null,
+  }).catch(() => undefined)
 }
 
 /** Deletes a room you host (lobby or ended) or any room past its time-to-live. */
 export const deleteRoom = (code: string) => remove(roomRef(code))
 
 /** Opens a fresh room with the same game and settings, and points this room at it. */
-export async function rematch(user: UserProfile, meta: RoomMeta): Promise<string> {
+export async function rematch(
+  user: UserProfile,
+  meta: RoomMeta
+): Promise<string> {
   const code = await createRoom(user, meta.game, meta.options)
-  await update(roomRef(meta.code, "meta"), { rematchCode: code }).catch(() => undefined)
+  await update(roomRef(meta.code, "meta"), { rematchCode: code }).catch(
+    () => undefined
+  )
   return code
 }
 
@@ -244,25 +312,47 @@ export async function sendChat(
 ): Promise<void> {
   const clean = text.trim().slice(0, 200)
   if (!clean && extra.kind !== "close") return
-  const msg: ChatMessage & { for?: string } = { uid: user.uid, name: user.displayName, text: clean, at: ts(), ...extra }
+  const msg: ChatMessage & { for?: string } = {
+    uid: user.uid,
+    name: user.displayName,
+    text: clean,
+    at: ts(),
+    ...extra,
+  }
   await push(roomRef(code, "chat"), msg)
 }
 
-export const sendReaction = (code: string, user: Pick<UserProfile, "uid" | "displayName">, sticker: string) =>
-  push(roomRef(code, "reactions"), { uid: user.uid, name: user.displayName, sticker, at: ts() } satisfies Reaction)
+export const sendReaction = (
+  code: string,
+  user: Pick<UserProfile, "uid" | "displayName">,
+  sticker: string
+) =>
+  push(roomRef(code, "reactions"), {
+    uid: user.uid,
+    name: user.displayName,
+    sticker,
+    at: ts(),
+  } satisfies Reaction)
 
-export const setVoiceState = (code: string, uid: string, state: VoiceState | null) =>
-  set(roomRef(code, `voice/${uid}`), state)
+export const setVoiceState = (
+  code: string,
+  uid: string,
+  state: VoiceState | null
+) => set(roomRef(code, `voice/${uid}`), state)
 
 /** Patches the game state. Keys may be nested paths, e.g. `{ "turn/phase": "drawing" }`. */
-export const updateState = (code: string, patch: Record<string, unknown>) => update(roomRef(code, "state"), patch)
+export const updateState = (code: string, patch: Record<string, unknown>) =>
+  update(roomRef(code, "state"), patch)
 
 /** Replaces the whole game state. */
-export const setState = (code: string, state: object) => set(roomRef(code, "state"), state)
+export const setState = (code: string, state: object) =>
+  set(roomRef(code, "state"), state)
 
 /** Read-modify-write on the whole game state; return undefined from `fn` to abort. */
-export const stateTransaction = <S>(code: string, fn: (current: S | null) => S | undefined) =>
-  runTransaction(roomRef(code, "state"), fn)
+export const stateTransaction = <S>(
+  code: string,
+  fn: (current: S | null) => S | undefined
+) => runTransaction(roomRef(code, "state"), fn)
 
 /* ── Presence & clock ────────────────────────────────────────────────── */
 
@@ -281,17 +371,24 @@ export function watchPresence(code: string, uid: string): () => void {
   })
   return () => {
     unsubscribe()
-    onDisconnect(playerRef).cancel().catch(() => undefined)
+    onDisconnect(playerRef)
+      .cancel()
+      .catch(() => undefined)
     update(playerRef, { online: false, lastSeen: ts() }).catch(() => undefined)
   }
 }
 
 /** Difference between the server clock and this device's, in ms. */
 export const watchServerOffset = (cb: (offsetMs: number) => void) =>
-  onValue(ref(liveDb(), ".info/serverTimeOffset"), (snap) => cb((snap.val() as number) ?? 0))
+  onValue(ref(liveDb(), ".info/serverTimeOffset"), (snap) =>
+    cb((snap.val() as number) ?? 0)
+  )
 
 /** Codes of rooms you've been in, newest first (value = when you joined). */
-export const watchUserRooms = (uid: string, cb: (codes: { code: string; joinedAt: number }[]) => void) =>
+export const watchUserRooms = (
+  uid: string,
+  cb: (codes: { code: string; joinedAt: number }[]) => void
+) =>
   onValue(userRoomsRef(uid), (snap) => {
     const val = (snap.val() ?? {}) as Record<string, number>
     cb(
@@ -303,3 +400,47 @@ export const watchUserRooms = (uid: string, cb: (codes: { code: string; joinedAt
 
 export const forgetUserRoom = (uid: string, code: string) =>
   remove(ref(liveDb(), `userRooms/${uid}/${code}`)).catch(() => undefined)
+
+/* ── Group games ─────────────────────────────────────────────────────── */
+
+export interface GroupRoom {
+  code: string
+  game: LiveGameId
+  hostId: string
+  hostName: string
+  at: number
+}
+
+/** Lists a room under its group, so every member sees it on the group page. */
+export const registerGroupRoom = (
+  groupId: string,
+  code: string,
+  game: LiveGameId,
+  host: Pick<UserProfile, "uid" | "displayName">
+) =>
+  set(ref(liveDb(), `groupRooms/${groupId}/${code}`), {
+    game,
+    hostId: host.uid,
+    hostName: host.displayName,
+    at: ts(),
+  })
+
+/** The group's most recent rooms, newest first. */
+export function watchGroupRooms(
+  groupId: string,
+  cb: (rooms: GroupRoom[]) => void
+) {
+  return onValue(ref(liveDb(), `groupRooms/${groupId}`), (snap) => {
+    const val = (snap.val() ?? {}) as Record<string, Omit<GroupRoom, "code">>
+    cb(
+      Object.entries(val)
+        .map(([code, r]) => ({ code, ...r }))
+        .sort((a, b) => b.at - a.at)
+        .slice(0, 12)
+    )
+  })
+}
+
+/** Drops a finished or deleted room from the group's list. */
+export const forgetGroupRoom = (groupId: string, code: string) =>
+  remove(ref(liveDb(), `groupRooms/${groupId}/${code}`)).catch(() => undefined)

@@ -21,7 +21,6 @@ import { GroupIcon } from "@/components/shared/group-icon"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useDeleteGroup, useLeaveGroup } from "@/hooks/mutations"
 import { useExpenses, useGroup, useGroupExpenses } from "@/hooks/queries"
 import { canDeleteGroup, canUserLeaveGroup } from "@/lib/money"
@@ -29,16 +28,27 @@ import { GroupInviteCard } from "../../_components/group-invite-card"
 import { EditGroupDialog } from "./_components/edit-group-dialog"
 import { GroupActionsMenu } from "./_components/group-actions-menu"
 import { GroupExpenseList } from "./_components/group-expense-list"
-import { GroupError, GroupLoading, GroupNotFound } from "./_components/group-state"
+import {
+  GroupError,
+  GroupLoading,
+  GroupNotFound,
+} from "./_components/group-state"
 import { InviteDialog } from "./_components/invite-dialog"
 import { MembersTab } from "./_components/members-tab"
 import { OverviewTab } from "./_components/overview-tab"
 import { useQueryTab } from "@/hooks/use-query-tab"
+import { useSwipeTabs } from "@/hooks/use-swipe-tabs"
+import { GroupGames } from "@/components/live/group-games"
+import {
+  SwipeTabIndicator,
+  SwipeTabPanels,
+} from "@/components/shared/swipe-tabs"
+import { cn } from "@/lib/utils"
 
-type Tab = "overview" | "expenses" | "members"
+type Tab = "overview" | "expenses" | "members" | "games"
 type OpenDialog = "edit" | "leave" | "delete" | "invite" | null
 
-const TABS: Tab[] = ["overview", "expenses", "members"]
+const TABS: Tab[] = ["overview", "expenses", "members", "games"]
 
 function GroupDashboardContent() {
   const params = useParams<{ groupId: string }>()
@@ -54,20 +64,35 @@ function GroupDashboardContent() {
     defaultValue: "overview",
     validValues: TABS,
   })
+  // Swipe left / right anywhere below the header to move between tabs
+  const { surface: swipeSurface, ...swipe } = useSwipeTabs(
+    TABS,
+    activeTab,
+    setActiveTab
+  )
   const [dialog, setDialog] = React.useState<OpenDialog>(null)
   const closeDialog = (open: boolean) => !open && setDialog(null)
 
-  const leaveGroup = useLeaveGroup({ successMessage: "You have left the group" })
-  const deleteGroup = useDeleteGroup({ successMessage: "Group deleted successfully" })
+  const leaveGroup = useLeaveGroup({
+    successMessage: "You have left the group",
+  })
+  const deleteGroup = useDeleteGroup({
+    successMessage: "Group deleted successfully",
+  })
 
   const group = groupQuery.data
 
   if (groupQuery.isPending) return <GroupLoading />
-  if (groupQuery.isError && !group) return <GroupError error={groupQuery.error} onRetry={groupQuery.refetch} />
+  if (groupQuery.isError && !group)
+    return <GroupError error={groupQuery.error} onRetry={groupQuery.refetch} />
   if (!group) return <GroupNotFound />
 
   // Invited but not joined yet: show the invitation instead of the group dashboard
-  if (user && !group.members.includes(user.uid) && group.invitedMembers?.includes(user.uid)) {
+  if (
+    user &&
+    !group.members.includes(user.uid) &&
+    group.invitedMembers?.includes(user.uid)
+  ) {
     return (
       <>
         <AppHeader title={group.name} showBack />
@@ -79,8 +104,12 @@ function GroupDashboardContent() {
   }
 
   const isCreator = user?.uid === group.createdBy
-  const leaveCheck = user ? canUserLeaveGroup(user.uid, group, expenses) : { allowed: false, reason: "" }
-  const deleteCheck = user ? canDeleteGroup(user.uid, group, expenses) : { allowed: false, reason: "" }
+  const leaveCheck = user
+    ? canUserLeaveGroup(user.uid, group, expenses)
+    : { allowed: false, reason: "" }
+  const deleteCheck = user
+    ? canDeleteGroup(user.uid, group, expenses)
+    : { allowed: false, reason: "" }
   const addExpenseHref = `/expenses/new?groupId=${group.id}`
 
   const goToGroups = () => {
@@ -94,10 +123,17 @@ function GroupDashboardContent() {
         showBack
         titleContent={
           <div className="flex min-w-0 items-center gap-3">
-            <GroupIcon src={group.icon} alt={group.name} size="sm" className="size-9 rounded-md" />
+            <GroupIcon
+              src={group.icon}
+              alt={group.name}
+              size="sm"
+              className="size-9 rounded-md"
+            />
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-0.5">
-                <h1 className="truncate text-base font-semibold">{group.name}</h1>
+                <h1 className="truncate text-base font-semibold">
+                  {group.name}
+                </h1>
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -127,54 +163,94 @@ function GroupDashboardContent() {
         }
       />
 
-      <PageContainer className="max-w-4xl pb-24 md:pb-6">
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as Tab)} className="gap-6">
-          <TabsList className="w-full">
-            {TABS.map((tab) => (
-              <TabsTrigger key={tab} value={tab} className="font-medium capitalize">
+      {/* flex-1: the swipe surface reaches the bottom of the screen, even when a tab is short */}
+      <PageContainer
+        ref={swipeSurface}
+        className="max-w-4xl flex-1 gap-4 pb-28 md:pb-6"
+      >
+        <div
+          role="tablist"
+          aria-label="Group sections"
+          className="relative grid grid-cols-4 border-b"
+        >
+          {TABS.map((tab) => {
+            const active = activeTab === tab
+            return (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setActiveTab(tab)}
+                className={cn(
+                  "flex items-center justify-center gap-1 pb-2.5 text-sm capitalize transition-colors",
+                  active
+                    ? "font-semibold text-foreground"
+                    : "font-medium text-muted-foreground hover:text-foreground"
+                )}
+              >
                 {tab}
                 {tab === "members" && (
-                  <span className="ml-1 text-xs tabular-nums text-muted-foreground">
+                  <span className="text-xs text-muted-foreground tabular-nums">
                     {group.members.length}
                   </span>
                 )}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+              </button>
+            )
+          })}
+          <SwipeTabIndicator swipe={swipe} className="bottom-[-1px]" />
+        </div>
 
-          <TabsContent value="overview">
-            <OverviewTab
-              group={group}
-              expenses={groupExpenses}
-              userId={user?.uid}
-              onViewAll={() => setActiveTab("expenses")}
-            />
-          </TabsContent>
+        {/* Edge to edge, so panels slide in from the screen edge; scroll-mt clears the sticky header */}
+        <SwipeTabPanels
+          swipe={swipe}
+          className="-mx-4 scroll-mt-16 sm:-mx-6"
+          panelClassName="px-4 sm:px-6"
+        >
+          <OverviewTab
+            group={group}
+            expenses={groupExpenses}
+            userId={user?.uid}
+            onViewAll={() => setActiveTab("expenses")}
+          />
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold">
+                All expenses
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <GroupExpenseList
+                expenses={groupExpenses}
+                emptyText="No expenses added yet."
+              />
+            </CardContent>
+          </Card>
+          <MembersTab
+            group={group}
+            expenses={groupExpenses}
+            onInvite={() => setDialog("invite")}
+          />
+          {user ? <GroupGames group={group} uid={user.uid} /> : <div />}
+        </SwipeTabPanels>
 
-          <TabsContent value="expenses">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm font-semibold">All expenses</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <GroupExpenseList expenses={groupExpenses} emptyText="No expenses added yet." />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="members">
-            <MembersTab group={group} expenses={groupExpenses} onInvite={() => setDialog("invite")} />
-          </TabsContent>
-        </Tabs>
-
-        {/* Action bar: pinned above the bottom nav on mobile, inline on desktop. */}
-        <div className="fixed inset-x-0 bottom-16 z-30 border-t bg-background p-4 md:static md:border-0 md:bg-transparent md:p-0">
+        {/* Action bar: at the very bottom of the screen on mobile, inline on desktop. */}
+        <div className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-4 pt-3 backdrop-blur-sm md:static md:border-0 md:bg-transparent md:p-0">
           <div className="mx-auto flex max-w-md items-center gap-3">
-            <Button size="lg" variant="outline" className="h-11 flex-1" onClick={() => router.push(addExpenseHref)}>
+            <Button
+              size="lg"
+              variant="outline"
+              className="h-11 flex-1"
+              onClick={() => router.push(addExpenseHref)}
+            >
               <HugeiconsIcon icon={AddCircleIcon} data-icon="inline-start" />
               Add Expense
             </Button>
-            <Button size="lg" className="h-11 flex-1" onClick={() => router.push(addExpenseHref)}>
+            <Button
+              size="lg"
+              className="h-11 flex-1"
+              onClick={() => router.push(addExpenseHref)}
+            >
               Split Bill
               <HugeiconsIcon icon={ChartIncreaseIcon} data-icon="inline-end" />
             </Button>
@@ -182,7 +258,11 @@ function GroupDashboardContent() {
         </div>
       </PageContainer>
 
-      <EditGroupDialog group={group} open={dialog === "edit"} onOpenChange={closeDialog} />
+      <EditGroupDialog
+        group={group}
+        open={dialog === "edit"}
+        onOpenChange={closeDialog}
+      />
 
       <ConfirmDialog
         open={dialog === "leave"}
@@ -196,15 +276,21 @@ function GroupDashboardContent() {
         description={
           leaveCheck.allowed ? (
             <>
-              Are you sure you want to leave <strong>{group.name}</strong>? All historical expenses and your records in
-              them will be preserved.
-              {isCreator && " You created this group, so the next member becomes its admin."}
+              Are you sure you want to leave <strong>{group.name}</strong>? All
+              historical expenses and your records in them will be preserved.
+              {isCreator &&
+                " You created this group, so the next member becomes its admin."}
             </>
           ) : undefined
         }
         onConfirm={() => leaveGroup.mutate(group.id, { onSuccess: goToGroups })}
       >
-        {!leaveCheck.allowed && <BlockedNotice title="Cannot Leave Group" reason={leaveCheck.reason} />}
+        {!leaveCheck.allowed && (
+          <BlockedNotice
+            title="Cannot Leave Group"
+            reason={leaveCheck.reason}
+          />
+        )}
       </ConfirmDialog>
 
       <ConfirmDialog
@@ -219,17 +305,28 @@ function GroupDashboardContent() {
         description={
           deleteCheck.allowed ? (
             <>
-              Are you sure you want to delete and archive <strong>{group.name}</strong>? All balances are fully
-              settled.
+              Are you sure you want to delete and archive{" "}
+              <strong>{group.name}</strong>? All balances are fully settled.
             </>
           ) : undefined
         }
-        onConfirm={() => deleteGroup.mutate(group.id, { onSuccess: goToGroups })}
+        onConfirm={() =>
+          deleteGroup.mutate(group.id, { onSuccess: goToGroups })
+        }
       >
-        {!deleteCheck.allowed && <BlockedNotice title="Cannot Delete Group" reason={deleteCheck.reason} />}
+        {!deleteCheck.allowed && (
+          <BlockedNotice
+            title="Cannot Delete Group"
+            reason={deleteCheck.reason}
+          />
+        )}
       </ConfirmDialog>
 
-      <InviteDialog group={group} open={dialog === "invite"} onOpenChange={closeDialog} />
+      <InviteDialog
+        group={group}
+        open={dialog === "invite"}
+        onOpenChange={closeDialog}
+      />
     </>
   )
 }
@@ -240,7 +337,9 @@ function BlockedNotice({ title, reason }: { title: string; reason?: string }) {
     <Alert>
       <HugeiconsIcon icon={Alert02Icon} className="text-warning" />
       <AlertTitle className="font-semibold">{title}</AlertTitle>
-      <AlertDescription className="leading-relaxed text-foreground">{reason}</AlertDescription>
+      <AlertDescription className="leading-relaxed text-foreground">
+        {reason}
+      </AlertDescription>
     </Alert>
   )
 }
