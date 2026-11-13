@@ -256,7 +256,7 @@ function PhotoUploadBody({
     ctx.beginPath()
     ctx.arc(size / 2, size / 2, size / 2 - 1.5, 0, Math.PI * 2)
     ctx.lineWidth = 3
-    ctx.strokeStyle = "#2563EB"
+    ctx.strokeStyle = "#0F6CBD"
     ctx.stroke()
     ctx.restore()
   }, [zoom, pan])

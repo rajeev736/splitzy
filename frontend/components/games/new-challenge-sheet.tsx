@@ -757,7 +757,7 @@ function Segmented<T extends string>({
           className={cn(
             "rounded-[5px] px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors disabled:opacity-40",
             value === o.value
-              ? "bg-background text-foreground ring-1 ring-border"
+              ? "bg-card text-foreground shadow-xs ring-1 ring-card-stroke"
               : "text-muted-foreground hover:text-foreground"
           )}
         >

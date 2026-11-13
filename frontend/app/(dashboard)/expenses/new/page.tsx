@@ -190,9 +190,9 @@ function NewExpenseFlow({
     }
     await uploadBillsFor(expense)
     if (isShared) {
-      void celebrate({ particleCount: 90, spread: 75, origin: { y: 0.6 }, colors: ["#2563EB", "#FBBF24", "#10B981"] })
+      void celebrate({ particleCount: 90, spread: 75, origin: { y: 0.6 }, colors: ["#0F6CBD", "#EAA300", "#107C10"] })
     } else {
-      void celebrate({ particleCount: 70, spread: 60, origin: { y: 0.6 }, colors: ["#2563EB", "#10B981"] })
+      void celebrate({ particleCount: 70, spread: 60, origin: { y: 0.6 }, colors: ["#0F6CBD", "#107C10"] })
     }
     // Land where the expense lives, with a one-tap way to add the next one
     const { href, addAnotherHref } = destinationFor(expense, draft.selectedFriendIds)

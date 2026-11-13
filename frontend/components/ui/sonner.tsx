@@ -35,17 +35,17 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--normal-bg": "var(--popover)",
           "--normal-text": "var(--popover-foreground)",
           "--normal-border": "var(--border)",
-          "--border-radius": "calc(var(--radius) * 1.4)",
+          "--border-radius": "var(--radius)",
         } as React.CSSProperties
       }
       toastOptions={{
         classNames: {
           toast:
-            "cn-toast gap-3! border! border-border! bg-popover! px-4! py-3! text-popover-foreground! shadow-[0_8px_30px_-8px_rgb(0_0_0/0.18)]! dark:shadow-[0_8px_30px_-8px_rgb(0_0_0/0.6)]!",
-          title: "text-sm! font-medium! leading-snug!",
+            "cn-toast gap-3! border! border-card-stroke! bg-popover! px-4! py-3! text-popover-foreground! shadow-[var(--elevation-28)]!",
+          title: "text-sm! font-semibold! leading-snug!",
           description: "text-xs! leading-relaxed! text-muted-foreground!",
           icon: "mt-0.5! self-start",
-          actionButton: "h-7! rounded-md! bg-primary! px-2.5! text-xs! font-medium! text-primary-foreground!",
+          actionButton: "h-7! rounded-md! bg-primary! px-2.5! text-xs! font-semibold! text-primary-foreground!",
           cancelButton: "h-7! rounded-md! bg-muted! px-2.5! text-xs! font-medium! text-foreground!",
           closeButton:
             "border-border! bg-popover! text-muted-foreground! hover:bg-muted! hover:text-foreground!",

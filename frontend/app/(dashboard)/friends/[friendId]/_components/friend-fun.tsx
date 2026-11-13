@@ -83,7 +83,7 @@ export function BirthdayCard({
   ].filter(Boolean) as string[]
 
   return (
-    <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
+    <div className="flex items-center gap-3 rounded-xl border border-card-stroke bg-card shadow-xs p-3">
       <MomentArt kind="wish" className="size-11 shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="text-xs text-muted-foreground">{first}&apos;s birthday · {formatBirthday(b)}</div>

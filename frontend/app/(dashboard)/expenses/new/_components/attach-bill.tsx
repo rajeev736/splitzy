@@ -41,7 +41,7 @@ export function AttachBill({
       <input {...picker.inputProps} />
 
       {uploading ? (
-        <div className="flex flex-col gap-1.5 rounded-lg border bg-card px-3 py-2.5">
+        <div className="flex flex-col gap-1.5 rounded-xl border border-card-stroke bg-card shadow-xs px-3 py-2.5">
           <div className="flex items-center justify-between text-xs">
             <span className="font-medium">Uploading bill…</span>
             <span className="text-muted-foreground tabular-nums">{Math.round(progress * 100)}%</span>
@@ -83,7 +83,7 @@ function FileChip({ file, onRemove }: { file: PreparedAttachment; onRemove?: () 
   const url = useObjectUrl(pdf ? null : file.blob)
 
   return (
-    <li className="flex min-w-0 items-center gap-2.5 rounded-lg border bg-card p-1.5">
+    <li className="flex min-w-0 items-center gap-2.5 rounded-xl border border-card-stroke bg-card shadow-xs p-1.5">
       <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground">
         {pdf ? (
           <HugeiconsIcon icon={Pdf01Icon} className="size-5 text-destructive" />

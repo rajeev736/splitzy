@@ -71,7 +71,7 @@ export function SplitBillsVisual() {
 
 export function TrackVisual() {
   return (
-    <ItemGroup className="mx-auto w-full max-w-[300px] gap-0 divide-y overflow-hidden rounded-lg border bg-card">
+    <ItemGroup className="mx-auto w-full max-w-[300px] gap-0 divide-y overflow-hidden rounded-xl border border-card-stroke bg-card shadow-xs">
       <DemoRow
         media={<UserAvatar src={AVATAR.boy} name="Rahul" size="sm" className="size-9" />}
         title="Rahul paid you"
@@ -125,7 +125,7 @@ export function UpiVisual() {
 
 export function SyncVisual() {
   return (
-    <ItemGroup className="mx-auto w-full max-w-[300px] gap-0 divide-y overflow-hidden rounded-lg border bg-card">
+    <ItemGroup className="mx-auto w-full max-w-[300px] gap-0 divide-y overflow-hidden rounded-xl border border-card-stroke bg-card shadow-xs">
       <DemoRow
         media={<UserAvatar src={AVATAR.boy} name="Aman" size="sm" />}
         title="Aman paid you ₹250"

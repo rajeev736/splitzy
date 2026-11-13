@@ -52,7 +52,7 @@ export function EnableNotificationsBanner({ className }: { className?: string })
   if (permission !== "default" || dismissed || dismissedInitially) return null
 
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border bg-card px-4 py-3", className)}>
+    <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-card-stroke bg-card shadow-xs px-4 py-3", className)}>
       <HugeiconsIcon icon={Notification01Icon} className="size-4.5 shrink-0 text-muted-foreground" />
       <p className="min-w-48 flex-1 text-sm text-muted-foreground">
         Get payment and game alerts in your notification bar.

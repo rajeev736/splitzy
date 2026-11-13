@@ -37,7 +37,7 @@ export function AppSidebar() {
       </div>
 
       <div className="p-4">
-        <ButtonLink href="/expenses/new" data-tour="add-expense" size="lg" className="h-10 w-full text-sm font-medium">
+        <ButtonLink href="/expenses/new" data-tour="add-expense" size="lg" className="h-10 w-full text-sm">
           <HugeiconsIcon icon={AddCircleIcon} data-icon="inline-start" />
           Add Expense
         </ButtonLink>
@@ -55,14 +55,16 @@ export function AppSidebar() {
               href={item.href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                "relative flex items-center justify-between rounded-md px-3 py-2 text-sm transition-colors",
+                // Windows 11 navigation: a filled row with a short brand pill on its left edge
+                "before:absolute before:top-1/2 before:left-0 before:h-4 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-primary before:transition-opacity",
                 active
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground before:opacity-100"
+                  : "font-medium text-muted-foreground before:opacity-0 hover:bg-foreground/[0.04] hover:text-foreground active:bg-foreground/[0.07]"
               )}
             >
               <span className="flex items-center gap-3">
-                <HugeiconsIcon icon={item.icon} className="size-4.5" strokeWidth={active ? 2 : 1.8} />
+                <HugeiconsIcon icon={item.icon} className={cn("size-5", active && "text-primary")} strokeWidth={active ? 2 : 1.6} />
                 {item.label}
               </span>
               <div className="flex items-center gap-2">
@@ -83,7 +85,7 @@ export function AppSidebar() {
 
       <div className="border-t border-sidebar-border px-5 py-4">
         <div className="text-xs text-muted-foreground">Net balance</div>
-        <Amount signed paise={netBalancePaise} className="mt-0.5 block text-lg font-semibold tracking-tight tabular-nums" />
+        <Amount signed paise={netBalancePaise} className="mt-0.5 block text-xl font-semibold tabular-nums" />
         <div className="mt-0.5 text-xs text-muted-foreground">
           {netBalancePaise >= 0 ? "You will receive" : "You need to pay"}
         </div>

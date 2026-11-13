@@ -98,7 +98,7 @@ function FriendRequestsContent() {
       <>
         <TabsContent value="received">
           {receivedRequests.length > 0 ? (
-            <ItemGroup className="gap-0 divide-y overflow-hidden rounded-lg border bg-card">
+            <ItemGroup className="gap-0 divide-y overflow-hidden rounded-xl border border-card-stroke bg-card shadow-xs">
               {receivedRequests.map((req) => (
                 <Item key={req.id} className="flex-col items-stretch gap-3 rounded-none px-4 py-3.5 sm:flex-row sm:items-center">
                   <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -144,7 +144,7 @@ function FriendRequestsContent() {
 
         <TabsContent value="sent">
           {sentRequests.length > 0 ? (
-            <ItemGroup className="gap-0 divide-y overflow-hidden rounded-lg border bg-card">
+            <ItemGroup className="gap-0 divide-y overflow-hidden rounded-xl border border-card-stroke bg-card shadow-xs">
               {sentRequests.map((req) => (
                 <Item key={req.id} className="flex-nowrap rounded-none px-4 py-3.5">
                   <ItemMedia>
@@ -220,7 +220,7 @@ function FriendRequestsContent() {
               Finding mutual connections...
             </div>
           ) : mutualSuggestions.length === 0 ? (
-            <Empty className="rounded-lg border bg-card p-6">
+            <Empty className="rounded-xl border border-card-stroke bg-card shadow-xs p-6">
               <EmptyHeader>
                 <EmptyMedia variant="icon" className="rounded-md border bg-transparent text-muted-foreground">
                   <HugeiconsIcon icon={UserGroupIcon} />
@@ -232,7 +232,7 @@ function FriendRequestsContent() {
               </EmptyHeader>
             </Empty>
           ) : (
-            <ItemGroup className="gap-0 divide-y overflow-hidden rounded-lg border bg-card">
+            <ItemGroup className="gap-0 divide-y overflow-hidden rounded-xl border border-card-stroke bg-card shadow-xs">
               {mutualSuggestions.map(({ user: su, mutualCount, mutualFriendNames }) => {
                 const isAdding = sendRequest.isPending && sendRequest.variables === su.splitzyId
                 return (

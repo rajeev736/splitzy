@@ -26,7 +26,7 @@ export function IdLookupResult({ splitzyId }: { splitzyId: string }) {
 
   if (search.isFetching && !result) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 rounded-xl border border-card-stroke bg-card shadow-xs px-4 py-3 text-xs text-muted-foreground">
         <Spinner />
         Looking up {splitzyId}...
       </div>
@@ -36,7 +36,7 @@ export function IdLookupResult({ splitzyId }: { splitzyId: string }) {
 
   if (!result.found || !result.user) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 rounded-xl border border-card-stroke bg-card shadow-xs px-4 py-3 text-xs text-muted-foreground">
         <HugeiconsIcon icon={AlertCircleIcon} className="size-4 shrink-0 text-warning" />
         {result.message || "No user found with that JoySplit ID."}
       </div>

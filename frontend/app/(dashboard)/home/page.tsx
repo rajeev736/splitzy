@@ -183,7 +183,7 @@ export default function HomePage() {
             </Card>
 
             {/* PhonePe-style entry points: one tap per kind of split */}
-            <div className="grid grid-cols-4 gap-1 rounded-xl border border-border/70 bg-card p-1.5 shadow-[0_1px_2px_rgb(0_0_0/0.03)] dark:border-border">
+            <div className="grid grid-cols-4 gap-1 rounded-xl border border-card-stroke bg-card p-1.5 shadow-xs">
               <QuickAction
                 icon={UserGroupIcon}
                 label="Group"
@@ -387,7 +387,7 @@ function MonthSnapshot({ spentPaise, count }: { spentPaise: number; count: numbe
   return (
     <Link
       href="/insights"
-      className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3.5 transition-colors hover:bg-muted/50"
+      className="flex items-center gap-3 rounded-xl border border-card-stroke bg-card shadow-xs px-4 py-3.5 transition-colors hover:bg-muted/50"
     >
       <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
         <HugeiconsIcon icon={Analytics01Icon} className="size-4.5" />

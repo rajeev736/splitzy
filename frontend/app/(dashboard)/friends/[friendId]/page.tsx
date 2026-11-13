@@ -156,7 +156,7 @@ function FriendProfileContent() {
         </section>
 
         {/* At a glance */}
-        <div className="grid grid-cols-3 divide-x rounded-xl border bg-card py-3 text-center">
+        <div className="grid grid-cols-3 divide-x rounded-xl border border-card-stroke bg-card shadow-xs py-3 text-center">
           <div className="flex min-w-0 flex-col items-center gap-0.5 px-2">
             {wallet ? <Coins amount={wallet.balance} className="text-base" /> : <span className="text-base font-semibold">—</span>}
             <span className="text-[11px] text-muted-foreground">Coins</span>

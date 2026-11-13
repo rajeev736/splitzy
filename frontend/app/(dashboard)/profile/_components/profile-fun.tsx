@@ -43,7 +43,7 @@ export function MoodPicker({ mood }: { mood?: string }) {
         type="button"
         data-tour="mood"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-3 rounded-xl border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/60"
+        className="flex items-center gap-3 rounded-xl border border-card-stroke bg-card shadow-xs px-4 py-3 text-left transition-colors hover:bg-muted/60"
       >
         {current ? (
           <MoodFace mood={current} className="size-9 shrink-0" />
@@ -161,7 +161,7 @@ export function BirthdayDialog({
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {cheers.slice(0, 12).map((c) => (
-                    <span key={c.from} className="inline-flex items-center gap-1.5 rounded-full bg-background py-0.5 pr-2.5 pl-0.5 text-xs">
+                    <span key={c.from} className="inline-flex items-center gap-1.5 rounded-full bg-card py-0.5 pr-2.5 pl-0.5 text-xs">
                       <UserAvatar uid={c.from} name={c.fromName ?? "Friend"} size="xs" />
                       {(c.fromName ?? "Friend").split(" ")[0]}
                     </span>

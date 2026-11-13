@@ -250,8 +250,8 @@ function SplitSummaryContent() {
                   aria-selected={activeTab === t}
                   onClick={() => setActiveTab(t)}
                   className={cn(
-                    "flex-1 pb-2.5 text-center text-sm font-medium transition-colors select-none sm:pb-3",
-                    activeTab === t ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                    "flex-1 pb-2.5 text-center text-sm transition-colors select-none sm:pb-3",
+                    activeTab === t ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
                   )}
                 >
                   {t === "groups" ? "Groups" : "People"}
@@ -277,7 +277,7 @@ function SplitSummaryContent() {
                     }}
                   />
                 ) : (
-                  <div className="flex flex-col divide-y overflow-hidden rounded-lg border bg-card">
+                  <div className="flex flex-col divide-y overflow-hidden rounded-xl border border-card-stroke bg-card shadow-xs">
                     {groupRows.map((row) => {
                       const youOwe = row.userOwesPaise > row.owedToUserPaise
                       const amount = Math.abs(row.netPaise)
@@ -372,7 +372,7 @@ function SplitSummaryContent() {
                     description="You are settled up with all your friends and group members!"
                   />
                 ) : (
-                  <div className="flex flex-col divide-y overflow-hidden rounded-lg border bg-card">
+                  <div className="flex flex-col divide-y overflow-hidden rounded-xl border border-card-stroke bg-card shadow-xs">
                     {peopleRows.map((person) => {
                       return (
                         <div

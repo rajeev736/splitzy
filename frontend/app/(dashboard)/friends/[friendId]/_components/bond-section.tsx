@@ -33,7 +33,7 @@ export function BondPill({ friend, friendship }: { friend: UserProfile; friendsh
     <>
       {askedByThem ? (
         // They asked: answer right here
-        <div className="flex w-full max-w-sm flex-col items-center gap-2 rounded-xl border bg-card px-4 py-3 text-center">
+        <div className="flex w-full max-w-sm flex-col items-center gap-2 rounded-xl border border-card-stroke bg-card shadow-xs px-4 py-3 text-center">
           <p className="text-sm">
             <span className="font-semibold">{first}</span> wants you to be{" "}
             {ask.type === "love" ? "in love" : `their ${BONDS[ask.type as BondId].name.toLowerCase()}`}

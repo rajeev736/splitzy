@@ -5,8 +5,10 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* Segoe UI Variable on Windows (the Microsoft look); Inter everywhere else */
   --font-heading: var(--font-sans);
-  --font-sans: var(--font-sans);
+  --font-sans: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", var(--font-inter), -apple-system,
+    BlinkMacSystemFont, system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -32,12 +34,20 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-pressed: var(--primary-pressed);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-card-stroke: var(--card-stroke);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+
+  /* Fluent interaction layers: subtle hover / pressed fills and the strong control stroke */
+  --color-subtle-hover: var(--subtle-hover);
+  --color-subtle-pressed: var(--subtle-pressed);
+  --color-stroke-accessible: var(--stroke-accessible);
 
   /* Splitzy semantic tokens (design system: success / warning / info / brand yellow) */
   --color-success: var(--success);
@@ -49,100 +59,140 @@
   --color-brand-yellow: var(--brand-yellow);
   --color-brand-yellow-foreground: var(--brand-yellow-foreground);
 
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-xl: calc(var(--radius) * 1.5);
+  --radius-2xl: calc(var(--radius) * 2);
+  --radius-3xl: calc(var(--radius) * 2.5);
+  --radius-4xl: calc(var(--radius) * 3);
+
+  /* Fluent 2 elevation ramp: every shadow-* in the app uses it */
+  /* xs = resting cards (lighter than elevation-2, so long lists stay calm) */
+  --shadow-2xs: var(--elevation-card);
+  --shadow-xs: var(--elevation-card);
+  --shadow-sm: var(--elevation-4);
+  --shadow-md: var(--elevation-8);
+  --shadow-lg: var(--elevation-16);
+  --shadow-xl: var(--elevation-28);
+  --shadow-2xl: var(--elevation-64);
 }
 
-/* Clean, neutral system: zinc greys with a single blue accent. Flat surfaces —
-   borders separate things, not shadows. Small radius for a sharp, precise feel. */
+/* Microsoft Fluent 2: neutral greys, one Microsoft blue, layered elevation.
+   The canvas is a soft grey; cards and sheets sit on it in white with a
+   gentle shadow, the way Outlook, Teams and Windows 11 do. */
 :root {
-  --background: #fafafa;
-  --foreground: #09090b;
+  --background: #f5f5f5;
+  --foreground: #242424;
   --card: #ffffff;
-  --card-foreground: #09090b;
+  --card-foreground: #242424;
+  --card-stroke: transparent;
   --popover: #ffffff;
-  --popover-foreground: #09090b;
-  --primary: #2563eb;
+  --popover-foreground: #242424;
+  --primary: #0f6cbd;
+  --primary-hover: #115ea3;
+  --primary-pressed: #0f548c;
   --primary-foreground: #ffffff;
-  --secondary: #f4f4f5;
-  --secondary-foreground: #18181b;
-  --muted: #f4f4f5;
-  --muted-foreground: #71717a;
-  --accent: #f4f4f5;
-  --accent-foreground: #09090b;
-  --destructive: #dc2626;
-  --border: #e4e4e7;
-  --input: #e4e4e7;
-  --ring: #2563eb;
-  --success: #059669;
+  --secondary: #f0f0f0;
+  --secondary-foreground: #242424;
+  --muted: #f0f0f0;
+  --muted-foreground: #616161;
+  --accent: #f5f5f5;
+  --accent-foreground: #242424;
+  --subtle-hover: #f5f5f5;
+  --subtle-pressed: #e0e0e0;
+  --stroke-accessible: #616161;
+  --destructive: #c50f1f;
+  --border: #e0e0e0;
+  --input: #d1d1d1;
+  --ring: #0f6cbd;
+  --success: #107c10;
   --success-foreground: #ffffff;
-  --warning: #d97706;
+  --warning: #bc4b09;
   --warning-foreground: #ffffff;
-  --info: #0284c7;
+  --info: #0078d4;
   --info-foreground: #ffffff;
-  --brand-yellow: #f59e0b;
-  --brand-yellow-foreground: #09090b;
-  --chart-1: #2563eb;
-  --chart-2: #059669;
-  --chart-3: #f59e0b;
-  --chart-4: #dc2626;
-  --chart-5: #7c3aed;
-  --radius: 0.75rem;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #09090b;
-  --sidebar-primary: #2563eb;
+  --brand-yellow: #eaa300;
+  --brand-yellow-foreground: #242424;
+  --chart-1: #0f6cbd;
+  --chart-2: #107c10;
+  --chart-3: #eaa300;
+  --chart-4: #c50f1f;
+  --chart-5: #8764b8;
+  --radius: 0.5rem;
+  --sidebar: #f5f5f5;
+  --sidebar-foreground: #242424;
+  --sidebar-primary: #0f6cbd;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f4f4f5;
-  --sidebar-accent-foreground: #09090b;
-  --sidebar-border: #e4e4e7;
-  --sidebar-ring: #2563eb;
+  --sidebar-accent: #ebebeb;
+  --sidebar-accent-foreground: #242424;
+  --sidebar-border: #e0e0e0;
+  --sidebar-ring: #0f6cbd;
+
+  --elevation-2: 0 0 2px rgb(0 0 0 / 0.12), 0 1px 2px rgb(0 0 0 / 0.14);
+  --elevation-4: 0 0 2px rgb(0 0 0 / 0.12), 0 2px 4px rgb(0 0 0 / 0.14);
+  --elevation-8: 0 0 2px rgb(0 0 0 / 0.12), 0 4px 8px rgb(0 0 0 / 0.14);
+  --elevation-16: 0 0 2px rgb(0 0 0 / 0.12), 0 8px 16px rgb(0 0 0 / 0.14);
+  --elevation-28: 0 0 8px rgb(0 0 0 / 0.12), 0 14px 28px rgb(0 0 0 / 0.14);
+  --elevation-64: 0 0 8px rgb(0 0 0 / 0.12), 0 32px 64px rgb(0 0 0 / 0.14);
+  /* Resting cards: a touch lighter than elevation-2 so long lists stay calm */
+  --elevation-card: 0 0 2px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.1);
 }
 
 .dark {
-  --background: #09090b;
-  --foreground: #fafafa;
-  --card: #111113;
-  --card-foreground: #fafafa;
-  --popover: #161618;
-  --popover-foreground: #fafafa;
-  --primary: #3b82f6;
+  --background: #1f1f1f;
+  --foreground: #ffffff;
+  --card: #292929;
+  --card-foreground: #ffffff;
+  --card-stroke: rgb(255 255 255 / 0.06);
+  --popover: #2e2e2e;
+  --popover-foreground: #ffffff;
+  --primary: #2886de;
+  --primary-hover: #479ef5;
+  --primary-pressed: #115ea3;
   --primary-foreground: #ffffff;
-  --secondary: #1c1c1f;
-  --secondary-foreground: #fafafa;
-  --muted: #1c1c1f;
-  --muted-foreground: #a1a1aa;
-  --accent: #1c1c1f;
-  --accent-foreground: #fafafa;
-  --destructive: #f87171;
-  --border: #26262a;
-  --input: #2e2e33;
-  --ring: #3b82f6;
-  --success: #34d399;
-  --success-foreground: #052e16;
-  --warning: #fbbf24;
-  --warning-foreground: #451a03;
-  --info: #38bdf8;
-  --info-foreground: #082f49;
-  --brand-yellow: #fbbf24;
-  --brand-yellow-foreground: #09090b;
-  --chart-1: #3b82f6;
-  --chart-2: #34d399;
-  --chart-3: #fbbf24;
-  --chart-4: #f87171;
-  --chart-5: #a78bfa;
-  --sidebar: #09090b;
-  --sidebar-foreground: #fafafa;
-  --sidebar-primary: #3b82f6;
+  --secondary: #333333;
+  --secondary-foreground: #ffffff;
+  --muted: #333333;
+  --muted-foreground: #adadad;
+  --accent: #383838;
+  --accent-foreground: #ffffff;
+  --subtle-hover: #383838;
+  --subtle-pressed: #2e2e2e;
+  --stroke-accessible: #adadad;
+  --destructive: #dc626d;
+  --border: #3d3d3d;
+  --input: #525252;
+  --ring: #479ef5;
+  --success: #54b054;
+  --success-foreground: #052505;
+  --warning: #faa06b;
+  --warning-foreground: #4a1e04;
+  --info: #479ef5;
+  --info-foreground: #061724;
+  --brand-yellow: #f2c661;
+  --brand-yellow-foreground: #242424;
+  --chart-1: #479ef5;
+  --chart-2: #54b054;
+  --chart-3: #f2c661;
+  --chart-4: #dc626d;
+  --chart-5: #b696d6;
+  --sidebar: #1a1a1a;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #479ef5;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #1c1c1f;
-  --sidebar-accent-foreground: #fafafa;
-  --sidebar-border: #26262a;
-  --sidebar-ring: #3b82f6;
+  --sidebar-accent: #2e2e2e;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #333333;
+  --sidebar-ring: #479ef5;
+
+  --elevation-2: 0 0 2px rgb(0 0 0 / 0.24), 0 1px 2px rgb(0 0 0 / 0.28);
+  --elevation-4: 0 0 2px rgb(0 0 0 / 0.24), 0 2px 4px rgb(0 0 0 / 0.28);
+  --elevation-8: 0 0 2px rgb(0 0 0 / 0.24), 0 4px 8px rgb(0 0 0 / 0.28);
+  --elevation-16: 0 0 2px rgb(0 0 0 / 0.24), 0 8px 16px rgb(0 0 0 / 0.28);
+  --elevation-28: 0 0 8px rgb(0 0 0 / 0.24), 0 14px 28px rgb(0 0 0 / 0.28);
+  --elevation-64: 0 0 8px rgb(0 0 0 / 0.24), 0 32px 64px rgb(0 0 0 / 0.28);
+  --elevation-card: 0 0 2px rgb(0 0 0 / 0.24), 0 1px 2px rgb(0 0 0 / 0.28);
 }
 
 @layer base {
@@ -256,7 +306,7 @@ input:autofill {
   box-shadow: 0 12px 40px -8px rgb(0 0 0 / 0.25);
   padding: 16px;
   max-width: min(340px, calc(100vw - 32px));
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: inherit;
 }
 .driver-popover.joysplit-tour .driver-popover-title {
   font-size: 15px;

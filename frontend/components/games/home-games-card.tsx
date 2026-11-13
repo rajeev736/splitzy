@@ -48,7 +48,7 @@ export function HomeGamesCard() {
   if (rows.length === 0) return null
 
   return (
-    <section className="flex flex-col rounded-lg border bg-card">
+    <section className="flex flex-col rounded-xl border border-card-stroke bg-card shadow-xs">
       <div className="flex items-center justify-between px-4 pt-3.5 pb-1">
         <h2 className="text-sm font-semibold">Games</h2>
         <Link

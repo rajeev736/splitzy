@@ -22,9 +22,12 @@ export function SwipeTabIndicator({ swipe, className }: { swipe: SwipeTabParts; 
     <span
       ref={indicator}
       aria-hidden
-      className={cn("pointer-events-none absolute bottom-0 left-0 h-0.5 bg-primary", className)}
+      className={cn("pointer-events-none absolute bottom-0 left-0 flex h-[3px] justify-center", className)}
       style={{ width: `${100 / count}%`, transform: `translate3d(${initial * 100}%,0,0)` }}
-    />
+    >
+      {/* Fluent's selection bar: short and rounded, centred under the label */}
+      <span className="h-full w-14 rounded-full bg-primary" />
+    </span>
   )
 }
 

@@ -137,8 +137,8 @@ function ChallengesContent() {
                 aria-selected={active}
                 onClick={() => setPicked(t.value)}
                 className={cn(
-                  "flex items-center justify-center gap-2 pb-2.5 text-sm font-medium transition-colors",
-                  active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                  "flex items-center justify-center gap-2 pb-2.5 text-sm transition-colors",
+                  active ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
                 )}
               >
                 {t.label}

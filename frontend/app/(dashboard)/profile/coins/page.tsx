@@ -64,7 +64,7 @@ export default function CoinsPage() {
       <AppHeader title="Coins" showBack rightAction={<span />} />
       <PageContainer className="max-w-xl gap-5">
         {/* Balance */}
-        <section className="flex flex-col items-center gap-1 rounded-2xl border bg-card px-4 py-6 text-center">
+        <section className="flex flex-col items-center gap-1 rounded-2xl border border-card-stroke bg-card shadow-xs px-4 py-6 text-center">
           <CoinIcon className="size-10" />
           <div className="mt-1 text-3xl font-bold tracking-tight tabular-nums">
             {wallet ? fmt.format(wallet.balance) : "—"}
@@ -86,7 +86,7 @@ export default function CoinsPage() {
         <div className="grid grid-cols-2 gap-2">
           <Link
             href="/challenges?tab=fun"
-            className="flex items-center gap-2.5 rounded-xl border bg-card px-3 py-2.5 transition-colors hover:bg-muted/60"
+            className="flex items-center gap-2.5 rounded-xl border border-card-stroke bg-card shadow-xs px-3 py-2.5 transition-colors hover:bg-muted/60"
           >
             <HugeiconsIcon icon={GameController03Icon} className="size-5 shrink-0 text-primary" />
             <span className="min-w-0">
@@ -96,7 +96,7 @@ export default function CoinsPage() {
           </Link>
           <Link
             href="/profile/frames"
-            className="flex items-center gap-2.5 rounded-xl border bg-card px-3 py-2.5 transition-colors hover:bg-muted/60"
+            className="flex items-center gap-2.5 rounded-xl border border-card-stroke bg-card shadow-xs px-3 py-2.5 transition-colors hover:bg-muted/60"
           >
             <HugeiconsIcon icon={CrownIcon} className="size-5 shrink-0 text-primary" />
             <span className="min-w-0">
@@ -127,7 +127,7 @@ export default function CoinsPage() {
             groups.map((g) => (
               <div key={g.label} className="flex flex-col">
                 <div className="px-1 pb-1 text-[11px] font-medium text-muted-foreground">{g.label}</div>
-                <ul className="divide-y rounded-xl border bg-card">
+                <ul className="divide-y rounded-xl border border-card-stroke bg-card shadow-xs">
                   {g.items.map((t) => {
                     const k = KIND[t.kind] ?? KIND.refund
                     return (

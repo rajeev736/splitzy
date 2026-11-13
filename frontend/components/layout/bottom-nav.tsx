@@ -69,12 +69,12 @@ export function BottomNav() {
           data-tour="add-expense"
           aria-label="Add expense"
           title="Add expense"
-          className="fixed right-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] z-40 flex size-13 items-center justify-center rounded-full bg-foreground text-background shadow-lg shadow-black/15 transition-transform active:scale-95 md:hidden dark:shadow-black/40"
+          className="fixed right-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] z-40 flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg transition-colors hover:bg-primary-hover active:bg-primary-pressed md:hidden"
         >
           <HugeiconsIcon icon={PlusSignIcon} className="size-6" strokeWidth={2} />
         </Link>
       )}
-      <nav className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t bg-background/85 px-1.5 pt-1.5 backdrop-blur-xl backdrop-saturate-150 md:hidden">
+      <nav className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-card/85 px-1.5 backdrop-blur-2xl backdrop-saturate-150 md:hidden">
         {/* Equal-width columns regardless of label length */}
         <div
           className="mx-auto grid max-w-md"
@@ -96,19 +96,19 @@ export function BottomNav() {
                 onClick={(e) => goTo(e, item.href)}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "group/nav relative flex min-w-0 flex-col items-center justify-center gap-1 pt-0.5 pb-1 transition-colors",
-                  active ? "text-foreground" : "text-muted-foreground"
+                  "group/nav relative flex min-w-0 flex-col items-center justify-center gap-1 pt-2.5 pb-1.5 transition-colors",
+                  active ? "text-primary" : "text-muted-foreground active:text-foreground"
                 )}
               >
-                {/* Active tab: a soft tinted pill behind the icon */}
-                <div
+                {/* Active tab: a short brand bar on the top edge, like Windows' selection indicator */}
+                <span
+                  aria-hidden
                   className={cn(
-                    "relative flex h-8 w-14 items-center justify-center rounded-lg transition-all duration-200 ease-out",
-                    active
-                      ? "bg-primary/12 text-primary"
-                      : "group-hover/nav:bg-muted group-active/nav:scale-95"
+                    "absolute top-0 left-1/2 h-[3px] w-8 -translate-x-1/2 rounded-b-full bg-primary transition-opacity duration-150",
+                    active ? "opacity-100" : "opacity-0"
                   )}
-                >
+                />
+                <div className="relative flex h-7 w-14 items-center justify-center transition-opacity duration-100 group-active/nav:opacity-70">
                   {isProfile && user ? (
                     <UserAvatar
                       uid={user.uid}
@@ -116,24 +116,24 @@ export function BottomNav() {
                       name={user.displayName}
                       size="xs"
                       className={cn(
-                        "size-6 ring-2 ring-offset-1 ring-offset-background transition-all",
+                        "size-6 ring-2 ring-offset-1 ring-offset-card transition-all",
                         active ? "ring-primary" : "ring-transparent"
                       )}
                     />
                   ) : (
                     <HugeiconsIcon
                       icon={item.icon}
-                      className="size-[22px]"
-                      strokeWidth={active ? 2 : 1.6}
+                      className="size-6"
+                      strokeWidth={active ? 2 : 1.5}
                     />
                   )}
                   {showDot && (
-                    <span className="absolute top-1 right-3 size-2 rounded-full bg-destructive ring-2 ring-background" />
+                    <span className="absolute top-0 right-3 size-2 rounded-full bg-destructive ring-2 ring-card" />
                   )}
                 </div>
                 <span
                   className={cn(
-                    "truncate text-[11px] leading-none tracking-tight",
+                    "truncate text-[11px] leading-none",
                     active ? "font-semibold" : "font-medium"
                   )}
                 >

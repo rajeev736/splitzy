@@ -168,7 +168,7 @@ export default function FramesPage() {
               onClick={() => setCategory(c.id)}
               className={cn(
                 "h-8 truncate rounded-md px-1 text-[11px] font-medium transition-colors sm:text-xs",
-                category === c.id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
+                category === c.id ? "bg-card font-semibold text-foreground shadow-xs" : "text-muted-foreground"
               )}
             >
               {c.label}
@@ -187,7 +187,7 @@ export default function FramesPage() {
                 type="button"
                 onClick={() => setPicked(id)}
                 className={cn(
-                  "relative flex min-w-0 flex-col items-center gap-1 rounded-xl border bg-card px-1 pt-1 pb-2.5 transition-colors",
+                  "relative flex min-w-0 flex-col items-center gap-1 rounded-xl border border-card-stroke bg-card shadow-xs px-1 pt-1 pb-2.5 transition-colors",
                   selected ? "border-primary ring-2 ring-primary/20" : "hover:bg-muted/50"
                 )}
               >

@@ -5,8 +5,8 @@ export const SITE = {
   description:
     "JoySplit is a free expense-splitting app for friends, trips and roommates. Split bills to the exact paise, track who owes what, and settle up instantly over UPI.",
   url: (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, ""),
-  themeColor: "#2563EB",
-  backgroundColor: "#F8FAFC",
+  themeColor: "#0F6CBD",
+  backgroundColor: "#F5F5F5",
   keywords: [
     "split bills",
     "expense splitter",

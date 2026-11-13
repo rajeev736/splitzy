@@ -56,7 +56,7 @@ export function LoveActions({ friend, onSent }: { friend: UserProfile; onSent: (
           type="button"
           disabled={!!sending}
           onClick={() => go(type)}
-          className="group flex flex-col items-center gap-1 rounded-xl border bg-card px-2 pt-2 pb-2.5 transition-[transform,background-color] active:scale-[0.97] disabled:opacity-60 hover:bg-rose-50/60 dark:hover:bg-rose-500/5"
+          className="group flex flex-col items-center gap-1 rounded-xl border border-card-stroke bg-card shadow-xs px-2 pt-2 pb-2.5 transition-[transform,background-color] active:scale-[0.97] disabled:opacity-60 hover:bg-rose-50/60 dark:hover:bg-rose-500/5"
         >
           <MomentArt kind={type} className="size-14 transition-transform group-hover:-translate-y-0.5" />
           <span className="flex items-center gap-1 text-xs font-semibold">

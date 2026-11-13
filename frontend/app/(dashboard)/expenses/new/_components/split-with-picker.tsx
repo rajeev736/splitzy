@@ -52,7 +52,7 @@ export function SplitWithPicker({
                 className={cn(
                   "rounded-[5px] px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors",
                   mode === m.value
-                    ? "bg-background text-foreground ring-1 ring-border"
+                    ? "bg-card text-foreground shadow-xs ring-1 ring-card-stroke"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >

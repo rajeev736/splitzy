@@ -44,7 +44,7 @@ export function AppHeader({
   const unread = useUnreadCount()
 
   return (
-    <header className="sticky top-0 z-30 border-b bg-background/85 px-4 py-2.5 backdrop-blur-xl backdrop-saturate-150 sm:px-6">
+    <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 px-4 py-2.5 backdrop-blur-2xl backdrop-saturate-150 sm:px-6">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           {showBack && (
@@ -62,12 +62,12 @@ export function AppHeader({
               </Link>
               <div>
                 <div className="text-xs text-muted-foreground">{greeting()}</div>
-                <div className="text-base leading-tight font-semibold">{user.displayName.split(" ")[0]}</div>
+                <div className="text-lg leading-6 font-semibold">{user.displayName.split(" ")[0]}</div>
               </div>
             </div>
           ) : (
             <div className="min-w-0">
-              {title && <h1 className="truncate text-base font-semibold tracking-tight sm:text-lg">{title}</h1>}
+              {title && <h1 className="truncate text-lg leading-6 font-semibold sm:text-xl sm:leading-7">{title}</h1>}
               {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
             </div>
           )}
@@ -105,7 +105,7 @@ function CoinChip() {
       href="/profile/coins"
       data-tour="coins"
       aria-label={`${wallet.balance} coins`}
-      className="flex h-8 items-center rounded-full border bg-card px-2.5 text-xs transition-colors hover:bg-muted"
+      className="flex h-8 items-center rounded-full border border-card-stroke bg-card px-2.5 text-xs font-semibold shadow-xs transition-colors hover:bg-subtle-hover active:bg-subtle-pressed"
     >
       <Coins amount={wallet.balance} iconClassName="size-4" />
     </Link>

@@ -6,7 +6,7 @@ import { Providers } from "@/components/providers"
 import { SITE } from "@/lib/site"
 import { cn } from "@/lib/utils"
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" })
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" })
 // Only used for IDs (JOY-XXXXXX); not needed for first paint
 const fontMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap", preload: false })
 
@@ -49,8 +49,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#F8FAFC" },
-    { media: "(prefers-color-scheme: dark)", color: "#0B1120" },
+    { media: "(prefers-color-scheme: light)", color: "#F5F5F5" },
+    { media: "(prefers-color-scheme: dark)", color: "#1F1F1F" },
   ],
   colorScheme: "light dark",
   width: "device-width",

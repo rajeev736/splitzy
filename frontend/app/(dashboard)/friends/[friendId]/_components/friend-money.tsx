@@ -124,7 +124,7 @@ export function FriendMoney({ friend }: { friend: UserProfile }) {
 
       {/* Per context, when there's more than one place money is open */}
       {rows.length > 1 && (
-        <div className="flex flex-col divide-y rounded-lg border bg-card">
+        <div className="flex flex-col divide-y rounded-xl border border-card-stroke bg-card shadow-xs">
           {rows.map((r) => (
             <div key={r.key} className="flex items-center gap-3 px-3 py-2.5">
               <HugeiconsIcon icon={r.icon} className="size-4 shrink-0 text-muted-foreground" />
@@ -165,7 +165,7 @@ export function FriendMoney({ friend }: { friend: UserProfile }) {
 
       {/* Owed to you overall: a settle-up game */}
       {total > 0 && !pending && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2.5">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-card-stroke bg-card shadow-xs px-3 py-2.5">
           <div className="min-w-0 text-xs text-muted-foreground">
             Play {first} for a discount on the {formatPaise(total)} they owe
           </div>
