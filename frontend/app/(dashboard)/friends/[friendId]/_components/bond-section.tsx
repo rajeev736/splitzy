@@ -1,9 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { FavouriteIcon, Tag01Icon, UserMultiple02Icon } from "@hugeicons/core-free-icons"
+import { Tag01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
+import { BOND_TONE, BondGlyph } from "@/components/fun/bond-art"
 import { useSession } from "@/components/providers/session-provider"
 import { BottomSheet } from "@/components/shared/bottom-sheet"
 import { Button } from "@/components/ui/button"
@@ -54,17 +55,18 @@ export function BondPill({ friend, friendship }: { friend: UserProfile; friendsh
           onClick={() => setOpen(true)}
           className={cn(
             "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
-            bond?.type === "love"
-              ? "border-rose-300/60 bg-rose-50 text-rose-600 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-300"
-              : bond
-                ? "border-primary/25 bg-primary/5 text-primary"
-                : "border-dashed text-muted-foreground hover:text-foreground"
+            bond && isBondId(bond.type)
+              ? BOND_TONE[bond.type].pill
+              : "border-dashed text-muted-foreground hover:text-foreground"
           )}
         >
-          <HugeiconsIcon
-            icon={bond?.type === "love" ? FavouriteIcon : bond ? UserMultiple02Icon : Tag01Icon}
-            className="size-3.5"
-          />
+          {bond && isBondId(bond.type) ? (
+            <BondGlyph bond={bond.type} className="size-[18px]" />
+          ) : ask && isBondId(ask.type) ? (
+            <BondGlyph bond={ask.type} className="size-[18px]" />
+          ) : (
+            <HugeiconsIcon icon={Tag01Icon} className="size-3.5" />
+          )}
           {bond
             ? `${BONDS[bond.type as BondId].pair} · since ${sinceLabel(bond.since)}`
             : ask
@@ -160,13 +162,8 @@ function BondSheet({
                   pick === id ? "border-primary bg-primary/5" : "hover:bg-muted/60"
                 )}
               >
-                <span
-                  className={cn(
-                    "flex size-9 shrink-0 items-center justify-center rounded-full",
-                    id === "love" ? "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300" : "bg-primary/10 text-primary"
-                  )}
-                >
-                  <HugeiconsIcon icon={id === "love" ? FavouriteIcon : UserMultiple02Icon} className="size-4.5" />
+                <span className={cn("flex size-11 shrink-0 items-center justify-center rounded-xl", BOND_TONE[id].chip)}>
+                  <BondGlyph bond={id} className="size-7" />
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold">{BONDS[id].name}</span>

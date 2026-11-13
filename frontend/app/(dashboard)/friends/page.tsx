@@ -80,6 +80,7 @@ import type { UserProfile } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { MoodFace } from "@/components/fun/mood-face"
 import { useFriendships } from "@/hooks/use-fun"
+import { BOND_TONE, BondGlyph } from "@/components/fun/bond-art"
 import { BONDS, isBondId, isMoodId } from "@/lib/fun/catalog"
 
 import {
@@ -394,12 +395,11 @@ export default function FriendsPage() {
                                     return bond && isBondId(bond.type) ? (
                                       <span
                                         className={cn(
-                                          "font-medium",
-                                          bond.type === "love"
-                                            ? "text-rose-500"
-                                            : "text-primary"
+                                          "inline-flex items-center gap-1 align-bottom font-medium",
+                                          BOND_TONE[bond.type].text
                                         )}
                                       >
+                                        <BondGlyph bond={bond.type} className="size-3.5" />
                                         {BONDS[bond.type].pair}
                                       </span>
                                     ) : (
