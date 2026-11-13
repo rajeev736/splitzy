@@ -1,11 +1,13 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { useParams } from "next/navigation"
 import { useRouter } from "nextjs-toploader/app"
 import {
   AddCircleIcon,
   Alert02Icon,
+  BubbleChatIcon,
   ChartIncreaseIcon,
   Delete02Icon,
   Logout01Icon,
@@ -23,6 +25,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useDeleteGroup, useLeaveGroup } from "@/hooks/mutations"
 import { useExpenses, useGroup, useGroupExpenses } from "@/hooks/queries"
+import { groupChatId } from "@/lib/chat"
 import { canDeleteGroup, canUserLeaveGroup } from "@/lib/money"
 import { GroupInviteCard } from "../../_components/group-invite-card"
 import { EditGroupDialog } from "./_components/edit-group-dialog"
@@ -152,14 +155,26 @@ function GroupDashboardContent() {
           </div>
         }
         rightAction={
-          <GroupActionsMenu
-            isCreator={isCreator}
-            onViewMembers={() => router.push(`/groups/${group.id}/members`)}
-            onInvite={() => setDialog("invite")}
-            onEdit={() => setDialog("edit")}
-            onLeave={() => setDialog("leave")}
-            onDelete={() => setDialog("delete")}
-          />
+          <div className="flex items-center">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Group chat"
+              title="Group chat"
+              nativeButton={false}
+              render={<Link href={`/chat/${groupChatId(group.id)}`} />}
+            >
+              <HugeiconsIcon icon={BubbleChatIcon} className="size-5" />
+            </Button>
+            <GroupActionsMenu
+              isCreator={isCreator}
+              onViewMembers={() => router.push(`/groups/${group.id}/members`)}
+              onInvite={() => setDialog("invite")}
+              onEdit={() => setDialog("edit")}
+              onLeave={() => setDialog("leave")}
+              onDelete={() => setDialog("delete")}
+            />
+          </div>
         }
       />
 

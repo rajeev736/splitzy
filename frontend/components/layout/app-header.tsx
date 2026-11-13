@@ -2,7 +2,11 @@
 
 import Link from "next/link"
 import { useRouter } from "nextjs-toploader/app"
-import { ArrowLeft01Icon, Notification01Icon } from "@hugeicons/core-free-icons"
+import {
+  ArrowLeft01Icon,
+  BubbleChatIcon,
+  Notification01Icon,
+} from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { Coins } from "@/components/fun/coin"
@@ -48,8 +52,17 @@ export function AppHeader({
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           {showBack && (
-            <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => (onBack ? onBack() : router.back())}>
-              <HugeiconsIcon icon={ArrowLeft01Icon} className="size-5" strokeWidth={2.2} />
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Go back"
+              onClick={() => (onBack ? onBack() : router.back())}
+            >
+              <HugeiconsIcon
+                icon={ArrowLeft01Icon}
+                className="size-5"
+                strokeWidth={2.2}
+              />
             </Button>
           )}
 
@@ -58,23 +71,49 @@ export function AppHeader({
           ) : showUserGreeting && user ? (
             <div className="flex items-center gap-3">
               <Link href="/profile" className="shrink-0">
-                <UserAvatar uid={user.uid} src={user.photoURL} name={user.displayName} size="md" />
+                <UserAvatar
+                  uid={user.uid}
+                  src={user.photoURL}
+                  name={user.displayName}
+                  size="md"
+                />
               </Link>
               <div>
-                <div className="text-xs text-muted-foreground">{greeting()}</div>
-                <div className="text-lg leading-6 font-semibold">{user.displayName.split(" ")[0]}</div>
+                <div className="text-xs text-muted-foreground">
+                  {greeting()}
+                </div>
+                <div className="text-lg leading-6 font-semibold">
+                  {user.displayName.split(" ")[0]}
+                </div>
               </div>
             </div>
           ) : (
             <div className="min-w-0">
-              {title && <h1 className="truncate text-lg leading-6 font-semibold sm:text-xl sm:leading-7">{title}</h1>}
-              {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+              {title && (
+                <h1 className="truncate text-lg leading-6 font-semibold sm:text-xl sm:leading-7">
+                  {title}
+                </h1>
+              )}
+              {subtitle && (
+                <p className="text-xs text-muted-foreground">{subtitle}</p>
+              )}
             </div>
           )}
         </div>
 
         <div className="flex items-center gap-2">
           {!rightAction && <CoinChip />}
+          {!rightAction && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Messages"
+              nativeButton={false}
+              render={<Link href="/chat" />}
+            >
+              <HugeiconsIcon icon={BubbleChatIcon} className="size-5" />
+            </Button>
+          )}
           {rightAction ?? (
             <Button
               variant="ghost"

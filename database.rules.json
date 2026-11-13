@@ -106,6 +106,40 @@
       }
     },
 
+    "chats": {
+      "$chatId": {
+        ".read": "auth != null && (($chatId.beginsWith('dm_') && ($chatId.beginsWith('dm_' + auth.uid + '_') || $chatId.endsWith('_' + auth.uid))) || ($chatId.beginsWith('g_') && root.child('chatMembers/' + $chatId + '/' + auth.uid).val() === true))",
+        "messages": {
+          "$msg": {
+            ".write": "auth != null && (($chatId.beginsWith('dm_') && ($chatId.beginsWith('dm_' + auth.uid + '_') || $chatId.endsWith('_' + auth.uid))) || ($chatId.beginsWith('g_') && root.child('chatMembers/' + $chatId + '/' + auth.uid).val() === true)) && !data.exists()",
+            ".validate": "newData.hasChildren(['uid', 'name', 'text', 'at']) && newData.child('uid').val() === auth.uid && newData.child('name').isString() && newData.child('name').val().length <= 60 && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 1000 && newData.child('at').isNumber()"
+          }
+        },
+        "info": {
+          ".write": "auth != null && (($chatId.beginsWith('dm_') && ($chatId.beginsWith('dm_' + auth.uid + '_') || $chatId.endsWith('_' + auth.uid))) || ($chatId.beginsWith('g_') && root.child('chatMembers/' + $chatId + '/' + auth.uid).val() === true))",
+          ".validate": "newData.hasChildren(['lastAt', 'lastText', 'lastBy', 'lastName']) && newData.child('lastBy').val() === auth.uid && newData.child('lastText').isString() && newData.child('lastText').val().length <= 120 && newData.child('lastName').isString() && newData.child('lastName').val().length <= 60 && newData.child('lastAt').isNumber()"
+        }
+      }
+    },
+
+    "chatMembers": {
+      "$chatId": {
+        "$uid": {
+          ".read": "auth != null && $uid === auth.uid"
+        }
+      }
+    },
+
+    "userChats": {
+      "$uid": {
+        ".read": "auth != null && $uid === auth.uid",
+        "$chatId": {
+          ".write": "auth != null && $uid === auth.uid",
+          ".validate": "newData.hasChildren(['lastRead']) && newData.child('lastRead').isNumber()"
+        }
+      }
+    },
+
     "userRooms": {
       "$uid": {
         ".read": "auth != null && $uid === auth.uid",
