@@ -1534,7 +1534,7 @@ service cloud.firestore {
                       'GROUP_INVITE_ACCEPTED', 'GROUP_ACCEPTED', 'GROUP_MEMBER_LEFT', 'NEW_EXPENSE',
                       'EXPENSE_DELETED', 'PAYMENT_REPORTED', 'PAYMENT_CONFIRMED', 'PAYMENT_DISPUTED',
                       'PAYMENT_REMINDER', 'CHALLENGE_RECEIVED', 'CHALLENGE_RESULT',
-                      'MOMENT', 'PLAN', 'PLAN_REPLY', 'BOND_REQUEST', 'BOND_ACCEPTED', 'BADGE'] &&
+                      'MOMENT', 'PLAN', 'PLAN_REPLY', 'BOND_REQUEST', 'BOND_ACCEPTED', 'BADGE', 'ROOM_INVITE'] &&
                     request.resource.data.title is string && request.resource.data.title.size() <= 200 &&
                     request.resource.data.message is string && request.resource.data.message.size() <= 1000;
       // Recipient marks read / records the action taken

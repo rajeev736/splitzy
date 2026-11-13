@@ -28,6 +28,8 @@ export async function enableSystemNotifications(): Promise<boolean> {
 /** The screen a notification is about. */
 export function notificationHref(n: AppNotification): string {
   const d = n.data
+  // A live room invite: straight into the room (the link is the invite)
+  if (d?.roomCode) return `/play/${d.roomCode}`
   if (d?.challengeId) return `/challenges/${d.challengeId}`
   if (n.type === "PAYMENT_REMINDER" && d?.awaitingConfirm && d.actorId) return `/friends/${d.actorId}`
   if (n.type === "BADGE") return d?.frame ? "/profile/frames#milestones" : "/profile#badges"

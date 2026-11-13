@@ -255,7 +255,8 @@ export type NotificationType =
   | "PLAN_REPLY"
   | "BOND_REQUEST"
   | "BOND_ACCEPTED"
-  | "BADGE";
+  | "BADGE"
+  | "ROOM_INVITE";
 
 /**
  * A game between friends. For a discount game the host is owed money by every
@@ -380,6 +381,8 @@ export interface AppNotification {
     tier?: number;
     /** A milestone frame you unlocked. */
     frame?: string;
+    /** A live game room you were invited to (/play/{code}). */
+    roomCode?: string;
   };
   read: boolean;
   actionTaken?: "CONFIRMED" | "DISPUTED";

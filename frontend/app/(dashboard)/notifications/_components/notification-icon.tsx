@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 /** Category of a notification, matching the filter tabs. */
 export function notificationCategory(type: NotificationType) {
   if (type.includes("PAYMENT") || type.includes("EXPENSE") || type.includes("CHALLENGE")) return "payments" as const
-  if (type.includes("FRIEND") || type === "MOMENT" || type === "BADGE" || type.startsWith("PLAN") || type.startsWith("BOND")) return "friends" as const
+  if (type.includes("FRIEND") || type === "MOMENT" || type === "BADGE" || type === "ROOM_INVITE" || type.startsWith("PLAN") || type.startsWith("BOND")) return "friends" as const
   return "groups" as const
 }
 
@@ -40,6 +40,8 @@ export function NotificationIcon({
 }) {
   const visual = type.includes("CHALLENGE")
     ? { icon: GameController03Icon, tone: "text-warning" }
+    : type === "ROOM_INVITE"
+      ? { icon: GameController03Icon, tone: "text-primary" }
     : type === "BADGE"
       ? { icon: Award01Icon, tone: "text-amber-500" }
       : type === "MOMENT" || type.startsWith("BOND")

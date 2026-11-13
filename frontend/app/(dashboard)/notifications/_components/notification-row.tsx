@@ -1,6 +1,7 @@
 "use client"
 
-import { Tick02Icon } from "@hugeicons/core-free-icons"
+import Link from "next/link"
+import { PlayIcon, Tick02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { Button } from "@/components/ui/button"
@@ -82,6 +83,15 @@ export function NotificationRow({
               </Button>
             </div>
           )
+        )}
+        {/* A live room invite: one tap straight into the room */}
+        {notif.type === "ROOM_INVITE" && notif.data?.roomCode && (
+          <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+            <Button size="sm" nativeButton={false} render={<Link href={`/play/${notif.data.roomCode}`} />}>
+              <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />
+              Join room
+            </Button>
+          </div>
         )}
       </ItemContent>
 

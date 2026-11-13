@@ -84,10 +84,11 @@ const STEPS: TourStep[] = [
     route: "/challenges",
     target: "game-tabs",
     title: "Games",
-    text: "Discounted: challenge someone who owes you — if they win, they pay less. Just for fun: play anyone, and put coins on it.",
+    text: "Live: play Scribble, Ludo, Chess and more with friends in real time. Discounted: challenge someone who owes you — if they win, they pay less. Just for fun: play anyone, and put coins on it.",
   },
   {
-    route: "/challenges",
+    // Live is the default tab; the challenge button lives on the others
+    route: "/challenges?tab=discount",
     target: "new-challenge",
     title: "Challenge someone",
     text: "Pick a game — Stone Paper Scissors, Penalty Shootout, Higher or Lower and more — then who plays and the stakes.",
@@ -189,7 +190,7 @@ export function WelcomeTour() {
     const go = (d: Driver, i: number) => {
       const step = STEPS[i]
       if (!step) return
-      if (window.location.pathname !== step.route) router.push(step.route)
+      if (window.location.pathname + window.location.search !== step.route) router.push(step.route)
       d.moveTo(i)
     }
     const steps: DriveStep[] = STEPS.map((s) => ({

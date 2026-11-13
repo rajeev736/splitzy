@@ -76,6 +76,15 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
   }
   const goToExpenseOrHistory = () => go(data?.expenseId ? `/expenses/${data.expenseId}` : data?.groupId ? `/groups/${data.groupId}` : "/history")
 
+  /* Live room invite: the room shell handles full / started / ended on arrival */
+  if (notif.type === "ROOM_INVITE" && data?.roomCode) {
+    return (
+      <Button size="lg" className={CTA} onClick={() => go(`/play/${data.roomCode}`)}>
+        Join room
+      </Button>
+    )
+  }
+
   /* Group invitation: accept / decline (or view if already a member) */
   if (notif.type === "GROUP_INVITE" && data?.groupId) {
     const groupId = data.groupId

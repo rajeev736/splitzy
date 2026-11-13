@@ -21,7 +21,11 @@ const csp = [
     "https://firestore.googleapis.com",
     "https://identitytoolkit.googleapis.com",
     "https://securetoken.googleapis.com",
+    // Realtime Database (live game rooms): websocket + long-poll fallback, both domain families
     "wss://*.firebaseio.com",
+    "https://*.firebaseio.com",
+    "wss://*.firebasedatabase.app",
+    "https://*.firebasedatabase.app",
     authDomain ? `https://${authDomain}` : "",
     isDev ? "ws://localhost:* http://localhost:*" : "",
   ]
@@ -44,8 +48,8 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  // Camera is used for profile photos; nothing else needs device access
-  { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(), payment=()" },
+  // Camera for profile photos / QR scans, microphone for voice chat in game rooms
+  { key: "Permissions-Policy", value: "camera=(self), microphone=(self), geolocation=(), payment=()" },
   // Google sign-in uses a popup that must be able to report back
   { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
   ...(isDev ? [] : [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }]),

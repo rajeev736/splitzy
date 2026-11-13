@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { connectAuthEmulator, getAuth, Auth } from "firebase/auth";
+import { connectDatabaseEmulator, getDatabase, Database } from "firebase/database";
 import {
   connectFirestoreEmulator,
   getFirestore,
@@ -41,10 +42,19 @@ export const isFirebaseConfigured = Boolean(
   process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
 );
 
+/**
+ * Live games (rooms, drawing, voice signalling) run on the Realtime Database:
+ * it has no per-operation cost on the free plan, unlike Firestore. Needs the
+ * database URL from Firebase Console → Realtime Database.
+ */
+const databaseURL = process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL;
+export const isLiveConfigured = isFirebaseConfigured && Boolean(databaseURL);
+
 let app: FirebaseApp | undefined;
 const emulatorState = { done: false };
 let auth: Auth | undefined;
 let db: Firestore | undefined;
+let rtdb: Database | undefined;
 
 if (typeof window !== "undefined" || isFirebaseConfigured) {
   try {
@@ -52,11 +62,13 @@ if (typeof window !== "undefined" || isFirebaseConfigured) {
       app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
       auth = getAuth(app);
       db = createFirestore(app);
+      if (databaseURL) rtdb = getDatabase(app, databaseURL);
       // Local development against the Firebase emulators (never set in production)
       if (process.env.NEXT_PUBLIC_FIREBASE_EMULATOR === "1" && !emulatorState.done) {
         emulatorState.done = true;
         connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
         connectFirestoreEmulator(db, "127.0.0.1", 8080);
+        if (rtdb) connectDatabaseEmulator(rtdb, "127.0.0.1", 9000);
       }
     }
   } catch (error) {
@@ -64,4 +76,4 @@ if (typeof window !== "undefined" || isFirebaseConfigured) {
   }
 }
 
-export { app, auth, db };
+export { app, auth, db, rtdb };

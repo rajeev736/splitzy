@@ -7,6 +7,7 @@ import { GameController03Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { NewChallengeSheet } from "@/components/games/new-challenge-sheet"
+import { LiveGamesPanel } from "@/components/live/live-games-panel"
 import { AppHeader } from "@/components/layout/app-header"
 import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
@@ -37,20 +38,20 @@ const GAME_TONE: Record<GameId, string> = {
   number_hunt: "bg-orange-500/12",
 }
 
-type Tab = "discount" | "fun"
-const TAB_ORDER = ["discount", "fun"] as const
-const TABS: { value: Tab; label: string; blurb: string }[] = [
-  {
-    value: "discount",
-    label: "Discounted",
+/** Live: rooms with friends, right now. The other two are the turn-based challenges. */
+type Tab = "live" | "discount" | "fun"
+type ChallengeTab = Exclude<Tab, "live">
+const TAB_ORDER = ["live", "discount", "fun"] as const
+const TAB_LABELS: Record<Tab, string> = { live: "Live", discount: "Discounted", fun: "Just for fun" }
+const isTab = (v: string | null): v is Tab => v === "live" || v === "discount" || v === "fun"
+const CHALLENGE_TABS: Record<ChallengeTab, { blurb: string }> = {
+  discount: {
     blurb: "Games for money you owe or are owed. Win to pay less — one discount game per person at a time.",
   },
-  {
-    value: "fun",
-    label: "Just for fun",
+  fun: {
     blurb: "No money involved, just bragging rights. Friends can send as many as they like.",
   },
-]
+}
 
 const HISTORY_PAGE = 5
 /** Incoming challenges shown before "Show all", so history never gets pushed far down. */
@@ -74,7 +75,7 @@ function statusFor(c: Challenge, uid: string): { label: string; tone: string } {
 }
 
 const newestFirst = (a: Challenge, b: Challenge) => b.createdAt.localeCompare(a.createdAt)
-const tabOf = (c: Challenge): Tab => (isForFun(c) ? "fun" : "discount")
+const tabOf = (c: Challenge): ChallengeTab => (isForFun(c) ? "fun" : "discount")
 
 export default function ChallengesPage() {
   return (
@@ -104,19 +105,20 @@ function ChallengesContent() {
   const isYourTurn = (c: Challenge) => c.status === "OPEN" && c.hostId !== uid && c.moves[uid] === undefined
   const yourTurnCount = (t: Tab) => all.filter((c) => tabOf(c) === t && isYourTurn(c)).length
 
-  // ?tab=fun|discount wins (also when it changes while the page is open);
-  // otherwise open the tab that has games waiting for you
+  // ?tab=live|discount|fun wins (also when it changes while the page is open);
+  // otherwise Live, unless a challenge is waiting for you in one of the other tabs
   const param = searchParams.get("tab")
-  const paramTab: Tab | null = param === "fun" || param === "discount" ? param : null
+  const paramTab: Tab | null = isTab(param) ? param : null
   const [picked, setPicked] = React.useState<Tab | null>(paramTab)
   const [syncedParam, setSyncedParam] = React.useState(paramTab)
   if (paramTab !== syncedParam) {
     setSyncedParam(paramTab)
     if (paramTab) setPicked(paramTab)
   }
-  const tab: Tab = picked ?? (yourTurnCount("discount") === 0 && yourTurnCount("fun") > 0 ? "fun" : "discount")
+  const tab: Tab =
+    picked ?? (yourTurnCount("discount") > 0 ? "discount" : yourTurnCount("fun") > 0 ? "fun" : "live")
   const openSheet = (game: GameId) => setSheet({ open: true, game })
-  // Swipe left for Just for fun, right for Discounted, anywhere below the header
+  // Swipe between Live, Discounted and Just for fun, anywhere below the header
   const { surface: swipeSurface, ...swipe } = useSwipeTabs(TAB_ORDER, tab, setPicked)
 
   return (
@@ -124,29 +126,29 @@ function ChallengesContent() {
       <AppHeader title="Games" showBack />
       {/* flex-1: the swipe surface reaches the bottom of the screen, even when the tab is short */}
       <PageContainer ref={swipeSurface} className="max-w-2xl flex-1 gap-2 pb-24">
-        {/* Discounted | Just for fun */}
-        <div role="tablist" data-tour="game-tabs" aria-label="Kind of game" className="relative grid grid-cols-2 border-b">
-          {TABS.map((t) => {
-            const count = yourTurnCount(t.value)
-            const active = tab === t.value
+        {/* Live | Discounted | Just for fun */}
+        <div role="tablist" data-tour="game-tabs" aria-label="Kind of game" className="relative grid grid-cols-3 border-b">
+          {TAB_ORDER.map((value) => {
+            const count = yourTurnCount(value)
+            const active = tab === value
             return (
               <button
-                key={t.value}
+                key={value}
                 type="button"
                 role="tab"
                 aria-selected={active}
-                onClick={() => setPicked(t.value)}
+                onClick={() => setPicked(value)}
                 className={cn(
                   "flex items-center justify-center gap-2 pb-2.5 text-sm transition-colors",
                   active ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
                 )}
               >
-                {t.label}
+                {TAB_LABELS[value]}
                 {count > 0 && (
                   <span
                     className={cn(
                       "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums",
-                      t.value === "discount" ? "bg-success text-success-foreground" : "bg-primary text-primary-foreground"
+                      value === "discount" ? "bg-success text-success-foreground" : "bg-primary text-primary-foreground"
                     )}
                     aria-label={`${count} waiting for you`}
                   >
@@ -161,18 +163,22 @@ function ChallengesContent() {
 
         {/* Edge to edge, so panels slide in from the screen edge; scroll-mt clears the sticky header */}
         <SwipeTabPanels swipe={swipe} className="-mx-4 scroll-mt-16 sm:-mx-6" panelClassName="px-4 sm:px-6">
-          {TABS.map((t) => (
-            <GamesPanel
-              key={t.value}
-              tab={t.value}
-              blurb={t.blurb}
-              items={all.filter((c) => tabOf(c) === t.value)}
-              uid={uid}
-              isYourTurn={isYourTurn}
-              challenges={challenges}
-              onNew={() => openSheet("rps")}
-            />
-          ))}
+          {TAB_ORDER.map((t) =>
+            t === "live" ? (
+              <LiveGamesPanel key={t} />
+            ) : (
+              <GamesPanel
+                key={t}
+                tab={t}
+                blurb={CHALLENGE_TABS[t].blurb}
+                items={all.filter((c) => tabOf(c) === t)}
+                uid={uid}
+                isYourTurn={isYourTurn}
+                challenges={challenges}
+                onNew={() => openSheet("rps")}
+              />
+            )
+          )}
         </SwipeTabPanels>
       </PageContainer>
 
@@ -180,7 +186,7 @@ function ChallengesContent() {
         open={sheet.open}
         onOpenChange={(open) => setSheet((s) => ({ ...s, open }))}
         initialGame={sheet.game}
-        initialStake={tab}
+        initialStake={tab === "live" ? "fun" : tab}
       />
     </>
   )
@@ -196,7 +202,7 @@ function GamesPanel({
   challenges,
   onNew,
 }: {
-  tab: Tab
+  tab: ChallengeTab
   blurb: string
   items: Challenge[]
   uid: string
