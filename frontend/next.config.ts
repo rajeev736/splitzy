@@ -11,7 +11,10 @@ const authDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
  */
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://apis.google.com`,
+  // The Realtime Database falls back to long-polling (JSONP <script> tags from the
+  // database host) where WebSockets are blocked — common on mobile data. Without
+  // these, live game rooms hang on "Opening the room…" on those networks.
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://apis.google.com https://*.firebasedatabase.app https://*.firebaseio.com`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://*.googleusercontent.com https://firebasestorage.googleapis.com https://api.dicebear.com",
   "font-src 'self' data:",
@@ -31,7 +34,8 @@ const csp = [
   ]
     .filter(Boolean)
     .join(" "),
-  `frame-src 'self' https://accounts.google.com${authDomain ? ` https://${authDomain}` : ""}`,
+  // …and the long-polling transport sends through a hidden iframe on the database host
+  `frame-src 'self' https://accounts.google.com${authDomain ? ` https://${authDomain}` : ""} https://*.firebasedatabase.app https://*.firebaseio.com`,
   "worker-src 'self' blob:",
   "media-src 'self' blob:",
   "object-src 'none'",
