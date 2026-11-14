@@ -33,6 +33,8 @@ import {
 } from "@/components/ui/sheet"
 import { Spinner } from "@/components/ui/spinner"
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
+import { onValue, ref } from "firebase/database"
+
 import { useLiveRoom, useRoomChildren, type LiveRoom } from "@/hooks/use-live-room"
 import { getErrorMessage } from "@/lib/errors"
 import { useGameExit } from "@/lib/games-nav"
@@ -45,6 +47,7 @@ import {
   cancelCountdown,
   cleanupRoom,
   joinRoom,
+  liveDb,
   kickPlayer,
   leaveRoom,
   rematch,
@@ -129,7 +132,14 @@ export function RoomShell({ code }: { code: string }) {
   }, [isReferee, meta?.status, meta?.endedAt, code, serverNow])
 
   if (!loaded || (!me && join === "idle" && !notFound)) {
-    return <FullScreenLoader label="Opening the room…" />
+    return (
+      <RoomLoading
+        stage={!loaded ? "room" : "seat"}
+        error={room.error}
+        signedIn={!!user}
+        onBack={exitGame}
+      />
+    )
   }
   if (notFound || !meta || join === "not_found") {
     return (
@@ -889,6 +899,97 @@ function reasonText(reason: string) {
     no_moves: "No moves left",
   }
   return map[reason] ?? reason.replace(/_/g, " ")
+}
+
+/* ── Opening ─────────────────────────────────────────────────────────── */
+
+/** Whether this device is connected to the live game server (Realtime Database). */
+function useLiveConnected() {
+  const [connected, setConnected] = React.useState<boolean | null>(null)
+  React.useEffect(() => {
+    try {
+      return onValue(ref(liveDb(), ".info/connected"), (s) => setConnected(s.val() === true))
+    } catch {
+      return
+    }
+  }, [])
+  return connected
+}
+
+/**
+ * "Opening the room…", and if it takes long, what it's stuck on — so a
+ * phone that can't get in says why instead of spinning forever.
+ */
+function RoomLoading({
+  stage,
+  error,
+  signedIn,
+  onBack,
+}: {
+  /** room: waiting for the room itself · seat: the room is here, taking your seat */
+  stage: "room" | "seat"
+  error: Error | null
+  signedIn: boolean
+  onBack: () => void
+}) {
+  const connected = useLiveConnected()
+  const [slow, setSlow] = React.useState(false)
+  React.useEffect(() => {
+    const id = window.setTimeout(() => setSlow(true), 8000)
+    return () => window.clearTimeout(id)
+  }, [])
+  if (!slow) return <FullScreenLoader label="Opening the room…" />
+  const steps: { label: string; ok: boolean | null }[] = [
+    { label: "Signed in", ok: signedIn },
+    { label: "Connected to the game server", ok: connected },
+    { label: "Room found", ok: stage === "seat" ? true : error ? false : null },
+    { label: "Taking your seat", ok: stage === "seat" ? null : null },
+  ]
+  return (
+    <>
+      <AppHeader title="Game room" showBack onBack={onBack} />
+      <PageContainer className="max-w-md">
+        <Card>
+          <CardContent className="flex flex-col gap-4 py-6">
+            <div className="text-center">
+              <p className="text-lg font-semibold">Still opening the room…</p>
+              <p className="text-sm text-muted-foreground">
+                {connected === false
+                  ? "This phone can't reach the game server. Check the internet connection (mobile data or Wi-Fi), then try again."
+                  : "This is taking longer than it should."}
+              </p>
+            </div>
+            <ul className="flex flex-col gap-2 text-sm">
+              {steps.map((s) => (
+                <li key={s.label} className="flex items-center gap-2.5">
+                  <span
+                    className={cn(
+                      "flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white",
+                      s.ok === true ? "bg-success" : s.ok === false ? "bg-destructive" : "bg-muted-foreground/40"
+                    )}
+                  >
+                    {s.ok === true ? "✓" : s.ok === false ? "!" : "…"}
+                  </span>
+                  {s.label}
+                </li>
+              ))}
+            </ul>
+            {error && (
+              <p className="rounded-lg bg-destructive/10 px-3 py-2 font-mono text-xs break-words text-destructive">
+                {error.message}
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" onClick={onBack}>
+                Back to games
+              </Button>
+              <Button onClick={() => window.location.reload()}>Try again</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </PageContainer>
+    </>
+  )
 }
 
 /* ── Can't get in ────────────────────────────────────────────────────── */
