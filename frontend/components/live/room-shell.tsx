@@ -59,7 +59,7 @@ import { GameView } from "./game-view"
 import { InviteFriendsSheet } from "./invite-friends-sheet"
 import { playSound } from "@/lib/live/sound"
 import { RoomChat } from "./room-chat"
-import { SoundToggle } from "./sound-settings"
+import { SoundMenu } from "./sound-settings"
 import { ReactionsOverlay, StickerBar } from "./stickers"
 import { VoiceBar } from "./voice-bar"
 
@@ -727,7 +727,7 @@ function PlayingView({
         )}
         <div className="mx-auto flex max-w-3xl items-center gap-2 px-3 py-2">
           <VoiceBar code={code} uid={uid} players={players} voice={voice} />
-          <SoundToggle />
+          <SoundMenu />
           <Button
             variant={stickers ? "secondary" : "outline"}
             size="sm"

@@ -8,7 +8,6 @@ import { HugeiconsIcon } from "@hugeicons/react"
 
 import { NewChallengeSheet } from "@/components/games/new-challenge-sheet"
 import { LiveGamesPanel } from "@/components/live/live-games-panel"
-import { SoundSettings } from "@/components/live/sound-settings"
 import { AppHeader } from "@/components/layout/app-header"
 import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
@@ -127,7 +126,6 @@ function ChallengesContent() {
       <AppHeader title="Games" showBack />
       {/* flex-1: the swipe surface reaches the bottom of the screen, even when the tab is short */}
       <PageContainer ref={swipeSurface} className="max-w-2xl flex-1 gap-2 pb-24">
-        <SoundSettings className="mb-1" />
         {/* Live | Discounted | Just for fun */}
         <div role="tablist" data-tour="game-tabs" aria-label="Kind of game" className="relative grid grid-cols-3 border-b">
           {TAB_ORDER.map((value) => {
