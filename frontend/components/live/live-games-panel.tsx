@@ -33,6 +33,10 @@ export function LiveGamesPanel() {
         Play together, live — same room, same time. Voice and stickers included.
       </p>
 
+      {/* Joining by code and your open rooms come first, so more games never push them out of sight */}
+      <JoinRoomCard />
+      {user && <YourRooms uid={user.uid} />}
+
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold">Pick a game</h2>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -45,9 +49,6 @@ export function LiveGamesPanel() {
           ))}
         </div>
       </section>
-
-      <JoinRoomCard />
-      {user && <YourRooms uid={user.uid} />}
 
       {/* Keyed by game: each game's sheet starts from its own default options */}
       <CreateRoomSheet
