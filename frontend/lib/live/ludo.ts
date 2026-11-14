@@ -17,6 +17,8 @@ import type { LiveResult, RoomOptions, RoomPlayer } from "./types"
  */
 
 export type LudoColour = SeatColour
+/** The four colours of the classic square board. */
+export type SquareColour = Exclude<LudoColour, "purple">
 
 export const TRACK_LENGTH = 52
 export const HOME_COLUMN_START = 51
@@ -25,12 +27,54 @@ export const TOKENS_PER_PLAYER = 4
 /** Absolute track squares where nobody can be captured: the 4 starts and the 4 stars. */
 export const SAFE_SQUARES = [0, 8, 13, 21, 26, 34, 39, 47]
 /** Where each colour's path begins, in absolute track squares. */
-export const START_INDEX: Record<LudoColour, number> = {
+export const START_INDEX: Record<SquareColour, number> = {
   red: 0,
   green: 13,
   yellow: 26,
   blue: 39,
 }
+
+/**
+ * A board's shape for the rules: arms of 13 squares each (out along one lane,
+ * the tip, back along the other), so the track is 13 × arms long; a colour
+ * walks track − 1 squares, then 5 in its home column, then home.
+ * Classic: 4 arms. With 5 players: a 5-armed (pentagon) board.
+ */
+export interface LudoGeo {
+  arms: number
+  track: number
+  /** First home-column position (= track − 1). */
+  colStart: number
+  /** Home (= colStart + 5). */
+  home: number
+  start: Partial<Record<LudoColour, number>>
+  /** Starts and stars. */
+  safe: number[]
+}
+
+export const SQUARE_GEO: LudoGeo = {
+  arms: 4,
+  track: TRACK_LENGTH,
+  colStart: HOME_COLUMN_START,
+  home: HOME,
+  start: START_INDEX,
+  safe: SAFE_SQUARES,
+}
+
+/** The five colours of the 5-player board, clockwise. */
+export const PENTA_COLOURS: LudoColour[] = ["red", "green", "yellow", "blue", "purple"]
+
+export const PENTA_GEO: LudoGeo = {
+  arms: 5,
+  track: 65,
+  colStart: 64,
+  home: 69,
+  start: { red: 0, green: 13, yellow: 26, blue: 39, purple: 52 },
+  safe: [0, 8, 13, 21, 26, 34, 39, 47, 52, 60],
+}
+
+/** The board a game is played on: 5 players get the pentagon, otherwise the classic square. */
+export const geoOf = (s: { board?: "penta" }): LudoGeo => (s.board === "penta" ? PENTA_GEO : SQUARE_GEO)
 /** An online player gets this long to roll or move before the referee passes their turn. */
 export const LUDO_IDLE_MS = 45_000
 /** Ludo King style: a roll with exactly one possible move plays itself after this. */
@@ -178,6 +222,8 @@ export interface LudoState {
   turnNo?: number
   /** "powers" = Power Ludo; absent = classic. */
   mode?: "powers"
+  /** "penta" = the 5-player board; absent = the classic square. */
+  board?: "penta"
   /** Power-ups waiting on the track. */
   spawns?: LudoSpawn[]
   /** `${uid}:${token}` → owner's turns left frozen. */
@@ -210,6 +256,7 @@ export const isShielded = (s: LudoState, uid: string, token: number) => (s.shiel
 
 /** Colours by player count: two players sit in opposite corners. */
 export function coloursFor(count: number): LudoColour[] {
+  if (count === 5) return PENTA_COLOURS
   if (count <= 2) return ["red", "yellow"]
   if (count === 3) return ["red", "green", "yellow"]
   return ["red", "green", "yellow", "blue"]
@@ -221,7 +268,7 @@ export function initialLudoState(
   seed: string
 ): LudoState {
   const powers = options.mode === "powers"
-  const order = players.slice(0, 4).map((p) => p.uid)
+  const order = players.slice(0, 5).map((p) => p.uid)
   const colours = coloursFor(order.length)
   const entries: Record<string, LudoPlayer> = {}
   order.forEach((uid, i) => {
@@ -242,6 +289,8 @@ export function initialLudoState(
     seq: 0,
     turnNo: 0,
   }
+  // Five players play on the 5-armed board
+  if (order.length === 5) state.board = "penta"
   if (!powers) return state
   // Power Ludo: two power-ups on the board from the start
   const rand = seededRandom(seed)
@@ -278,16 +327,17 @@ export function spawnPower(state: LudoState, rand: () => number): LudoState {
   const spawns = state.spawns ?? []
   if (spawns.length >= MAX_SPAWNS) return state
   const taken = new Set(spawns.map((s) => s.sq))
+  const g = geoOf(state)
   for (const id of state.order) {
     const p = state.players[id]
     if (!p) continue
     for (const pos of p.tokens) {
-      const sq = trackIndex(p.colour, pos)
+      const sq = trackIndex(p.colour, pos, g)
       if (sq >= 0) taken.add(sq)
     }
   }
   const free: number[] = []
-  for (let sq = 0; sq < TRACK_LENGTH; sq++) if (!SAFE_SQUARES.includes(sq) && !taken.has(sq)) free.push(sq)
+  for (let sq = 0; sq < g.track; sq++) if (!g.safe.includes(sq) && !taken.has(sq)) free.push(sq)
   if (free.length === 0) return state
   return { ...state, spawns: [...spawns, { sq: pick(free, rand), kind: randomPower(rand) }] }
 }
@@ -295,7 +345,8 @@ export function spawnPower(state: LudoState, rand: () => number): LudoState {
 /* ── Rules ───────────────────────────────────────────────────────────── */
 
 /** A 6 brings a token out; otherwise the token can't overshoot home. */
-export function canMove(pos: number, dice: number): boolean {
+export function canMove(pos: number, dice: number, g: LudoGeo = SQUARE_GEO): boolean {
+  const HOME = g.home
   if (pos >= HOME) return false
   if (pos < 0) return dice === 6
   return pos + dice <= HOME
@@ -311,7 +362,7 @@ export function legalMoves(
   if (!p) return []
   // Power Ludo: frozen pieces sit still; a number-locked piece waits for its number
   return p.tokens.flatMap((pos, i) =>
-    canMove(pos, dice) && !isFrozen(state, uid, i) && lockOf(state, uid, i) === 0 ? [i] : []
+    canMove(pos, dice, geoOf(state)) && !isFrozen(state, uid, i) && lockOf(state, uid, i) === 0 ? [i] : []
   )
 }
 
@@ -331,12 +382,12 @@ export function distinctMoves(
 }
 
 /** Absolute track square of a token, or -1 when it's in base, the home column or home. */
-export const trackIndex = (colour: LudoColour, pos: number): number =>
-  pos >= 0 && pos < HOME_COLUMN_START
-    ? (START_INDEX[colour] + pos) % TRACK_LENGTH
+export const trackIndex = (colour: LudoColour, pos: number, g: LudoGeo = SQUARE_GEO): number =>
+  pos >= 0 && pos < g.colStart
+    ? ((g.start[colour] ?? 0) + pos) % g.track
     : -1
 
-export const isSafe = (track: number) => SAFE_SQUARES.includes(track)
+export const isSafe = (track: number, g: LudoGeo = SQUARE_GEO) => g.safe.includes(track)
 
 /** Left the room, or put out of the game for missing too many turns. */
 export const isGone = (state: LudoState, uid: string, gone: string[] = []) =>
@@ -496,14 +547,15 @@ function landOn(
   ctx: LudoContext
 ): LudoCapture[] {
   const captured: LudoCapture[] = []
-  const square = trackIndex(players[uid].colour, to)
-  if (square < 0 || isSafe(square)) return captured
+  const g = geoOf(state)
+  const square = trackIndex(players[uid].colour, to, g)
+  if (square < 0 || isSafe(square, g)) return captured
   for (const id of state.order) {
     // Tokens of players who left or are out are off the board
     if (id === uid || isGone(state, id, ctx.gone)) continue
     const rival = players[id]
     rival.tokens.forEach((pos, j) => {
-      if (trackIndex(rival.colour, pos) === square && !isShielded(state, id, j)) {
+      if (trackIndex(rival.colour, pos, g) === square && !isShielded(state, id, j)) {
         rival.tokens[j] = -1
         captured.push({ uid: id, token: j })
       }
@@ -531,7 +583,7 @@ function clearEffects(state: LudoState, pieces: LudoCapture[]) {
 /** Power Ludo: picks up a power-up on `uid`'s landing square, if any. */
 function pickUp(state: LudoState, players: Record<string, LudoPlayer>, uid: string, to: number): PowerKind | undefined {
   if (state.mode !== "powers" || !state.spawns?.length) return undefined
-  const square = trackIndex(players[uid].colour, to)
+  const square = trackIndex(players[uid].colour, to, geoOf(state))
   const i = state.spawns.findIndex((s) => s.sq === square)
   if (i < 0) return undefined
   const kind = state.spawns[i].kind
@@ -585,15 +637,15 @@ export function applyMove(
       work.firstOut = uid
       earned = randomPower(rand)
       give(players, uid, earned)
-    } else if (to === HOME && !work.firstHome) {
+    } else if (to === geoOf(state).home && !work.firstHome) {
       work.firstHome = uid
       earned = randomPower(rand)
       give(players, uid, earned)
     }
   }
 
-  const home = to === HOME
-  const finished = home && players[uid].tokens.every((t) => t === HOME)
+  const home = to === geoOf(state).home
+  const finished = home && players[uid].tokens.every((t) => t === geoOf(state).home)
   if (finished)
     players[uid].place =
       Math.max(0, ...state.order.map((id) => players[id].place)) + 1
@@ -662,7 +714,7 @@ export function applyPower(
       throw new Error("Pick a rival's piece")
     if (info.target === "own" && target.uid !== uid) throw new Error("Pick one of your pieces")
     // Only pieces out on the shared track (not in base, not in the home column)
-    if (pos < 0 || pos >= HOME_COLUMN_START) throw new Error("That piece is out of reach")
+    if (pos < 0 || pos >= geoOf(state).colStart) throw new Error("That piece is out of reach")
     if (info.target === "rival" && isShielded(state, target.uid, target.token))
       throw new Error("That piece is shielded")
     last.target = target
@@ -680,7 +732,7 @@ export function applyPower(
       last.to = to
     } else if (kind === "jump") {
       const to = pos + JUMP_BY
-      if (to >= HOME_COLUMN_START) throw new Error("Too close to home to jump")
+      if (to >= geoOf(state).colStart) throw new Error("Too close to home to jump")
       players[uid].tokens[target.token] = to
       const captured = landOn(next, players, uid, to, ctx)
       clearEffects(next, captured)
@@ -714,24 +766,25 @@ export function applyPower(
 export function rollFor(state: LudoState, uid: string, rand: () => number): number {
   const w = [0, 1, 1, 1, 1, 1, 1]
   const me = state.players[uid]
+  const g = geoOf(state)
   if (me) {
-    const onBoard = me.tokens.some((t) => t >= 0 && t < HOME)
+    const onBoard = me.tokens.some((t) => t >= 0 && t < g.home)
     if (!onBoard) w[6] += Math.min(me.noSix ?? 0, 4) * 0.5
 
     // Rival pieces 1–6 squares ahead of one of mine on an unsafe square
     const bumped = new Set<number>()
     for (const pos of me.tokens) {
-      if (pos < 0 || pos >= HOME_COLUMN_START) continue
+      if (pos < 0 || pos >= g.colStart) continue
       for (let d = 1; d <= 6; d++) {
         const to = pos + d
-        const sq = trackIndex(me.colour, to)
-        if (sq < 0 || isSafe(sq) || bumped.has(d)) continue
+        const sq = trackIndex(me.colour, to, g)
+        if (sq < 0 || isSafe(sq, g) || bumped.has(d)) continue
         const prey = state.order.some(
           (id) =>
             id !== uid &&
             state.players[id] &&
             !state.players[id].out &&
-            state.players[id].tokens.some((p, j) => trackIndex(state.players[id].colour, p) === sq && !isShielded(state, id, j))
+            state.players[id].tokens.some((p, j) => trackIndex(state.players[id].colour, p, g) === sq && !isShielded(state, id, j))
         )
         if (prey) {
           w[d] += 0.5
@@ -789,8 +842,8 @@ export function passTurn(
 
 /* ── Standings ───────────────────────────────────────────────────────── */
 
-export const homeCount = (p: LudoPlayer) =>
-  p.tokens.filter((t) => t === HOME).length
+export const homeCount = (p: LudoPlayer, g: LudoGeo = SQUARE_GEO) =>
+  p.tokens.filter((t) => t === g.home).length
 
 /** Squares travelled by all four tokens (a token in base counts 0, on its start square 1…). */
 export const progressOf = (p: LudoPlayer) =>
@@ -802,7 +855,7 @@ export function rankingOf(state: LudoState, gone: string[] = []): string[] {
     const pa = state.players[a]
     const pb = state.players[b]
     return (
-      homeCount(pb) - homeCount(pa) ||
+      homeCount(pb, geoOf(state)) - homeCount(pa, geoOf(state)) ||
       progressOf(pb) - progressOf(pa) ||
       state.order.indexOf(a) - state.order.indexOf(b)
     )
@@ -953,7 +1006,7 @@ export const trackToCell = (index: number): Cell =>
   TRACK[((index % TRACK_LENGTH) + TRACK_LENGTH) % TRACK_LENGTH]
 
 /** The five home-column cells of each colour, in walking order. */
-export const HOME_COLUMN: Record<LudoColour, Cell[]> = {
+export const HOME_COLUMN: Record<SquareColour, Cell[]> = {
   red: [1, 2, 3, 4, 5].map((col) => ({ row: 7, col })),
   green: [1, 2, 3, 4, 5].map((row) => ({ row, col: 7 })),
   yellow: [13, 12, 11, 10, 9].map((col) => ({ row: 7, col })),
@@ -961,7 +1014,7 @@ export const HOME_COLUMN: Record<LudoColour, Cell[]> = {
 }
 
 /** Top-left corner of each colour's 6×6 base. */
-export const BASE_ORIGIN: Record<LudoColour, Cell> = {
+export const BASE_ORIGIN: Record<SquareColour, Cell> = {
   red: { row: 0, col: 0 },
   green: { row: 0, col: 9 },
   yellow: { row: 9, col: 9 },
@@ -977,7 +1030,7 @@ const BASE_SLOTS: Cell[] = [
 ]
 
 /** Where finished tokens sit: each colour's triangle of the centre square. */
-export const HOME_SPOT: Record<LudoColour, Cell> = {
+export const HOME_SPOT: Record<SquareColour, Cell> = {
   red: { row: 7, col: 6 },
   green: { row: 6, col: 7 },
   yellow: { row: 7, col: 8 },
@@ -985,7 +1038,8 @@ export const HOME_SPOT: Record<LudoColour, Cell> = {
 }
 
 /** Board cell for a token of `colour` at `pos` (`token` picks the base slot). */
-export function cellOf(colour: LudoColour, pos: number, token = 0): Cell {
+/** Board cell on the classic square board. */
+export function cellOf(colour: SquareColour, pos: number, token = 0): Cell {
   if (pos < 0) {
     const o = BASE_ORIGIN[colour]
     const s = BASE_SLOTS[((token % 4) + 4) % 4]

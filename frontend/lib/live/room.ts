@@ -47,7 +47,7 @@ export function refereeOf(players: RoomPlayer[]): string | null {
 export const isJoinable = (meta: RoomMeta) => meta.status === "lobby" || meta.status === "countdown"
 
 /** Ludo colours by seat. */
-export const SEAT_COLOURS = ["red", "green", "yellow", "blue"] as const
+export const SEAT_COLOURS = ["red", "green", "yellow", "blue", "purple"] as const
 export type SeatColour = (typeof SEAT_COLOURS)[number]
 
 /** Deterministic pick from a room, e.g. which side is white: same on every device. */

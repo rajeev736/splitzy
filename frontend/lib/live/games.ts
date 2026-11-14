@@ -72,10 +72,11 @@ export const LIVE_GAMES: Record<LiveGameId, LiveGameInfo> = {
     name: "Ludo",
     tagline: "Roll a six, race home, send friends back",
     howTo:
-      "Each player has 4 tokens. Roll a 6 to bring a token out; a 6 (or a capture, or getting a token home) gives you another roll — three 6s in a row and you lose the turn. Landing on a rival's token sends it back, except on the safe (star) squares. First to get all 4 tokens home wins. Power Ludo adds power-ups on the track — freeze, number-lock or push back a rival's piece; jump, shield or double your own roll. Land on one to grab it (the first piece out and the first piece home earn one too), and use it on your turn before you roll.",
+      "Each player has 4 tokens. Roll a 6 to bring a token out; a 6 (or a capture, or getting a token home) gives you another roll — three 6s in a row and you lose the turn. Landing on a rival's token sends it back, except on the safe (star) squares. First to get all 4 tokens home wins. With 5 players the game moves to a five-armed board. Power Ludo adds power-ups on the track — freeze, number-lock or push back a rival's piece; jump, shield or double your own roll. Land on one to grab it (the first piece out and the first piece home earn one too), and use it on your turn before you roll.",
     emoji: "🎲",
     minPlayers: 2,
-    maxPlayers: 4,
+    // 2–4 play on the square board; 5 get the pentagon board
+    maxPlayers: 5,
     duration: "~20 min",
     options: [
       {

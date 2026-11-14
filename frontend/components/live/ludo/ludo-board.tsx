@@ -17,6 +17,7 @@ import {
   trackToCell,
   type Cell,
   type LudoColour,
+  type SquareColour,
   type LudoState,
 } from "@/lib/live/ludo"
 import { cn } from "@/lib/utils"
@@ -29,27 +30,31 @@ export const TOKEN_COLOURS: Record<LudoColour, string> = {
   green: "#2e9e44",
   yellow: "#f4b400",
   blue: "#1e6fe0",
+  purple: "#8e24aa",
 }
 
 /** Light / mid / dark of each colour, for the board and the 3D pieces. */
-const SHADES: Record<LudoColour, { light: string; mid: string; dark: string }> = {
+export const SHADES: Record<LudoColour, { light: string; mid: string; dark: string }> = {
   red: { light: "#ff8a80", mid: "#e53935", dark: "#8e1b1b" },
   green: { light: "#86e08f", mid: "#2e9e44", dark: "#13561f" },
   yellow: { light: "#ffe082", mid: "#f4b400", dark: "#8a6100" },
   blue: { light: "#8ab4ff", mid: "#1e6fe0", dark: "#0b3478" },
+  purple: { light: "#d59cf0", mid: "#8e24aa", dark: "#4a148c" },
 }
 
-const COLOURS: LudoColour[] = ["red", "green", "yellow", "blue"]
+const COLOURS: SquareColour[] = ["red", "green", "yellow", "blue"]
+/** Every piece colour (the 5-player board adds purple). */
+const ALL_COLOURS: LudoColour[] = [...COLOURS, "purple"]
 
 /**
  * Quarter turns (clockwise) that bring a colour's base to the bottom-left,
  * in front of its player — like sitting at your side of a real board.
  * Bases go red top-left, green top-right, yellow bottom-right, blue bottom-left.
  */
-export const TURNS_FOR: Record<LudoColour, number> = { red: 3, green: 2, yellow: 1, blue: 0 }
+export const TURNS_FOR: Record<SquareColour, number> = { red: 3, green: 2, yellow: 1, blue: 0 }
 
 /** The colour whose base shows in screen corner `corner` (0 top-left, clockwise) after `turns`. */
-export const colourAtCorner = (corner: number, turns: number): LudoColour =>
+export const colourAtCorner = (corner: number, turns: number): SquareColour =>
   COLOURS[(((corner - turns) % 4) + 4) % 4]
 
 /** A board point after `turns` clockwise quarter turns around the centre. */
@@ -59,7 +64,7 @@ function turn(x: number, y: number, turns: number): [number, number] {
   for (let i = 0; i < ((turns % 4) + 4) % 4; i++) [px, py] = [15 - py, px]
   return [px, py]
 }
-const START_COLOUR = new Map<number, LudoColour>(COLOURS.map((c) => [START_INDEX[c], c]))
+const START_COLOUR = new Map<number, SquareColour>(COLOURS.map((c) => [START_INDEX[c], c]))
 const STAR_SQUARES = SAFE_SQUARES.filter((i) => !START_COLOUR.has(i))
 /** The four resting spots in a base, relative to its origin (matches lib/live/ludo BASE_SLOTS). */
 const BASE_SLOTS = [
@@ -202,10 +207,10 @@ const BoardBackground = React.memo(function BoardBackground({ id }: { id: string
 /* ── Pieces ──────────────────────────────────────────────────────────── */
 
 /** Gradients for the 3D pins, one set per colour. */
-function PieceDefs({ id }: { id: string }) {
+export function PieceDefs({ id }: { id: string }) {
   return (
     <defs>
-      {COLOURS.map((c) => (
+      {ALL_COLOURS.map((c) => (
         <React.Fragment key={c}>
           <linearGradient id={`${id}-body-${c}`} x1="0" y1="0" x2="1" y2="0">
             <stop offset="0" stopColor={SHADES[c].dark} />
@@ -281,7 +286,7 @@ function clusterSpot(n: number, i: number): { dx: number; dy: number; r: number 
  * One piece. GSAP moves it: a hop per square while walking, a high arc when
  * it's knocked back to base, a glide when pieces on a square shuffle around.
  */
-function Piece({
+export function Piece({
   id,
   colour,
   x,
@@ -475,7 +480,8 @@ export function LudoBoard({
     if (!p || hidden?.includes(uid)) continue
     const pos = positions[uid] ?? p.tokens
     pos.forEach((v, i) => {
-      const cell = cellOf(p.colour, v, i)
+      // This board only ever has the four square colours
+      const cell = cellOf(p.colour as SquareColour, v, i)
       tokens.push({
         key: `${uid}:${i}`,
         uid,

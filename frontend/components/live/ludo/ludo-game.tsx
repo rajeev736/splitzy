@@ -34,6 +34,11 @@ import {
   rollFor,
   type PowerKind,
   type LudoColour,
+  geoOf,
+  PENTA_COLOURS,
+  SQUARE_GEO,
+  type LudoGeo,
+  type SquareColour,
   type LudoPlayer,
   type LudoSkipReason,
   type LudoState,
@@ -42,7 +47,14 @@ import { ABANDON_MS } from "@/lib/live/room"
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import { stateTransaction } from "@/services/live-rooms"
-import { colourAtCorner, LudoBoard, TOKEN_COLOURS, TURNS_FOR } from "./ludo-board"
+import {
+  colourAtCorner,
+  LudoBoard,
+  TOKEN_COLOURS,
+  TURNS_FOR,
+} from "./ludo-board"
+import { LudoPentaBoard } from "./ludo-penta-board"
+import { baseFrame, pentaTurnFor } from "@/lib/live/ludo-penta"
 import { ThrowOverlay, ThrowPicker } from "../throwables"
 import { PowerBadge } from "./power-art"
 import { useStageFit } from "../use-stage-fit"
@@ -154,7 +166,10 @@ export function LudoGame({
       playSound("power")
     } else if (last.type === "move") {
       if ((last.picked || last.earned) && last.by === uid)
-        window.setTimeout(() => playSound("power"), (last.from < 0 ? 1 : last.to - last.from) * STEP_MS)
+        window.setTimeout(
+          () => playSound("power"),
+          (last.from < 0 ? 1 : last.to - last.from) * STEP_MS
+        )
       // After the piece has walked there
       const walk = (last.from < 0 ? 1 : last.to - last.from) * STEP_MS
       if (last.captured?.length) {
@@ -162,7 +177,12 @@ export function LudoGame({
         window.setTimeout(() => playSound(mine ? "captured" : "capture"), walk)
       } else if (last.home) window.setTimeout(() => playSound("home"), walk)
     }
-    if (state.phase === "roll" && state.turn === uid && last.by !== uid && !me.left)
+    if (
+      state.phase === "roll" &&
+      state.turn === uid &&
+      last.by !== uid &&
+      !me.left
+    )
       window.setTimeout(() => playSound("your_turn"), 900)
   })
 
@@ -216,7 +236,11 @@ export function LudoGame({
     setRollLock(at)
     void commit((s) => {
       if (s.seq !== at) throw new Error("stale")
-      return applyRoll(s, uid, value, { now: serverNow(), gone, rand: Math.random })
+      return applyRoll(s, uid, value, {
+        now: serverNow(),
+        gone,
+        rand: Math.random,
+      })
     }).then((ok) => {
       if (!ok) setRollLock(-1)
     })
@@ -226,7 +250,11 @@ export function LudoGame({
     (token: number, expectSeq: number, value: number) =>
       commit((s) => {
         if (s.seq !== expectSeq) throw new Error("stale")
-        return applyMove(s, uid, token, value, { now: serverNow(), gone, rand: Math.random })
+        return applyMove(s, uid, token, value, {
+          now: serverNow(),
+          gone,
+          rand: Math.random,
+        })
       }),
     [commit, uid, serverNow, gone]
   )
@@ -238,17 +266,31 @@ export function LudoGame({
   /* ── Power Ludo ──────────────────────────────────────────────────── */
 
   // The power you're aiming (waiting for you to tap a piece)
-  const [aimingAt, setAiming] = React.useState<{ kind: PowerKind; seq: number } | null>(null)
-  const canUsePower = !!state && myTurn && state.phase === "roll" && rollLock !== state.seq
+  const [aimingAt, setAiming] = React.useState<{
+    kind: PowerKind
+    seq: number
+  } | null>(null)
+  const canUsePower =
+    !!state && myTurn && state.phase === "roll" && rollLock !== state.seq
   // Aiming lasts only while it's still your turn to roll, in the same state
-  const aiming = aimingAt && canUsePower && state && aimingAt.seq === state.seq ? aimingAt.kind : null
-  const firePower = (kind: PowerKind, target: { uid: string; token: number } | null) => {
+  const aiming =
+    aimingAt && canUsePower && state && aimingAt.seq === state.seq
+      ? aimingAt.kind
+      : null
+  const firePower = (
+    kind: PowerKind,
+    target: { uid: string; token: number } | null
+  ) => {
     if (!state || !canUsePower) return
     const at = state.seq
     setAiming(null)
     void commit((s) => {
       if (s.seq !== at) throw new Error("stale")
-      return applyPower(s, uid, kind, target, { now: serverNow(), gone, rand: Math.random })
+      return applyPower(s, uid, kind, target, {
+        now: serverNow(),
+        gone,
+        rand: Math.random,
+      })
     })
   }
   const pickPower = (kind: PowerKind) => {
@@ -266,7 +308,8 @@ export function LudoGame({
     const out: string[] = []
     for (const id of state.order) {
       const p = state.players[id]
-      if (!p || (own ? id !== uid : id === uid || isGone(state, id, gone))) continue
+      if (!p || (own ? id !== uid : id === uid || isGone(state, id, gone)))
+        continue
       p.tokens.forEach((pos, t) => {
         if (pos < 0 || pos >= HOME_COLUMN_START) return
         if (!own && isShielded(state, id, t)) return
@@ -300,7 +343,11 @@ export function LudoGame({
     const { turn, seq: at } = state
     void commit((s) => {
       if (s.seq !== at) throw new Error("stale")
-      return passTurn(s, turn, reason, { now: serverNow(), gone, rand: Math.random })
+      return passTurn(s, turn, reason, {
+        now: serverNow(),
+        gone,
+        rand: Math.random,
+      })
     }, true)
   }, [isReferee, state, byId, now, gone, meta.startedAt, commit, serverNow])
 
@@ -365,10 +412,38 @@ export function LudoGame({
   }
 
   const mine = state.players[uid]
+  // 5 players play on the pentagon board; otherwise the classic square
+  const penta = state.board === "penta"
+  const geo = geoOf(state)
   // Your colour sits at the bottom-left, in front of you, with your dice;
   // everyone else is at their own corner of the turned board
-  const turns = mine ? TURNS_FOR[mine.colour] : 0
+  const turns = !penta && mine ? TURNS_FOR[mine.colour as SquareColour] : 0
   const at = (corner: number) => colourAtCorner(corner, turns)
+  const pentaTurn = penta ? pentaTurnFor(mine?.colour ?? "red") : 0
+  // Seats in two rows, each player by their base: the square has 2 + 2;
+  // the pentagon 3 on top (left, middle, right) and 2 below
+  let topRow: LudoColour[]
+  let bottomRow: LudoColour[]
+  if (penta) {
+    const placed = PENTA_COLOURS.map((c) => {
+      const a = ((baseFrame(c).angle + pentaTurn) * Math.PI) / 180
+      return { c, x: Math.cos(a), below: Math.sin(a) > 0 }
+    })
+    topRow = placed
+      .filter((p) => !p.below)
+      .sort((a, b) => a.x - b.x)
+      .map((p) => p.c)
+    bottomRow = placed
+      .filter((p) => p.below)
+      .sort((a, b) => a.x - b.x)
+      .map((p) => p.c)
+  } else {
+    topRow = [at(0), at(1)]
+    bottomRow = [at(3), at(2)]
+  }
+  const rowCols = (n: number) => (n === 3 ? "grid-cols-3" : "grid-cols-2")
+  const alignOf = (i: number, n: number): "left" | "right" =>
+    i === n - 1 && n > 1 ? "right" : "left"
   const current = byId[state.turn]
   const currentName = nameOf(state.turn)
   const since = state.turnAt || meta.startedAt || 0
@@ -425,13 +500,18 @@ export function LudoGame({
     caption = "Choosing a piece…"
   }
 
-  const seat = (colour: LudoColour, align: "left" | "right") => {
+  const seat = (
+    colour: LudoColour,
+    align: "left" | "right",
+    compact = false
+  ) => {
     const id = byColour[colour]
     const lp = id ? state.players[id] : undefined
     const rp = id ? byId[id] : undefined
     if (!id || !lp || !rp) return <div key={colour} aria-hidden />
     const isTurn = state.phase !== "over" && state.turn === id
-    const canRoll = isTurn && id === uid && state.phase === "roll" && rollLock !== state.seq
+    const canRoll =
+      isTurn && id === uid && state.phase === "roll" && rollLock !== state.seq
     const rolledLast = rollEvent?.by === id
     const showDice = isTurn || rolledLast
     // Ludo King style: the dice sits next to whoever's turn it is; on yours it glows — tap it to roll.
@@ -457,6 +537,8 @@ export function LudoGame({
         countdown={isTurn ? countdown : null}
         align={align}
         dice={dice}
+        compact={compact}
+        geo={geo}
         onTap={id !== uid && !me.left ? () => setThrowAt(rp) : undefined}
       />
     )
@@ -479,7 +561,7 @@ export function LudoGame({
         "max-md:fixed max-md:inset-x-0 max-md:top-(--stage-top) max-md:z-20 max-md:h-(--stage-h) max-md:justify-center max-md:overflow-hidden max-md:bg-background max-md:p-2",
         "max-md:[--board-w:min(100%,calc(var(--stage-h)_-_var(--board-reserve)))]",
         // Big screens: the board is also sized to the window height, so the game page never scrolls
-        "md:[--board-w:min(100%,calc(100svh_-_var(--board-reserve-desk)))]",
+        "md:[--board-w:min(100%,calc(100svh_-_var(--board-reserve-desk)))]"
       )}
     >
       {/* The table: players in their corners around the board, Ludo King style */}
@@ -490,35 +572,63 @@ export function LudoGame({
             "radial-gradient(130% 90% at 50% 0%, #2f6be0 0%, #1a46a8 45%, #0d2463 100%)",
         }}
       >
-        <div className="grid grid-cols-2 gap-2 px-1 pb-2">
-          {seat(at(0), "left")}
-          {seat(at(1), "right")}
+        <div className={cn("grid gap-2 px-1 pb-2", rowCols(topRow.length))}>
+          {topRow.map((c, i) =>
+            seat(c, alignOf(i, topRow.length), topRow.length > 2)
+          )}
         </div>
         {/* --board-w is set on phones; elsewhere the width falls back to the column */}
         <div className="mx-auto w-(--board-w) max-w-[min(94vw,32rem)] rounded-xl bg-white/15 p-1 shadow-[0_12px_30px_rgb(0_0_0/0.4)]">
-          <LudoBoard
-            state={state}
-            positions={anim.positions}
-            flying={anim.flying}
-            movable={movable}
-            meUid={uid}
-            onToken={onToken}
-            turns={turns}
-            hidden={offBoard}
-            targets={aiming ? targets : undefined}
-            onTarget={(id, token) => aiming && firePower(aiming, { uid: id, token })}
-            className="rounded-lg"
-          />
+          {penta ? (
+            <LudoPentaBoard
+              state={state}
+              positions={anim.positions}
+              flying={anim.flying}
+              movable={movable}
+              meUid={uid}
+              onToken={onToken}
+              rotation={pentaTurn}
+              hidden={offBoard}
+              targets={aiming ? targets : undefined}
+              onTarget={(id, token) =>
+                aiming && firePower(aiming, { uid: id, token })
+              }
+              className="rounded-lg"
+            />
+          ) : (
+            <LudoBoard
+              state={state}
+              positions={anim.positions}
+              flying={anim.flying}
+              movable={movable}
+              meUid={uid}
+              onToken={onToken}
+              turns={turns}
+              hidden={offBoard}
+              targets={aiming ? targets : undefined}
+              onTarget={(id, token) =>
+                aiming && firePower(aiming, { uid: id, token })
+              }
+              className="rounded-lg"
+            />
+          )}
         </div>
-        <div className="grid grid-cols-2 gap-2 px-1 pt-2">
-          {seat(at(3), "left")}
-          {seat(at(2), "right")}
+        <div className={cn("grid gap-2 px-1 pt-2", rowCols(bottomRow.length))}>
+          {bottomRow.map((c, i) =>
+            seat(c, alignOf(i, bottomRow.length), bottomRow.length > 2)
+          )}
         </div>
         <div className="mt-2 flex min-h-12 flex-col justify-center rounded-xl bg-black/25 px-3 py-1.5 text-center">
           {state.mode === "powers" && (
-            <div className="mb-1 flex items-center justify-center gap-1.5" role="group" aria-label="Your powers">
+            <div
+              className="mb-1 flex items-center justify-center gap-1.5"
+              role="group"
+              aria-label="Your powers"
+            >
               {(mine?.powers ?? []).length === 0 ? (
-                <span className="text-[11px] text-white/60">Land on a glowing square to grab a power</span>
+                <span className="text-[11px] text-white/60">
+                  Land on a glowing square to grab a power
+                </span>
               ) : (
                 mine!.powers!.map((k, i) => (
                   <button
@@ -549,7 +659,7 @@ export function LudoGame({
           {options.length > 1 && diceValue !== null && mine ? (
             // Also a tap target off the board — and the fallback if the auto-move didn't land
             <div
-              className="no-scrollbar mt-1 flex justify-center gap-1.5 overflow-x-auto"
+              className="mt-1 no-scrollbar flex justify-center gap-1.5 overflow-x-auto"
               role="group"
               aria-label="Pieces you can move"
             >
@@ -582,7 +692,11 @@ export function LudoGame({
       </p>
 
       <ThrowOverlay code={code} />
-      <ThrowPicker code={code} target={throwAt} onOpenChange={(o) => !o && setThrowAt(null)} />
+      <ThrowPicker
+        code={code}
+        target={throwAt}
+        onOpenChange={(o) => !o && setThrowAt(null)}
+      />
     </div>
   )
 }
@@ -607,6 +721,8 @@ export function Seat({
   align,
   dice,
   onTap,
+  compact = false,
+  geo = SQUARE_GEO,
 }: {
   player: RoomPlayer
   ludo: LudoPlayer
@@ -619,30 +735,53 @@ export function Seat({
   dice?: React.ReactNode
   /** Opens the throw picker (other players only). */
   onTap?: () => void
+  /** Three to a row: the dice takes room only while it's showing. */
+  compact?: boolean
+  geo?: LudoGeo
 }) {
   const colour = TOKEN_COLOURS[ludo.colour]
   const out = !!ludo.out
   const dim = player.left || out || !player.online
   const missed = ludo.missed ?? 0
-  const status = ludo.place > 0
-    ? `${ordinal(ludo.place)} · finished`
-    : out
-      ? "Out"
-      : player.left
-        ? "Left"
-        : !player.online
-          ? "Offline"
-          : `${homeCount(ludo)}/4 home`
+  const status =
+    ludo.place > 0
+      ? `${ordinal(ludo.place)} · finished`
+      : out
+        ? "Out"
+        : player.left
+          ? "Left"
+          : !player.online
+            ? "Offline"
+            : `${homeCount(ludo, geo)}/4 home`
   const share = countdown ?? 1
   const name = (
-    <div className={cn("min-w-0 flex-1 leading-tight", align === "right" && "text-right")}>
-      <p className="truncate text-xs font-semibold">{isMe ? "You" : player.name.split(" ")[0]}</p>
-      <p className="flex items-center gap-1 text-[10px] text-white/70" style={{ justifyContent: align === "right" ? "flex-end" : undefined }}>
+    <div
+      className={cn(
+        "min-w-0 flex-1 leading-tight",
+        align === "right" && "text-right"
+      )}
+    >
+      <p className="truncate text-xs font-semibold">
+        {isMe ? "You" : player.name.split(" ")[0]}
+      </p>
+      <p
+        className="flex items-center gap-1 text-[10px] text-white/70"
+        style={{ justifyContent: align === "right" ? "flex-end" : undefined }}
+      >
         <span className="truncate">{status}</span>
         {missed > 0 && !out && (
-          <span className="flex gap-0.5" aria-label={`Missed ${missed} of ${LUDO_MAX_MISSED} turns`}>
+          <span
+            className="flex gap-0.5"
+            aria-label={`Missed ${missed} of ${LUDO_MAX_MISSED} turns`}
+          >
             {Array.from({ length: LUDO_MAX_MISSED }, (_, i) => (
-              <span key={i} className={cn("size-1.5 rounded-full", i < missed ? "bg-red-400" : "bg-white/30")} />
+              <span
+                key={i}
+                className={cn(
+                  "size-1.5 rounded-full",
+                  i < missed ? "bg-red-400" : "bg-white/30"
+                )}
+              />
             ))}
           </span>
         )}
@@ -651,46 +790,77 @@ export function Seat({
   )
   return (
     // One compact row — photo, dice, name — so the board gets the height on small phones
-    <div className={cn("flex min-w-0 items-center gap-1.5", align === "right" && "flex-row-reverse", dim && "opacity-60")}>
-        <button
-          type="button"
-          data-throw-anchor={player.uid}
-          onClick={onTap}
-          disabled={!onTap}
-          aria-label={onTap ? `Throw something at ${player.name}` : player.name}
-          className="relative size-14 shrink-0 rounded-full transition-transform enabled:active:scale-95"
+    <div
+      className={cn(
+        "flex min-w-0 items-center gap-1.5",
+        align === "right" && "flex-row-reverse",
+        dim && "opacity-60"
+      )}
+    >
+      <button
+        type="button"
+        data-throw-anchor={player.uid}
+        onClick={onTap}
+        disabled={!onTap}
+        aria-label={onTap ? `Throw something at ${player.name}` : player.name}
+        className="relative size-14 shrink-0 rounded-full transition-transform enabled:active:scale-95"
+      >
+        <svg
+          viewBox="0 0 56 56"
+          className="absolute inset-0 -rotate-90"
+          aria-hidden
         >
-          <svg viewBox="0 0 56 56" className="absolute inset-0 -rotate-90" aria-hidden>
-            <circle cx="28" cy="28" r={RING_R} fill="none" stroke="rgb(255 255 255 / 0.18)" strokeWidth="4" />
-            <circle
-              cx="28"
-              cy="28"
-              r={RING_R}
-              fill="none"
-              stroke={countdown !== null ? timeColour(share) : colour}
-              strokeOpacity={countdown !== null || isTurn ? 1 : 0.85}
-              strokeWidth="4"
-              strokeLinecap="round"
-              strokeDasharray={RING_C}
-              strokeDashoffset={countdown !== null ? RING_C * (1 - share) : 0}
-              style={{ transition: "stroke-dashoffset 1s linear, stroke 1s linear" }}
-            />
-          </svg>
-          <UserAvatar src={player.photo} name={player.name} size="md" className="absolute inset-[7px] size-[42px]" />
-          <span
-            className="absolute -right-0.5 -bottom-0.5 size-4 rounded-full ring-2 ring-[#0d2463]"
-            style={{ backgroundColor: colour }}
-            aria-label={`${ludo.colour} pieces`}
+          <circle
+            cx="28"
+            cy="28"
+            r={RING_R}
+            fill="none"
+            stroke="rgb(255 255 255 / 0.18)"
+            strokeWidth="4"
           />
-          {isTurn && (
-            <span
-              aria-hidden
-              className="absolute -inset-1 rounded-full"
-              style={{ boxShadow: `0 0 16px 2px ${colour}` }}
-            />
-          )}
-        </button>
-        <div className="flex size-10 shrink-0 items-center justify-center">{dice}</div>
+          <circle
+            cx="28"
+            cy="28"
+            r={RING_R}
+            fill="none"
+            stroke={countdown !== null ? timeColour(share) : colour}
+            strokeOpacity={countdown !== null || isTurn ? 1 : 0.85}
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeDasharray={RING_C}
+            strokeDashoffset={countdown !== null ? RING_C * (1 - share) : 0}
+            style={{
+              transition: "stroke-dashoffset 1s linear, stroke 1s linear",
+            }}
+          />
+        </svg>
+        <UserAvatar
+          src={player.photo}
+          name={player.name}
+          size="md"
+          className="absolute inset-[7px] size-[42px]"
+        />
+        <span
+          className="absolute -right-0.5 -bottom-0.5 size-4 rounded-full ring-2 ring-[#0d2463]"
+          style={{ backgroundColor: colour }}
+          aria-label={`${ludo.colour} pieces`}
+        />
+        {isTurn && (
+          <span
+            aria-hidden
+            className="absolute -inset-1 rounded-full"
+            style={{ boxShadow: `0 0 16px 2px ${colour}` }}
+          />
+        )}
+      </button>
+      <div
+        className={cn(
+          "flex shrink-0 items-center justify-center",
+          compact && !dice ? "w-0" : "size-10"
+        )}
+      >
+        {dice}
+      </div>
       {name}
     </div>
   )

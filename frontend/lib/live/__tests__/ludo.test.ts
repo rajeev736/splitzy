@@ -13,6 +13,9 @@ import {
   initialLudoState,
   isOver,
   LUDO_MAX_MISSED,
+  geoOf,
+  homeCount,
+  PENTA_GEO,
   applyPower,
   FREEZE_TURNS,
   rollFor,
@@ -598,5 +601,55 @@ console.log("✓ power ludo")
   noUndefined(applyRoll(stuck, "a", rollFor(stuck, "a", Math.random), { now: 1 }))
 }
 console.log("✓ dice")
+
+/* ── Five players: the pentagon board ─────────────────────────────────── */
+{
+  const c = { now: 1 }
+  const five = initialLudoState(
+    Array.from({ length: 5 }, (_, i) => player("abcde"[i], i)),
+    {},
+    "S"
+  )
+  assert(five.board === "penta" && five.order.length === 5, "5 players → the pentagon board")
+  assert(five.players.e.colour === "purple", "the fifth colour is purple")
+  assert(!fresh(4).board && fresh(4).order.length === 4, "4 players stay on the square board")
+  const g = geoOf(five)
+  assert(g === PENTA_GEO && g.track === 65 && g.home === 69, "pentagon: 65-square track, home at 69")
+
+  // Each colour walks 64 track squares then 5 up its home column, then home
+  assert(canMove(63, 6, g) && canMove(63, 6, g) && !canMove(64, 6, g), "can't overshoot home (69)")
+  assert(canMove(-1, 6, g) && !canMove(-1, 5, g), "a 6 brings a piece out")
+  assert(trackIndex("purple", 0, g) === 52 && trackIndex("purple", 13, g) === 0, "purple starts at 52 and wraps at 65")
+  assert(trackIndex("red", 63, g) === 63 && trackIndex("red", 64, g) === -1, "red's last track square is 63, then its column")
+
+  // Walk a red piece all the way home in sixes and the rest (red has bonus rolls, then moves again)
+  let s: LudoState = withTokens(five, { a: [60, -1, -1, -1] })
+  s = applyMove(applyRoll(s, "a", 6, c), "a", 0, 6, c)
+  assert(s.players.a.tokens[0] === 66, "into the home column")
+  s = { ...s, turn: "a", phase: "roll" }
+  s = applyMove(applyRoll(s, "a", 3, c), "a", 0, 3, c)
+  assert(s.players.a.tokens[0] === 69 && s.last?.type === "move" && s.last.home, "home at 69")
+  assert(homeCount(s.players.a, g) === 1, "counted home on this board")
+
+  // Captures use the pentagon's track: purple pos 10 = square 62; red pos 59 → +3 = 62
+  let cap = withTokens(five, { a: [59, -1, -1, -1], e: [10, -1, -1, -1] })
+  cap = applyMove(applyRoll(cap, "a", 3, c), "a", 0, 3, c)
+  assert(cap.players.e.tokens[0] === -1 && cap.players.a.kills === 1, "a cut on the pentagon")
+  // …but not on its safe squares (purple's start, 52)
+  let safe = withTokens(five, { a: [49, -1, -1, -1], e: [0, -1, -1, -1] })
+  safe = applyMove(applyRoll(safe, "a", 3, c), "a", 0, 3, c)
+  assert(safe.players.e.tokens[0] === 0, "starts are safe")
+  assert(isSafe(60, g) && !isSafe(61, g), "stars: start + 8")
+
+  // Power-ups spawn on the pentagon's track only
+  const pw = initialLudoState(
+    Array.from({ length: 5 }, (_, i) => player("abcde"[i], i)),
+    { mode: "powers" },
+    "SEED5"
+  )
+  assert(pw.spawns!.every((sp) => sp.sq >= 0 && sp.sq < 65 && !g.safe.includes(sp.sq)), "spawns on the pentagon track")
+  noUndefined(s)
+}
+console.log("✓ five players")
 
 console.log("\nAll Ludo tests passed.")
