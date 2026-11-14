@@ -40,6 +40,7 @@ import type { ChatMessage, LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import { roomRef, sendChat, updateState } from "@/services/live-rooms"
 import { DefaultMessage, RoomChat } from "../room-chat"
+import { useStageFit } from "../use-stage-fit"
 import { hashWord } from "./hash"
 import { ScribbleCanvas } from "./scribble-canvas"
 
@@ -90,6 +91,10 @@ export function ScribbleGame({
   const { data: secret } = useRoomNode<{ word: string }>(code, `secret/${uid}`)
   const chat = useRoomChildren<Msg>(code, "chat", 200)
   const correct = correctData ?? NO_CORRECT
+  // Phones: the game fills the screen, the guess box always in view (above the keyboard while typing)
+  const stageRef = useStageFit()
+  const [typing, setTyping] = React.useState(false)
+  const isField = (t: EventTarget) => t instanceof HTMLElement && t.matches("input, textarea")
   const ready =
     !!game &&
     Array.isArray(game.order) &&
@@ -496,9 +501,26 @@ export function ScribbleGame({
       ? "Say something…"
       : "Type your guess…"
 
+  const canDraw = isDrawer && phase === "drawing"
+  // Height the canvas leaves for the rest on a phone: word bar, scores, chat (at least
+  // a couple of lines + the box), gaps, and the drawing tools when it's your turn to draw
+  const canvasReserve = 56 + (typing ? 0 : 48) + 156 + 16 + (canDraw ? 100 : 0)
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_18rem] md:items-start md:gap-4">
-      <div className="flex min-w-0 flex-col gap-2 md:max-w-[640px]">
+    <div
+      ref={stageRef}
+      onFocusCapture={(e) => isField(e.target) && setTyping(true)}
+      onBlurCapture={(e) => isField(e.target) && setTyping(false)}
+      style={{ "--canvas-reserve": `${canvasReserve}px` } as React.CSSProperties}
+      className={cn(
+        "flex min-h-0 flex-1 flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_18rem] md:items-start md:gap-4",
+        // Phones: one screen, no page scroll — word, scores, drawing, then the chat taking what's left.
+        // The drawing shrinks (keeping 4:3) when the screen is short, e.g. with the keyboard up.
+        "max-md:fixed max-md:inset-x-0 max-md:top-(--stage-top) max-md:z-20 max-md:h-(--stage-h) max-md:bg-background max-md:px-2 max-md:pb-2",
+        "max-md:[--canvas-w:min(100%,calc((var(--stage-h)_-_var(--canvas-reserve))*4/3))]"
+      )}
+    >
+      <div className="flex min-w-0 flex-col gap-2 max-md:flex-none md:max-w-[640px]">
         {/* Round, the hint, the clock: pinned under the header, so the word stays in view while typing */}
         <div className="sticky top-[calc(3.875rem+env(safe-area-inset-top,0px))] z-20 -mx-2 flex items-center gap-3 border-b bg-background/95 px-3 py-2 backdrop-blur-sm sm:mx-0 sm:rounded-xl sm:border sm:bg-card md:static">
           <div className="min-w-0 flex-1">
@@ -541,13 +563,13 @@ export function ScribbleGame({
           correct={correct}
           uid={uid}
           layout="row"
-          className="md:hidden"
+          className={typing ? "hidden" : "md:hidden"}
         />
 
         <ScribbleCanvas
           code={code}
           uid={uid}
-          canDraw={isDrawer && phase === "drawing"}
+          canDraw={canDraw}
           overlay={overlay}
         />
       </div>
@@ -561,8 +583,8 @@ export function ScribbleGame({
           layout="list"
           className="hidden md:flex"
         />
-        <Card className="flex h-[40svh] min-h-[220px] flex-col gap-0 py-0 md:h-auto md:min-h-0 md:flex-1">
-          <p className="truncate border-b px-3 py-1.5 text-[11px] text-muted-foreground">
+        <Card className="flex min-h-0 flex-1 flex-col gap-0 py-0">
+          <p className="truncate border-b px-3 py-1.5 text-[11px] text-muted-foreground max-md:hidden">
             {chatHeading}
           </p>
           <RoomChat

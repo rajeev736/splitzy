@@ -29,6 +29,7 @@ const KIND: Record<CoinTx["kind"], { icon: typeof GiftIcon; tone: string }> = {
   stake: { icon: GameController03Icon, tone: "bg-muted text-muted-foreground" },
   win: { icon: Award01Icon, tone: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" },
   refund: { icon: RotateLeft01Icon, tone: "bg-muted text-muted-foreground" },
+  throw: { icon: GameController03Icon, tone: "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300" },
 }
 
 function day(iso: string, now: number) {

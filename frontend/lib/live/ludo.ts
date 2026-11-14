@@ -35,6 +35,8 @@ export const START_INDEX: Record<LudoColour, number> = {
 export const LUDO_IDLE_MS = 45_000
 /** Ludo King style: a roll with exactly one possible move plays itself after this. */
 export const LUDO_AUTO_MOVE_MS = 700
+/** Turns in a row a player may lose to the clock before they're out of the game. */
+export const LUDO_MAX_MISSED = 3
 
 export interface LudoPlayer {
   uid: string
@@ -43,6 +45,10 @@ export interface LudoPlayer {
   tokens: number[]
   /** 1 = finished first, 2 = second… 0 = still racing. */
   place: number
+  /** Turns in a row lost to the clock (idle / offline); cleared when they play. */
+  missed?: number
+  /** Out of the game after LUDO_MAX_MISSED missed turns: skipped and their tokens leave the board. */
+  out?: true
 }
 
 export interface LudoDice {
@@ -81,7 +87,7 @@ export type LudoLast =
   | LudoMove
   | { type: "no_move"; by: string; value: number }
   | { type: "three_sixes"; by: string }
-  | { type: "skip"; by: string; reason: LudoSkipReason }
+  | { type: "skip"; by: string; reason: LudoSkipReason; out?: true }
 
 export interface LudoState {
   /** roll: waiting for `turn` to roll · move: they rolled, waiting for a token · over: someone won. */
@@ -190,12 +196,25 @@ export const trackIndex = (colour: LudoColour, pos: number): number =>
 
 export const isSafe = (track: number) => SAFE_SQUARES.includes(track)
 
-const isRacing = (state: LudoState, uid: string, gone: string[]) =>
-  state.players[uid]?.place === 0 && !gone.includes(uid)
+/** Left the room, or put out of the game for missing too many turns. */
+export const isGone = (state: LudoState, uid: string, gone: string[] = []) =>
+  gone.includes(uid) || !!state.players[uid]?.out
 
-/** Players who haven't left. */
+const isRacing = (state: LudoState, uid: string, gone: string[]) =>
+  state.players[uid]?.place === 0 && !isGone(state, uid, gone)
+
+/** Players who haven't left (or been put out). */
 export const contenders = (state: LudoState, gone: string[] = []) =>
-  state.order.filter((uid) => !gone.includes(uid))
+  state.order.filter((uid) => !isGone(state, uid, gone))
+
+/** `players` with `uid`'s missed-turn count cleared (they just played). */
+function playedNow(state: LudoState, uid: string): Record<string, LudoPlayer> {
+  const p = state.players[uid]
+  if (!p?.missed) return state.players
+  const rest = { ...p }
+  delete rest.missed
+  return { ...state.players, [uid]: rest }
+}
 
 /** Contenders still racing (not finished). */
 export const racing = (state: LudoState, gone: string[] = []) =>
@@ -257,11 +276,13 @@ export function applyRoll(
   if (!Number.isInteger(value) || value < 1 || value > 6)
     throw new Error("Bad dice")
   const sixes = value === 6 ? state.sixes + 1 : 0
-  if (sixes >= 3) return pass(state, uid, { type: "three_sixes", by: uid }, ctx)
-  if (legalMoves(state, uid, value).length === 0)
-    return pass(state, uid, { type: "no_move", by: uid, value }, ctx)
+  // Rolling counts as playing: the missed-turn count starts over
+  const played: LudoState = { ...state, players: playedNow(state, uid) }
+  if (sixes >= 3) return pass(played, uid, { type: "three_sixes", by: uid }, ctx)
+  if (legalMoves(played, uid, value).length === 0)
+    return pass(played, uid, { type: "no_move", by: uid, value }, ctx)
   return {
-    ...state,
+    ...played,
     phase: "move",
     sixes,
     dice: { value, by: uid, at: ctx.now },
@@ -299,13 +320,15 @@ export function applyMove(
       tokens: [...state.players[id].tokens],
     }
   players[uid].tokens[token] = to
+  delete players[uid].missed
 
   // Capture: every rival token on the same shared square goes back to base, unless it's a safe square
   const captured: LudoCapture[] = []
   const square = trackIndex(me.colour, to)
   if (square >= 0 && !isSafe(square)) {
     for (const id of state.order) {
-      if (id === uid) continue
+      // Tokens of players who left or are out are off the board
+      if (id === uid || isGone(state, id, ctx.gone)) continue
       const rival = players[id]
       rival.tokens.forEach((pos, j) => {
         if (trackIndex(rival.colour, pos) === square) {
@@ -356,7 +379,20 @@ export function passTurn(
 ): LudoState {
   if (state.phase === "over" || state.turn !== from)
     throw new Error("Not their turn")
-  return pass(state, from, { type: "skip", by: from, reason }, ctx)
+  if (reason === "left") return pass(state, from, { type: "skip", by: from, reason }, ctx)
+  // Lost to the clock: a strike; the third in a row puts them out of the game
+  const p = state.players[from]
+  const missed = (p?.missed ?? 0) + 1
+  const out = missed >= LUDO_MAX_MISSED
+  const players = {
+    ...state.players,
+    [from]: out ? { ...p, missed, out: true as const } : { ...p, missed },
+  }
+  const last: LudoLast = { type: "skip", by: from, reason }
+  if (out) last.out = true
+  const next = pass({ ...state, players }, from, last, ctx)
+  if (isOver(next, ctx.gone)) next.phase = "over"
+  return next
 }
 
 /* ── Standings ───────────────────────────────────────────────────────── */
@@ -386,7 +422,7 @@ export function rankingOf(state: LudoState, gone: string[] = []): string[] {
     .filter((id) => isRacing(state, id, gone))
     .sort(byRace)
   const left = state.order
-    .filter((id) => state.players[id].place === 0 && gone.includes(id))
+    .filter((id) => state.players[id].place === 0 && isGone(state, id, gone))
     .sort(byRace)
   return [...finished, ...stillRacing, ...left]
 }
@@ -427,6 +463,7 @@ export function describeLast(
     case "three_sixes":
       return `${who} rolled three 6s — turn lost`
     case "skip":
+      if (last.out) return `${who} missed ${LUDO_MAX_MISSED} turns — out of the game`
       return last.reason === "idle"
         ? `${who} ran out of time — turn skipped`
         : last.reason === "offline"

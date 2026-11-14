@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useChallenges } from "@/hooks/queries"
+import { gameNavigate } from "@/lib/games-nav"
 import { DISCOUNT_WINDOW_MS, GAMES, isForFun, stakeLabel } from "@/lib/games"
 import { formatPaise } from "@/lib/money"
 import type { Challenge } from "@/lib/types"
@@ -177,7 +178,7 @@ function ChallengeInviteDialog({
           <Button
             onClick={() => {
               onOpenChange(false)
-              router.push(`/challenges/${challenge.id}`)
+              gameNavigate(router, window.location.pathname, `/challenges/${challenge.id}`)
             }}
           >
             Play now

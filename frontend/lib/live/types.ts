@@ -78,9 +78,11 @@ export interface ChatMessage {
 export interface Reaction {
   uid: string
   name: string
-  /** A sticker id from components/live/stickers. */
+  /** A sticker id from components/live/stickers, or `t:<id>` for a throwable (lib/live/throwables). */
   sticker: string
   at: number
+  /** A throwable's target. */
+  to?: string
 }
 
 export interface VoiceState {

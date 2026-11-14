@@ -7,6 +7,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 
 import { Card } from "@/components/ui/card"
 import { useRoomNode } from "@/hooks/use-live-room"
+import { LiveGameLogo } from "@/components/live/live-game-logo"
 import { LIVE_GAMES } from "@/lib/live/games"
 import type { RoomMeta } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
@@ -90,15 +91,7 @@ function RoomRow({ code, uid }: { code: string; uid: string }) {
           finished ? "pr-1" : "pr-4"
         )}
       >
-        <span
-          className={cn(
-            "flex size-10 shrink-0 items-center justify-center rounded-lg text-xl",
-            game.tone
-          )}
-          aria-hidden
-        >
-          {game.emoji}
-        </span>
+        <LiveGameLogo game={game.id} className="size-10 rounded-lg" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">
             {game.name}{" "}

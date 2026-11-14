@@ -48,16 +48,19 @@ import { StakeGate, StakeOutcome } from "./_components/stake-parts"
 import { Coins } from "@/components/fun/coin"
 import { GameResult } from "./_components/results"
 import { GameGlyph } from "@/components/games/game-glyph"
+import { useGameExit } from "@/lib/games-nav"
 
 export default function ChallengePage() {
   const { challengeId } = useParams<{ challengeId: string }>()
   const { user } = useSession()
   const challenges = useChallenges()
   const challenge = challenges.data.find((c) => c.id === challengeId)
+  // Back: to the page the game was opened from (usually Games), never through older games
+  const exitGame = useGameExit()
 
   return (
     <>
-      <AppHeader title={challenge ? GAMES[challenge.game].name : "Game"} showBack />
+      <AppHeader title={challenge ? GAMES[challenge.game].name : "Game"} showBack onBack={exitGame} />
       <PageContainer className="max-w-xl gap-4 pb-24">
         {challenges.isPending ? (
           <ListSkeleton rows={3} />

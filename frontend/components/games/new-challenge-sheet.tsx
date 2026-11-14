@@ -20,6 +20,7 @@ import {
 import { useLiveGameDiscounts } from "@/hooks/use-game-discounts"
 import { useWallet } from "@/hooks/use-fun"
 import { Coins } from "@/components/fun/coin"
+import { gameNavigate } from "@/lib/games-nav"
 import { STAKE_PRESETS } from "@/lib/fun/catalog"
 import {
   GAME_IDS,
@@ -336,7 +337,7 @@ export function NewChallengeSheet({
       {
         onSuccess: (challenge) => {
           onOpenChange(false)
-          router.push(`/challenges/${challenge.id}`)
+          gameNavigate(router, window.location.pathname, `/challenges/${challenge.id}`)
         },
       }
     )

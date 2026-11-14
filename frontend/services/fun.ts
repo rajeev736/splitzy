@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore"
 
 import { AppError } from "@/lib/errors"
+import { THROWABLES, type ThrowableId } from "@/lib/live/throwables"
 import {
   BONDS,
   FRAMES,
@@ -114,6 +115,26 @@ export async function buyFrame(uid: string, frameId: FrameId): Promise<void> {
     if (wallet.balance < price) throw new AppError(`You need ${price - wallet.balance} more coins for this frame`)
     tx.update(ref, { balance: wallet.balance - price, frames: [...wallet.frames, frameId], lastTx: `frame:${frameId}` })
     const line = coinTx(uid, "frame", -price, `${FRAMES[frameId].name} frame`, frameId)
+    tx.set(line.ref, line.data)
+  })
+}
+
+/**
+ * Pays for something thrown at a player in a live game (lib/live/throwables).
+ * The rules check the price (`throw:<id>:<nonce>`); the throw itself is sent
+ * to the room by the caller once this succeeds.
+ */
+export async function payForThrow(uid: string, item: ThrowableId, targetName: string): Promise<void> {
+  const price = THROWABLES[item].price
+  const firestore = db()
+  const ref = doc(firestore, "wallets", uid)
+  await runTransaction(firestore, async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists()) throw new AppError("Your coins are still loading — try again in a moment")
+    const wallet = snap.data() as Wallet
+    if (wallet.balance < price) throw new AppError(`You need ${price - wallet.balance} more coins`)
+    tx.update(ref, { balance: wallet.balance - price, lastTx: `throw:${item}:${Date.now().toString(36)}` })
+    const line = coinTx(uid, "throw", -price, `${THROWABLES[item].name} at ${targetName.split(" ")[0]}`, item)
     tx.set(line.ref, line.data)
   })
 }

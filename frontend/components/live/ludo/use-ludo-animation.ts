@@ -22,9 +22,9 @@ interface Anim {
 }
 
 /** Time per square when a token walks. */
-export const STEP_MS = 120
+export const STEP_MS = 190
 /** Time for a captured token to fly home. */
-export const FLY_MS = 450
+export const FLY_MS = 650
 
 const BASE = [-1, -1, -1, -1]
 const NO_FLYING: string[] = []

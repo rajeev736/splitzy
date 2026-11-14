@@ -7,6 +7,7 @@ import { useRouter } from "nextjs-toploader/app"
 import { useSession } from "@/components/providers/session-provider"
 import { JoySplitLogoIcon } from "@/components/shared/joysplit-logo"
 import { Spinner } from "@/components/ui/spinner"
+import { trackGameRoute } from "@/lib/games-nav"
 import { cn } from "@/lib/utils"
 import { AppSidebar } from "./app-sidebar"
 import { BottomNav } from "./bottom-nav"
@@ -46,6 +47,13 @@ export function AppShell({ children, hideNav = false }: { children: React.ReactN
     }
     router.replace("/login")
   }, [isLoading, user, router, pathname])
+
+  // Games keep one entry on the back stack (lib/games-nav): tell it where we are
+  const lastPath = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    trackGameRoute(lastPath.current, pathname)
+    lastPath.current = pathname
+  }, [pathname])
 
   // Once signed in, prefetch every tab and the screens they open, so moving
   // between them renders straight from the router cache instead of waiting on

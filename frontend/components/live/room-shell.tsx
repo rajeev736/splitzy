@@ -33,11 +33,13 @@ import {
 } from "@/components/ui/sheet"
 import { Spinner } from "@/components/ui/spinner"
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
-import { useLiveRoom, type LiveRoom } from "@/hooks/use-live-room"
+import { useLiveRoom, useRoomChildren, type LiveRoom } from "@/hooks/use-live-room"
 import { getErrorMessage } from "@/lib/errors"
+import { useGameExit } from "@/lib/games-nav"
+import { LiveGameLogo } from "@/components/live/live-game-logo"
 import { LIVE_GAMES } from "@/lib/live/games"
 import { roomLink } from "@/lib/live/room"
-import type { RoomMeta, RoomPlayer } from "@/lib/live/types"
+import type { ChatMessage, RoomMeta, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import {
   cancelCountdown,
@@ -67,7 +69,7 @@ const CLEANUP_AFTER_MS = 60 * 1000
  * lib/live/room.ts) performs the automatic steps.
  */
 export function RoomShell({ code }: { code: string }) {
-  const router = useRouter()
+  const exitGame = useGameExit(GAMES_TAB)
   const { user } = useSession()
   const room = useLiveRoom(code)
   const { meta, players, me, isReferee, loaded, notFound, now, serverNow } =
@@ -169,7 +171,7 @@ export function RoomShell({ code }: { code: string }) {
       room={room}
       meta={meta}
       me={me}
-      onLeft={() => router.replace(GAMES_TAB)}
+      onLeft={exitGame}
     />
   )
 }
@@ -256,15 +258,7 @@ function LobbyView({
         {/* Code + share: the way friends get in */}
         <Card className="gap-0 py-0">
           <div className="flex flex-col items-center gap-3 p-5 text-center">
-            <span
-              className={cn(
-                "flex size-14 items-center justify-center rounded-xl text-3xl",
-                game.tone
-              )}
-              aria-hidden
-            >
-              {game.emoji}
-            </span>
+            <LiveGameLogo game={game.id} className="size-14 rounded-xl" />
             <div>
               <p className="text-xs text-muted-foreground">Room code</p>
               <button
@@ -515,7 +509,7 @@ function PlayingView({
   meta: RoomMeta
   me: RoomPlayer
 }) {
-  const router = useRouter()
+  const exitGame = useGameExit(GAMES_TAB)
   const { code, players, uid, isReferee, now, serverNow, voice } = room
   const game = LIVE_GAMES[meta.game]
   const [stickers, setStickers] = React.useState(false)
@@ -538,11 +532,38 @@ function PlayingView({
   const [leaving, setLeaving] = React.useState(false)
   const hasOwnChat = meta.game === "scribble"
 
+  // New messages while the chat is closed: a count on the Chat button and a
+  // short preview above the dock (phones; big screens keep the chat open on the right)
+  const messages = useRoomChildren<ChatMessage>(code, "chat", 200)
+  const [readUpTo, setReadUpTo] = React.useState<number | null>(null)
+  React.useEffect(() => {
+    const id = window.setTimeout(() => setReadUpTo(serverNow()), 0)
+    return () => window.clearTimeout(id)
+  }, [serverNow])
+  const openChat = (open: boolean) => {
+    setChat(open)
+    setReadUpTo(serverNow())
+  }
+  const unread =
+    hasOwnChat || chat || readUpTo === null
+      ? []
+      : messages.filter(
+          (m) => m.value.uid !== uid && (m.value.kind ?? "chat") === "chat" && m.value.at > readUpTo
+        )
+  const latest = unread.at(-1)
+  const [hiddenPreview, setHiddenPreview] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    if (!latest) return
+    const id = window.setTimeout(() => setHiddenPreview(latest.key), 4000)
+    return () => window.clearTimeout(id)
+  }, [latest])
+  const preview = latest && hiddenPreview !== latest.key ? latest : null
+
   const leave = async () => {
     setLeaving(true)
     try {
       await leaveRoom(uid, code)
-      router.replace(GAMES_TAB)
+      exitGame()
     } catch (e) {
       toast.error(getErrorMessage(e, "Couldn't leave"))
       setLeaving(false)
@@ -571,36 +592,65 @@ function PlayingView({
       <div
         className={cn(
           "mx-auto flex w-full max-w-3xl flex-1 flex-col px-2 pt-2 sm:px-6 sm:pt-4",
+          // Big screens: the game, with the chat open beside it (Scribble has its own)
+          !hasOwnChat && "lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-5",
           // Room under the dock, which grows when the sticker row is open
           typing ? "pb-4" : stickers ? "pb-44" : "pb-28"
         )}
       >
-        {me.left ? (
-          <Card>
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              You left this game. You can still watch how it ends.
-            </CardContent>
+        <div className="flex min-w-0 flex-col gap-2">
+          {me.left ? (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                You left this game. You can still watch how it ends.
+              </CardContent>
+            </Card>
+          ) : null}
+          <GameView
+            code={code}
+            meta={meta}
+            players={players}
+            uid={uid}
+            me={me}
+            isReferee={isReferee}
+            now={now}
+            serverNow={serverNow}
+          />
+        </div>
+        {!hasOwnChat && (
+          <Card className="sticky top-[calc(4.5rem+env(safe-area-inset-top,0px))] hidden h-[calc(100svh-11rem)] max-h-[720px] min-h-[360px] flex-col gap-0 py-0 lg:flex">
+            <p className="flex items-center gap-2 border-b px-4 py-2.5 text-sm font-semibold">
+              <HugeiconsIcon icon={ChatIcon} className="size-4 text-muted-foreground" />
+              Room chat
+            </p>
+            <RoomChat code={code} className="min-h-0 flex-1" />
           </Card>
-        ) : null}
-        <GameView
-          code={code}
-          meta={meta}
-          players={players}
-          uid={uid}
-          me={me}
-          isReferee={isReferee}
-          now={now}
-          serverNow={serverNow}
-        />
+        )}
       </div>
 
-      {/* Dock: voice, stickers, chat */}
+      {/* Dock: voice, stickers, chat (games measure it to fit above it) */}
       <div
+        data-room-dock
         className={cn(
           "pb-safe fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur-sm",
           typing && "hidden md:block"
         )}
       >
+        {/* A new message while the chat is closed: who said what, tap to open */}
+        {preview && !stickers && (
+          <button
+            type="button"
+            onClick={() => openChat(true)}
+            className="absolute right-3 bottom-full mb-2 flex max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-full border bg-popover py-1.5 pr-3.5 pl-1.5 text-left text-sm shadow-lg animate-in fade-in-0 slide-in-from-bottom-2 lg:hidden"
+          >
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+              <HugeiconsIcon icon={ChatIcon} className="size-4" />
+            </span>
+            <span className="min-w-0 truncate">
+              <span className="font-semibold">{preview.value.name.split(" ")[0]}:</span> {preview.value.text}
+            </span>
+          </button>
+        )}
         {stickers && (
           <div className="mx-auto max-w-3xl border-b px-3">
             <StickerBar code={code} />
@@ -619,23 +669,29 @@ function PlayingView({
           </Button>
           {!hasOwnChat && (
             <Button
-              variant="outline"
+              variant={unread.length > 0 ? "default" : "outline"}
               size="sm"
-              className="ml-auto"
-              onClick={() => setChat(true)}
+              className="relative ml-auto lg:hidden"
+              onClick={() => openChat(true)}
+              aria-label={unread.length > 0 ? `Chat, ${unread.length} new` : "Chat"}
             >
               <HugeiconsIcon icon={ChatIcon} data-icon="inline-start" />
               Chat
+              {unread.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[11px] font-bold text-white ring-2 ring-background tabular-nums">
+                  {unread.length > 9 ? "9+" : unread.length}
+                </span>
+              )}
             </Button>
           )}
         </div>
       </div>
 
       {!hasOwnChat && (
-        <Sheet open={chat} onOpenChange={setChat}>
+        <Sheet open={chat} onOpenChange={openChat}>
           <SheetContent
             side="bottom"
-            className="mx-auto flex h-[70svh] w-full max-w-xl flex-col gap-0 rounded-t-lg p-0"
+            className="mx-auto flex h-[75svh] w-full max-w-xl flex-col gap-0 rounded-t-2xl p-0"
           >
             <SheetHeader className="border-b px-4 py-3">
               <SheetTitle className="text-sm font-semibold">
@@ -669,6 +725,7 @@ function PlayingView({
 
 function EndedView({ room, meta }: { room: LiveRoom; meta: RoomMeta }) {
   const router = useRouter()
+  const exitGame = useGameExit(GAMES_TAB)
   const { user } = useSession()
   const { code, players, playersById, uid, isHost } = room
   const game = LIVE_GAMES[meta.game]
@@ -708,7 +765,7 @@ function EndedView({ room, meta }: { room: LiveRoom; meta: RoomMeta }) {
         title={game.name}
         subtitle={`Room ${code}`}
         showBack
-        onBack={() => router.replace(GAMES_TAB)}
+        onBack={exitGame}
       />
       <ReactionsOverlay code={code} />
       <PageContainer className="max-w-xl gap-4">
@@ -804,13 +861,7 @@ function EndedView({ room, meta }: { room: LiveRoom; meta: RoomMeta }) {
               see it here.
             </p>
           )}
-          <Button
-            variant="outline"
-            size="lg"
-            className="h-11 w-full"
-            nativeButton={false}
-            render={<Link href={GAMES_TAB} replace />}
-          >
+          <Button variant="outline" size="lg" className="h-11 w-full" onClick={exitGame}>
             Back to games
           </Button>
         </div>
@@ -843,19 +894,16 @@ function reasonText(reason: string) {
 /* ── Can't get in ────────────────────────────────────────────────────── */
 
 function Blocked({ title, text }: { title: string; text: string }) {
+  const exitGame = useGameExit(GAMES_TAB)
   return (
     <>
-      <AppHeader title="Game room" showBack />
+      <AppHeader title="Game room" showBack onBack={exitGame} />
       <PageContainer className="max-w-md">
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
             <p className="text-lg font-semibold">{title}</p>
             <p className="text-sm text-muted-foreground">{text}</p>
-            <Button
-              className="mt-2"
-              nativeButton={false}
-              render={<Link href={GAMES_TAB} replace />}
-            >
+            <Button className="mt-2" onClick={exitGame}>
               Back to games
             </Button>
           </CardContent>

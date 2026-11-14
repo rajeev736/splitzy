@@ -41,7 +41,7 @@ export interface Wallet {
 /** One line of coin history (wallets/{uid}/txs/{id}). */
 export interface CoinTx {
   id: string;
-  kind: "welcome" | "frame" | "gift" | "stake" | "win" | "refund";
+  kind: "welcome" | "frame" | "gift" | "stake" | "win" | "refund" | "throw";
   /** Coins in (+) or out (−). */
   amount: number;
   label: string;

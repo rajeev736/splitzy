@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils"
 import { createRoom, registerGroupRoom } from "@/services/live-rooms"
 import type { UserProfile } from "@/lib/types"
 import { FriendPicker, sendRoomInvites } from "./invite-friends-sheet"
+import { LiveGameLogo } from "./live-game-logo"
 
 /** "2 players" / "2–8 players". */
 export const playersLabel = (g: LiveGameInfo) =>
@@ -133,15 +134,7 @@ export function CreateRoomSheet({
     >
       <div className="flex flex-col gap-5 pb-2">
         <div className="flex items-center gap-3">
-          <span
-            className={cn(
-              "flex size-14 shrink-0 items-center justify-center rounded-xl text-3xl",
-              info.tone
-            )}
-            aria-hidden
-          >
-            {info.emoji}
-          </span>
+          <LiveGameLogo game={info.id} className="size-14 rounded-xl" />
           <div className="min-w-0">
             <p className="text-base font-semibold">{info.name}</p>
             <p className="text-xs text-muted-foreground">

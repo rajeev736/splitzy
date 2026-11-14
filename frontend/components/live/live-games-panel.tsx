@@ -7,9 +7,9 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useSession } from "@/components/providers/session-provider"
 import { Card, CardContent } from "@/components/ui/card"
 import { isLiveConfigured } from "@/lib/firebase/config"
+import { LiveGameLogo } from "@/components/live/live-game-logo"
 import { LIVE_GAME_IDS, LIVE_GAMES, type LiveGameInfo } from "@/lib/live/games"
 import type { LiveGameId } from "@/lib/live/types"
-import { cn } from "@/lib/utils"
 import { CreateRoomSheet, playersLabel } from "./create-room-sheet"
 import { JoinRoomCard } from "./join-room-card"
 import { YourRooms } from "./your-rooms"
@@ -76,15 +76,7 @@ function GameCard({
       className="flex flex-col gap-2 rounded-xl border border-card-stroke bg-card p-3 text-left shadow-xs transition-colors outline-none hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground active:bg-muted/60"
     >
       <span className="flex w-full items-start justify-between gap-2">
-        <span
-          className={cn(
-            "flex size-12 shrink-0 items-center justify-center rounded-xl text-2xl",
-            game.tone
-          )}
-          aria-hidden
-        >
-          {game.emoji}
-        </span>
+        <LiveGameLogo game={game.id} className="size-12 rounded-xl" />
         <span className="flex h-7 shrink-0 items-center gap-0.5 rounded-full bg-primary/10 pr-1.5 pl-2.5 text-xs font-semibold text-primary">
           Play
           <HugeiconsIcon icon={ArrowRight01Icon} className="size-3.5" />

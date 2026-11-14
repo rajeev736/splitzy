@@ -52,6 +52,16 @@ export function RoomChat({
     const el = listRef.current
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight
   }, [messages.length])
+  // …and keep the newest in view when the list shrinks (the keyboard opening)
+  React.useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => {
+      if (stickToBottom.current) el.scrollTop = el.scrollHeight
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   const submit = async () => {
     const clean = text.trim()
@@ -113,13 +123,15 @@ export function RoomChat({
           autoFocus={autoFocus}
           autoComplete="off"
           enterKeyHint="send"
-          className="h-10 bg-card"
+          className="h-11 bg-card"
           data-no-swipe
         />
         <Button
           type="submit"
-          size="icon"
+          size="icon-lg"
           aria-label="Send"
+          // Keep the keyboard up: tapping Send mustn't take focus from the box
+          onPointerDown={(e) => e.preventDefault()}
           disabled={disabled || !text.trim() || sending}
         >
           <HugeiconsIcon icon={SentIcon} />

@@ -8,6 +8,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { Card } from "@/components/ui/card"
 import { useRoomNode } from "@/hooks/use-live-room"
 import { isLiveConfigured } from "@/lib/firebase/config"
+import { LiveGameLogo } from "@/components/live/live-game-logo"
 import { LIVE_GAME_IDS, LIVE_GAMES } from "@/lib/live/games"
 import type { LiveGameId, RoomMeta } from "@/lib/live/types"
 import type { Group } from "@/lib/types"
@@ -81,15 +82,7 @@ export function GroupGames({ group, uid }: { group: Group; uid: string }) {
                 }}
                 className="flex items-center gap-3 rounded-lg border bg-card p-3 text-left transition-colors hover:bg-muted/50 active:scale-[0.98]"
               >
-                <span
-                  className={cn(
-                    "flex size-10 shrink-0 items-center justify-center rounded-lg text-xl",
-                    info.tone
-                  )}
-                  aria-hidden
-                >
-                  {info.emoji}
-                </span>
+                <LiveGameLogo game={info.id} className="size-10 rounded-lg" />
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium">
                     {info.name}
@@ -143,15 +136,7 @@ function GroupRoomRow({
       href={`/play/${room.code}`}
       className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
     >
-      <span
-        className={cn(
-          "flex size-10 shrink-0 items-center justify-center rounded-lg text-xl",
-          info.tone
-        )}
-        aria-hidden
-      >
-        {info.emoji}
-      </span>
+      <LiveGameLogo game={info.id} className="size-10 rounded-lg" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">
           {info.name}{" "}

@@ -12,6 +12,7 @@ import {
   HOME_COLUMN,
   initialLudoState,
   isOver,
+  LUDO_MAX_MISSED,
   isSafe,
   legalMoves,
   nextTurn,
@@ -415,5 +416,57 @@ assert(
   "yellow finishes in the right-hand triangle"
 )
 console.log("✓ geometry")
+
+/* ── Missed turns ────────────────────────────────────────────────────── */
+{
+  const c = { now: 1 }
+  // Three players: A misses twice, rolls (count resets), then misses three in a row and is out
+  let m = fresh(3)
+  m = passTurn(m, "a", "idle", c)
+  assert(m.players.a.missed === 1 && !m.players.a.out, "first miss is a strike")
+  m = passTurn(m, "b", "idle", c)
+  m = passTurn(m, "c", "idle", c)
+  m = passTurn(m, "a", "offline", c)
+  assert(m.players.a.missed === 2, "offline skips count too")
+  m = passTurn(m, "b", "idle", c)
+  m = passTurn(m, "c", "idle", c)
+  m = applyRoll(m, "a", 3, c)
+  assert(!m.players.a.missed, "rolling clears the count")
+  m = applyRoll(applyRoll(m, "b", 1, c), "c", 1, c)
+  noUndefined(m)
+  for (let k = 0; k < LUDO_MAX_MISSED; k++) {
+    assert(m.turn === "a", "back to A")
+    m = passTurn(m, "a", "idle", c)
+    if (k < LUDO_MAX_MISSED - 1) {
+      m = applyRoll(m, m.turn, 1, c) // B and C play (no token out: the turn passes)
+      m = applyRoll(m, m.turn, 1, c)
+    }
+  }
+  assert(m.players.a.out === true, "third miss in a row: out")
+  assert(m.last?.type === "skip" && m.last.out === true, "the log says so")
+  assert(describeLast(m, (u) => u).includes("out of the game"), "log line")
+  assert(nextTurn(m, "c") === "b" && nextTurn(m, "b") === "c", "A is skipped from now on")
+  assert(rankingOf(m).at(-1) === "a", "out players rank last")
+  assert(m.phase !== "over", "two still racing")
+  noUndefined(m)
+
+  // Two players: the other one being put out ends the game, and the one left wins
+  let t = fresh(2)
+  for (let k = 0; k < LUDO_MAX_MISSED; k++) {
+    t = passTurn(t, "a", "idle", c)
+    if (k < LUDO_MAX_MISSED - 1) t = applyRoll(t, "b", 2, c)
+  }
+  assert(t.players.a.out && t.phase === "over", "2 players: game over")
+  assert(resultOf(t).winnerIds[0] === "b", "the remaining player wins")
+
+  // An out player's tokens are off the board: landing on them captures nothing
+  // (red pos 5 = square 5; green pos 44 = square (13 + 44) % 52 = 5)
+  let u = withTokens(fresh(3), { a: [5, -1, -1, -1], b: [42, -1, -1, -1] })
+  u = { ...u, turn: "b", players: { ...u.players, a: { ...u.players.a, out: true } } }
+  u = applyMove(applyRoll(u, "b", 2, c), "b", 0, 2, c)
+  assert(u.last?.type === "move" && !u.last.captured, "no capture of an out player")
+  assert(u.players.a.tokens[0] === 5, "their token stays where it was")
+}
+console.log("✓ missed turns")
 
 console.log("\nAll Ludo tests passed.")

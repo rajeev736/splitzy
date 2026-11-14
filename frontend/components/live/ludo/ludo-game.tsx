@@ -17,10 +17,12 @@ import {
   distinctMoves,
   HOME,
   homeCount,
+  isGone,
   isOver,
   legalMoves,
   LUDO_AUTO_MOVE_MS,
   LUDO_IDLE_MS,
+  LUDO_MAX_MISSED,
   ordinal,
   passTurn,
   resultOf,
@@ -34,7 +36,8 @@ import { ABANDON_MS } from "@/lib/live/room"
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import { stateTransaction } from "@/services/live-rooms"
-import { LudoBoard, TOKEN_COLOURS } from "./ludo-board"
+import { colourAtCorner, LudoBoard, TOKEN_COLOURS, TURNS_FOR } from "./ludo-board"
+import { ThrowOverlay, ThrowPicker } from "../throwables"
 import { LudoDice } from "./ludo-dice"
 import { useLudoAnimation } from "./use-ludo-animation"
 
@@ -75,15 +78,6 @@ const isRollEvent = (state: LudoState) =>
   state.last?.type === "roll" ||
   state.last?.type === "no_move" ||
   state.last?.type === "three_sixes"
-
-/** The face to show: the pending roll, else whatever was rolled last. */
-function shownDice(state: LudoState): number | null {
-  if (state.dice) return state.dice.value
-  const last = state.last
-  if (!last) return null
-  if (last.type === "three_sixes") return 6
-  return "value" in last ? last.value : null
-}
 
 function moveLabel(pos: number, dice: number) {
   if (pos < 0) return "Out of base"
@@ -234,6 +228,23 @@ export function LudoGame({
     return () => window.clearTimeout(id)
   }, [state, gone, isReferee, uid, endGame])
 
+  /* ── Dice faces ──────────────────────────────────────────────────── */
+
+  // The face each player's dice rests on: their last roll (never blank)
+  const rollEvent =
+    state && state.last && isRollEvent(state)
+      ? {
+          by: state.last.by,
+          value: state.last.type === "three_sixes" ? 6 : "value" in state.last ? state.last.value : 6,
+        }
+      : null
+  const [faces, setFaces] = React.useState<Record<string, number>>({})
+  if (rollEvent && faces[rollEvent.by] !== rollEvent.value) {
+    setFaces((f) => ({ ...f, [rollEvent.by]: rollEvent.value }))
+  }
+
+  const [throwAt, setThrowAt] = React.useState<RoomPlayer | null>(null)
+
   /* ── Render ──────────────────────────────────────────────────────── */
 
   if (state === undefined) {
@@ -254,6 +265,10 @@ export function LudoGame({
   }
 
   const mine = state.players[uid]
+  // Your colour sits at the bottom-left, in front of you, with your dice;
+  // everyone else is at their own corner of the turned board
+  const turns = mine ? TURNS_FOR[mine.colour] : 0
+  const at = (corner: number) => colourAtCorner(corner, turns)
   const current = byId[state.turn]
   const currentName = nameOf(state.turn)
   const since = state.turnAt || meta.startedAt || 0
@@ -264,6 +279,8 @@ export function LudoGame({
   const byColour = Object.fromEntries(
     state.order.map((id) => [state.players[id].colour, id])
   ) as Partial<Record<LudoColour, string>>
+  // Pieces of players who left or are out leave the board
+  const offBoard = state.order.filter((id) => isGone(state, id, gone))
   // Tokens the roller can choose between (tokens on the same square count once)
   const options =
     myTurn && state.phase === "move" && diceValue !== null
@@ -276,6 +293,9 @@ export function LudoGame({
   let caption: string | null = null
   if (state.phase === "over") {
     headline = "Game over"
+  } else if (mine?.out) {
+    headline = "You're out"
+    caption = `You missed ${LUDO_MAX_MISSED} turns in a row`
   } else if (me.left) {
     headline = "You left the game"
     caption = "Watching how it ends"
@@ -283,15 +303,17 @@ export function LudoGame({
     headline = `You finished ${ordinal(mine.place)}!`
     caption = "Waiting for the others to get home…"
   } else if (myTurn && state.phase === "roll") {
-    headline = "Your turn"
+    headline = "Your turn — tap your dice"
     caption = bonus
       ? state.last?.type === "move" && state.last.value === 6
         ? "You rolled a 6 — roll again"
         : "Bonus roll — go again"
-      : "Roll the dice"
+      : mine?.missed
+        ? `Missed ${mine.missed} of ${LUDO_MAX_MISSED} — miss ${LUDO_MAX_MISSED} in a row and you're out`
+        : null
   } else if (myTurn) {
     headline = `You rolled a ${diceValue}`
-    caption = options.length > 1 ? "Tap a token to move it" : "Moving…"
+    caption = options.length > 1 ? "Tap a piece to move it" : "Moving…"
   } else if (state.phase === "roll") {
     headline = `${currentName} is rolling…`
     caption =
@@ -300,47 +322,52 @@ export function LudoGame({
         : null
   } else {
     headline = `${currentName} rolled a ${diceValue}`
-    caption = "Choosing a token…"
+    caption = "Choosing a piece…"
   }
 
-  const chip = (colour: LudoColour, align: "left" | "right") => {
+  const seat = (colour: LudoColour, align: "left" | "right", row: "top" | "bottom") => {
     const id = byColour[colour]
     const lp = id ? state.players[id] : undefined
     const rp = id ? byId[id] : undefined
     if (!id || !lp || !rp) return <div key={colour} aria-hidden />
     const isTurn = state.phase !== "over" && state.turn === id
-    const canRoll = isTurn && id === uid && state.phase === "roll"
-    // Ludo King style: the dice sits next to whoever's turn it is; on yours, tap it to roll
+    const canRoll = isTurn && id === uid && state.phase === "roll" && rollLock !== state.seq
+    const rolledLast = rollEvent?.by === id
+    const showDice = isTurn || rolledLast
     const face = (
       <LudoDice
-        value={isTurn ? shownDice(state) : null}
-        spin={isTurn && isRollEvent(state) ? state.seq : null}
-        colour={TOKEN_COLOURS[colour]}
-        className={cn("size-12 p-1.5", canRoll && "border-2")}
+        value={faces[id] ?? null}
+        spin={rolledLast ? state.seq : null}
+        rolling={id === uid && rollLock === state.seq}
+        size={40}
+        dim={!isTurn}
       />
     )
-    const dice = !isTurn ? null : canRoll ? (
+    // Ludo King style: the dice sits next to whoever's turn it is; on yours, tap it to roll
+    const dice = !showDice ? null : canRoll ? (
       <button
         type="button"
         onClick={roll}
-        disabled={rollLock === state.seq}
         aria-label="Roll the dice"
-        className="relative shrink-0 rounded-xl transition-transform active:scale-90 disabled:opacity-60"
-        style={{ boxShadow: `0 0 0 3px ${TOKEN_COLOURS[colour]}` }}
+        className="relative rounded-xl p-1 transition-transform active:scale-90"
       >
-        {/* A pulse inviting the tap */}
         <span
           aria-hidden
-          className="absolute -inset-1 animate-ping rounded-xl border-2 [animation-duration:1.4s]"
+          className="absolute inset-0 animate-ping rounded-xl border-2 [animation-duration:1.3s]"
           style={{ borderColor: TOKEN_COLOURS[colour] }}
+        />
+        <span
+          aria-hidden
+          className="absolute inset-0 rounded-xl"
+          style={{ boxShadow: `0 0 0 2px ${TOKEN_COLOURS[colour]}, 0 0 18px 2px ${TOKEN_COLOURS[colour]}` }}
         />
         {face}
       </button>
     ) : (
-      face
+      <div className="p-1">{face}</div>
     )
     return (
-      <PlayerChip
+      <Seat
         key={colour}
         player={rp}
         ludo={lp}
@@ -348,93 +375,108 @@ export function LudoGame({
         isMe={id === uid}
         countdown={isTurn ? countdown : null}
         align={align}
+        row={row}
         dice={dice}
+        onTap={id !== uid && !me.left ? () => setThrowAt(rp) : undefined}
       />
     )
   }
 
   return (
     <div className="flex flex-col gap-2.5">
-      <div className="grid grid-cols-2 gap-2">
-        {chip("red", "left")}
-        {chip("green", "right")}
-      </div>
-      <div className="mx-auto w-full max-w-[min(92vw,30rem)]">
-        <LudoBoard
-          state={state}
-          positions={anim.positions}
-          flying={anim.flying}
-          movable={movable}
-          meUid={uid}
-          onToken={onToken}
-          className="rounded-xl shadow-sm"
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        {chip("blue", "left")}
-        {chip("yellow", "right")}
+      {/* The table: players in their corners around the board, Ludo King style */}
+      <div
+        className="rounded-2xl p-2 text-white shadow-lg ring-1 ring-black/10 sm:p-3"
+        style={{
+          background:
+            "radial-gradient(130% 90% at 50% 0%, #2f6be0 0%, #1a46a8 45%, #0d2463 100%)",
+        }}
+      >
+        <div className="grid grid-cols-2 gap-2 px-1 pb-2">
+          {seat(at(0), "left", "top")}
+          {seat(at(1), "right", "top")}
+        </div>
+        <div className="mx-auto w-full max-w-[min(94vw,32rem)] rounded-xl bg-white/15 p-1 shadow-[0_12px_30px_rgb(0_0_0/0.4)]">
+          <LudoBoard
+            state={state}
+            positions={anim.positions}
+            flying={anim.flying}
+            movable={movable}
+            meUid={uid}
+            onToken={onToken}
+            turns={turns}
+            hidden={offBoard}
+            className="rounded-lg"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 px-1 pt-2">
+          {seat(at(3), "left", "bottom")}
+          {seat(at(2), "right", "bottom")}
+        </div>
+        <div className="mt-2 rounded-xl bg-black/25 px-3 py-2 text-center">
+          <p className="truncate text-sm font-semibold">{headline}</p>
+          <p className="truncate text-xs text-white/70" aria-live="polite">
+            {caption ?? describeLast(state, nameOf)}
+          </p>
+        </div>
       </div>
 
-      {/* What's happening (the dice itself sits on the player's chip) */}
-      <Card size="sm" className="gap-0 py-0">
-        <div className="flex items-center gap-3 px-3 py-2.5">
-          <div className="min-w-0 flex-1 text-center">
-            <p className="truncate text-sm font-semibold">{headline}</p>
-            {caption && (
-              <p className="truncate text-xs text-muted-foreground">
-                {myTurn && state.phase === "roll"
-                  ? "Tap your dice to roll"
-                  : caption}
-              </p>
-            )}
-          </div>
+      {/* Also a tap target off the board — and the fallback if the auto-move didn't land */}
+      {options.length > 1 && diceValue !== null && mine && (
+        <div
+          className="no-scrollbar flex gap-1.5 overflow-x-auto"
+          role="group"
+          aria-label="Pieces you can move"
+        >
+          {options.map((t) => (
+            <Button
+              key={t}
+              size="sm"
+              variant="outline"
+              className="h-10 shrink-0"
+              onClick={() => onToken(t)}
+            >
+              <span
+                className="size-2.5 rounded-full"
+                style={{ backgroundColor: TOKEN_COLOURS[mine.colour] }}
+                aria-hidden
+              />
+              {moveLabel(mine.tokens[t], diceValue)}
+            </Button>
+          ))}
         </div>
-        {/* Also a tap target off the board — and the fallback if the auto-move didn't land */}
-        {options.length > 0 && diceValue !== null && mine && (
-          <div
-            className="no-scrollbar flex gap-1.5 overflow-x-auto border-t px-3 py-2"
-            role="group"
-            aria-label="Tokens you can move"
-          >
-            {options.map((t) => (
-              <Button
-                key={t}
-                size="sm"
-                variant="outline"
-                className="h-10 shrink-0"
-                onClick={() => onToken(t)}
-              >
-                <span
-                  className="size-2.5 rounded-full"
-                  style={{ backgroundColor: TOKEN_COLOURS[mine.colour] }}
-                  aria-hidden
-                />
-                {moveLabel(mine.tokens[t], diceValue)}
-              </Button>
-            ))}
-          </div>
-        )}
-      </Card>
-      <p
-        className="px-1 text-center text-xs text-muted-foreground"
-        aria-live="polite"
-      >
-        {describeLast(state, nameOf)}
+      )}
+      <p className="px-1 text-center text-[11px] text-muted-foreground">
+        Tap another player&apos;s photo to throw something at them
       </p>
+
+      <ThrowOverlay code={code} />
+      <ThrowPicker code={code} target={throwAt} onOpenChange={(o) => !o && setThrowAt(null)} />
     </div>
   )
 }
 
-/* ── Player chip ─────────────────────────────────────────────────────── */
+/* ── Seat ────────────────────────────────────────────────────────────── */
 
-function PlayerChip({
+/** Ring colour for the share of time left: green → amber → red. */
+const timeColour = (share: number) => `hsl(${Math.round(120 * share)} 85% 48%)`
+const RING_R = 25
+const RING_C = 2 * Math.PI * RING_R
+
+/**
+ * A player at the table: their photo with the turn timer running round it
+ * (green to red), their colour, missed turns, and the dice beside them.
+ */
+export function Seat({
   player,
   ludo,
   isTurn,
   isMe,
   countdown,
   align,
+  row,
   dice,
+  onTap,
 }: {
   player: RoomPlayer
   ludo: LudoPlayer
@@ -443,73 +485,86 @@ function PlayerChip({
   /** 1 → 0 share of the decision time left, while a timer runs for them. */
   countdown: number | null
   align: "left" | "right"
-  /** The dice, shown on the chip of whoever's turn it is. */
+  row: "top" | "bottom"
+  /** The dice, shown beside whoever's turn it is. */
   dice?: React.ReactNode
+  /** Opens the throw picker (other players only). */
+  onTap?: () => void
 }) {
   const colour = TOKEN_COLOURS[ludo.colour]
-  const home = homeCount(ludo)
-  const dim = player.left || !player.online
-  const status =
-    ludo.place > 0
-      ? `Finished ${ordinal(ludo.place)}`
+  const out = !!ludo.out
+  const dim = player.left || out || !player.online
+  const missed = ludo.missed ?? 0
+  const status = ludo.place > 0
+    ? `${ordinal(ludo.place)} · finished`
+    : out
+      ? "Out"
       : player.left
-        ? "Left the game"
+        ? "Left"
         : !player.online
           ? "Offline"
-          : `${home}/4 home`
+          : `${homeCount(ludo)}/4 home`
+  const share = countdown ?? 1
+  const name = (
+    <div className={cn("min-w-0 leading-tight", align === "right" && "text-right")}>
+      <p className="truncate text-xs font-semibold">{isMe ? "You" : player.name.split(" ")[0]}</p>
+      <p className="flex items-center gap-1 text-[10px] text-white/70" style={{ justifyContent: align === "right" ? "flex-end" : undefined }}>
+        <span className="truncate">{status}</span>
+        {missed > 0 && !out && (
+          <span className="flex gap-0.5" aria-label={`Missed ${missed} of ${LUDO_MAX_MISSED} turns`}>
+            {Array.from({ length: LUDO_MAX_MISSED }, (_, i) => (
+              <span key={i} className={cn("size-1.5 rounded-full", i < missed ? "bg-red-400" : "bg-white/30")} />
+            ))}
+          </span>
+        )}
+      </p>
+    </div>
+  )
   return (
-    <div
-      className={cn(
-        "relative flex min-h-16 items-center gap-2 rounded-lg border bg-card px-2 py-1.5 transition-[box-shadow,opacity] duration-200",
-        align === "right" && "flex-row-reverse text-right",
-        dim && "opacity-60"
-      )}
-      style={isTurn ? { boxShadow: `0 0 0 2px ${colour}` } : undefined}
-      aria-current={isTurn ? "true" : undefined}
-    >
-      <span className="relative shrink-0">
-        <UserAvatar
-          src={player.photo}
-          name={player.name}
-          size="sm"
-          uid={player.uid}
-        />
-        <span
-          className="absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-card"
-          style={{ backgroundColor: colour }}
-          aria-label={`${ludo.colour} tokens`}
-        />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-xs font-semibold">
-          {isMe ? "You" : player.name.split(" ")[0]}
-        </p>
-        <p
-          className={cn(
-            "truncate text-[11px]",
-            ludo.place > 0
-              ? "font-medium text-success"
-              : "text-muted-foreground"
-          )}
+    <div className={cn("flex min-w-0 flex-col gap-1", align === "right" && "items-end", dim && "opacity-60")}>
+      {row === "bottom" ? null : name}
+      <div className={cn("flex items-center gap-1.5", align === "right" && "flex-row-reverse")}>
+        <button
+          type="button"
+          data-throw-anchor={player.uid}
+          onClick={onTap}
+          disabled={!onTap}
+          aria-label={onTap ? `Throw something at ${player.name}` : player.name}
+          className="relative size-14 shrink-0 rounded-full transition-transform enabled:active:scale-95"
         >
-          {status}
-        </p>
-      </div>
-      {dice}
-      {countdown !== null && (
-        <span
-          className={cn(
-            "absolute bottom-0 h-0.5",
-            align === "right" ? "right-0" : "left-0"
+          <svg viewBox="0 0 56 56" className="absolute inset-0 -rotate-90" aria-hidden>
+            <circle cx="28" cy="28" r={RING_R} fill="none" stroke="rgb(255 255 255 / 0.18)" strokeWidth="4" />
+            <circle
+              cx="28"
+              cy="28"
+              r={RING_R}
+              fill="none"
+              stroke={countdown !== null ? timeColour(share) : colour}
+              strokeOpacity={countdown !== null || isTurn ? 1 : 0.85}
+              strokeWidth="4"
+              strokeLinecap="round"
+              strokeDasharray={RING_C}
+              strokeDashoffset={countdown !== null ? RING_C * (1 - share) : 0}
+              style={{ transition: "stroke-dashoffset 1s linear, stroke 1s linear" }}
+            />
+          </svg>
+          <UserAvatar src={player.photo} name={player.name} size="md" className="absolute inset-[7px] size-[42px]" />
+          <span
+            className="absolute -right-0.5 -bottom-0.5 size-4 rounded-full ring-2 ring-[#0d2463]"
+            style={{ backgroundColor: colour }}
+            aria-label={`${ludo.colour} pieces`}
+          />
+          {isTurn && (
+            <span
+              aria-hidden
+              className="absolute -inset-1 rounded-full"
+              style={{ boxShadow: `0 0 16px 2px ${colour}` }}
+            />
           )}
-          style={{
-            width: `${countdown * 100}%`,
-            backgroundColor: colour,
-            transition: "width 1s linear",
-          }}
-          aria-hidden
-        />
-      )}
+        </button>
+        <div className="flex size-12 items-center justify-center">{dice}</div>
+      </div>
+      {row === "bottom" ? name : null}
     </div>
   )
 }

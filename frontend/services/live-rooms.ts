@@ -325,13 +325,16 @@ export async function sendChat(
 export const sendReaction = (
   code: string,
   user: Pick<UserProfile, "uid" | "displayName">,
-  sticker: string
+  sticker: string,
+  /** For a throwable: who it's thrown at. */
+  to?: string
 ) =>
   push(roomRef(code, "reactions"), {
     uid: user.uid,
     name: user.displayName,
     sticker,
     at: ts(),
+    ...(to ? { to } : {}),
   } satisfies Reaction)
 
 export const setVoiceState = (

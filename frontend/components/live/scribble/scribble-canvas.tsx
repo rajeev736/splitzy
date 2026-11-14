@@ -262,7 +262,8 @@ export function ScribbleCanvas({
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      <div className="relative overflow-hidden rounded-xl border bg-white shadow-xs">
+      {/* --canvas-w (set by the game on phones) shrinks the drawing to fit a short screen */}
+      <div className="relative mx-auto w-(--canvas-w) max-w-full overflow-hidden rounded-xl border bg-white shadow-xs">
         <div
           ref={boxRef}
           className="w-full"

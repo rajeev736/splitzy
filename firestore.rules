@@ -92,6 +92,14 @@ service cloud.firestore {
       }.get(id, 0);
     }
 
+    /** Coin price of something thrown at a player in a live game (lib/live/throwables). */
+    function throwPrice(id) {
+      return {
+        'rose': 10, 'kiss': 10, 'cheers': 20, 'tomato': 20, 'egg': 25, 'water': 30,
+        'knife': 40, 'bomb': 50
+      }.get(id, 0);
+    }
+
     /** Frame (free or owned), mood and birthday on a profile. */
     function profileExtrasOk(userId) {
       let d = request.resource.data;
@@ -218,7 +226,9 @@ service cloud.firestore {
              (request.resource.data.frames == resource.data.frames &&
               ((tx[0] == 'gift' && tx.size() == 3 && giftPaidOk(tx[1], tx[2], delta)) ||
                (tx[0] == 'stake' && tx.size() == 2 && stakeOk(tx[1], delta)) ||
-               (tx[0] == 'payout' && tx.size() == 2 && payoutOk(tx[1], delta))));
+               (tx[0] == 'payout' && tx.size() == 2 && payoutOk(tx[1], delta)) ||
+               // A throwable in a live game: spending only, at its price
+               (tx[0] == 'throw' && tx.size() == 3 && throwPrice(tx[1]) > 0 && delta == -throwPrice(tx[1]))));
     }
 
     match /wallets/{userId} {
