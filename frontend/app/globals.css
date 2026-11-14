@@ -221,6 +221,9 @@
   }
   html {
     @apply font-sans;
+    /* Keep room for the scrollbar always, so a page that gains or loses a
+       scrollbar (a game screen whose height shifts a little) never jumps sideways */
+    scrollbar-gutter: stable;
     touch-action: pan-x pan-y;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;

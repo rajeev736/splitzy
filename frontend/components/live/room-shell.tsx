@@ -605,7 +605,7 @@ function PlayingView({
           // Big screens: the game, with the chat open beside it (Scribble has its own)
           !hasOwnChat && "lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-5",
           // Room under the dock, which grows when the sticker row is open
-          typing ? "pb-4" : stickers ? "pb-44" : "pb-28"
+          typing ? "pb-4" : stickers ? "pb-44" : "pb-28 md:pb-20"
         )}
       >
         <div className="flex min-w-0 flex-col gap-2">

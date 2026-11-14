@@ -5,7 +5,6 @@ import { serverTimestamp } from "firebase/database"
 import { toast } from "sonner"
 
 import { UserAvatar } from "@/components/shared/user-avatar"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
 import { useRoomNode } from "@/hooks/use-live-room"
@@ -38,10 +37,18 @@ import { cn } from "@/lib/utils"
 import { stateTransaction } from "@/services/live-rooms"
 import { colourAtCorner, LudoBoard, TOKEN_COLOURS, TURNS_FOR } from "./ludo-board"
 import { ThrowOverlay, ThrowPicker } from "../throwables"
+import { useStageFit } from "../use-stage-fit"
 import { LudoDice } from "./ludo-dice"
 import { useLudoAnimation } from "./use-ludo-animation"
 
 const NO_MOVES: number[] = []
+/**
+ * Height a phone keeps for everything but the (square) board: the two rows of
+ * seats, the status line, and the table's padding. The board gets the rest.
+ */
+const BOARD_RESERVE_PX = 226
+/** The same on big screens, where the header, page padding and the dock also take height. */
+const BOARD_RESERVE_DESK_PX = 425
 /** Let the last token walk into home before the results screen takes over. */
 const END_DELAY_MS = 1200
 
@@ -244,6 +251,8 @@ export function LudoGame({
   }
 
   const [throwAt, setThrowAt] = React.useState<RoomPlayer | null>(null)
+  // Phones: fit the table to the screen (see the root below)
+  const stageRef = useStageFit()
 
   /* ── Render ──────────────────────────────────────────────────────── */
 
@@ -325,7 +334,7 @@ export function LudoGame({
     caption = "Choosing a piece…"
   }
 
-  const seat = (colour: LudoColour, align: "left" | "right", row: "top" | "bottom") => {
+  const seat = (colour: LudoColour, align: "left" | "right") => {
     const id = byColour[colour]
     const lp = id ? state.players[id] : undefined
     const rp = id ? byId[id] : undefined
@@ -334,37 +343,18 @@ export function LudoGame({
     const canRoll = isTurn && id === uid && state.phase === "roll" && rollLock !== state.seq
     const rolledLast = rollEvent?.by === id
     const showDice = isTurn || rolledLast
-    const face = (
+    // Ludo King style: the dice sits next to whoever's turn it is; on yours it glows — tap it to roll.
+    // Always the same element, so the tumble you start with your tap keeps playing until it lands.
+    const dice = !showDice ? null : (
       <LudoDice
         value={faces[id] ?? null}
         spin={rolledLast ? state.seq : null}
         rolling={id === uid && rollLock === state.seq}
-        size={40}
+        size={32}
         dim={!isTurn}
+        onRoll={canRoll ? roll : undefined}
+        glow={canRoll ? TOKEN_COLOURS[colour] : undefined}
       />
-    )
-    // Ludo King style: the dice sits next to whoever's turn it is; on yours, tap it to roll
-    const dice = !showDice ? null : canRoll ? (
-      <button
-        type="button"
-        onClick={roll}
-        aria-label="Roll the dice"
-        className="relative rounded-xl p-1 transition-transform active:scale-90"
-      >
-        <span
-          aria-hidden
-          className="absolute inset-0 animate-ping rounded-xl border-2 [animation-duration:1.3s]"
-          style={{ borderColor: TOKEN_COLOURS[colour] }}
-        />
-        <span
-          aria-hidden
-          className="absolute inset-0 rounded-xl"
-          style={{ boxShadow: `0 0 0 2px ${TOKEN_COLOURS[colour]}, 0 0 18px 2px ${TOKEN_COLOURS[colour]}` }}
-        />
-        {face}
-      </button>
-    ) : (
-      <div className="p-1">{face}</div>
     )
     return (
       <Seat
@@ -375,7 +365,6 @@ export function LudoGame({
         isMe={id === uid}
         countdown={isTurn ? countdown : null}
         align={align}
-        row={row}
         dice={dice}
         onTap={id !== uid && !me.left ? () => setThrowAt(rp) : undefined}
       />
@@ -383,7 +372,24 @@ export function LudoGame({
   }
 
   return (
-    <div className="flex flex-col gap-2.5">
+    <div
+      ref={stageRef}
+      style={
+        {
+          "--board-reserve": `${BOARD_RESERVE_PX}px`,
+          "--board-reserve-desk": `${BOARD_RESERVE_DESK_PX}px`,
+        } as React.CSSProperties
+      }
+      className={cn(
+        "flex flex-col gap-2.5",
+        // Phones: the whole table fits between the header and the dock — no scrolling;
+        // the board takes whatever height the seats and the status line leave
+        "max-md:fixed max-md:inset-x-0 max-md:top-(--stage-top) max-md:z-20 max-md:h-(--stage-h) max-md:justify-center max-md:overflow-hidden max-md:bg-background max-md:p-2",
+        "max-md:[--board-w:min(100%,calc(var(--stage-h)_-_var(--board-reserve)))]",
+        // Big screens: the board is also sized to the window height, so the game page never scrolls
+        "md:[--board-w:min(100%,calc(100svh_-_var(--board-reserve-desk)))]",
+      )}
+    >
       {/* The table: players in their corners around the board, Ludo King style */}
       <div
         className="rounded-2xl p-2 text-white shadow-lg ring-1 ring-black/10 sm:p-3"
@@ -393,10 +399,11 @@ export function LudoGame({
         }}
       >
         <div className="grid grid-cols-2 gap-2 px-1 pb-2">
-          {seat(at(0), "left", "top")}
-          {seat(at(1), "right", "top")}
+          {seat(at(0), "left")}
+          {seat(at(1), "right")}
         </div>
-        <div className="mx-auto w-full max-w-[min(94vw,32rem)] rounded-xl bg-white/15 p-1 shadow-[0_12px_30px_rgb(0_0_0/0.4)]">
+        {/* --board-w is set on phones; elsewhere the width falls back to the column */}
+        <div className="mx-auto w-(--board-w) max-w-[min(94vw,32rem)] rounded-xl bg-white/15 p-1 shadow-[0_12px_30px_rgb(0_0_0/0.4)]">
           <LudoBoard
             state={state}
             positions={anim.positions}
@@ -410,43 +417,43 @@ export function LudoGame({
           />
         </div>
         <div className="grid grid-cols-2 gap-2 px-1 pt-2">
-          {seat(at(3), "left", "bottom")}
-          {seat(at(2), "right", "bottom")}
+          {seat(at(3), "left")}
+          {seat(at(2), "right")}
         </div>
-        <div className="mt-2 rounded-xl bg-black/25 px-3 py-2 text-center">
+        <div className="mt-2 flex min-h-12 flex-col justify-center rounded-xl bg-black/25 px-3 py-1.5 text-center">
           <p className="truncate text-sm font-semibold">{headline}</p>
-          <p className="truncate text-xs text-white/70" aria-live="polite">
-            {caption ?? describeLast(state, nameOf)}
-          </p>
+          {options.length > 1 && diceValue !== null && mine ? (
+            // Also a tap target off the board — and the fallback if the auto-move didn't land
+            <div
+              className="no-scrollbar mt-1 flex justify-center gap-1.5 overflow-x-auto"
+              role="group"
+              aria-label="Pieces you can move"
+            >
+              {options.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className="flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-white/15 px-2.5 text-xs font-semibold transition-colors active:bg-white/25"
+                  onClick={() => onToken(t)}
+                >
+                  <span
+                    className="size-2.5 rounded-full"
+                    style={{ backgroundColor: TOKEN_COLOURS[mine.colour] }}
+                    aria-hidden
+                  />
+                  {moveLabel(mine.tokens[t], diceValue)}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="truncate text-xs text-white/70" aria-live="polite">
+              {caption ?? describeLast(state, nameOf)}
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Also a tap target off the board — and the fallback if the auto-move didn't land */}
-      {options.length > 1 && diceValue !== null && mine && (
-        <div
-          className="no-scrollbar flex gap-1.5 overflow-x-auto"
-          role="group"
-          aria-label="Pieces you can move"
-        >
-          {options.map((t) => (
-            <Button
-              key={t}
-              size="sm"
-              variant="outline"
-              className="h-10 shrink-0"
-              onClick={() => onToken(t)}
-            >
-              <span
-                className="size-2.5 rounded-full"
-                style={{ backgroundColor: TOKEN_COLOURS[mine.colour] }}
-                aria-hidden
-              />
-              {moveLabel(mine.tokens[t], diceValue)}
-            </Button>
-          ))}
-        </div>
-      )}
-      <p className="px-1 text-center text-[11px] text-muted-foreground">
+      <p className="px-1 text-center text-[11px] text-muted-foreground max-md:hidden">
         Tap another player&apos;s photo to throw something at them
       </p>
 
@@ -474,7 +481,6 @@ export function Seat({
   isMe,
   countdown,
   align,
-  row,
   dice,
   onTap,
 }: {
@@ -485,7 +491,6 @@ export function Seat({
   /** 1 → 0 share of the decision time left, while a timer runs for them. */
   countdown: number | null
   align: "left" | "right"
-  row: "top" | "bottom"
   /** The dice, shown beside whoever's turn it is. */
   dice?: React.ReactNode
   /** Opens the throw picker (other players only). */
@@ -506,7 +511,7 @@ export function Seat({
           : `${homeCount(ludo)}/4 home`
   const share = countdown ?? 1
   const name = (
-    <div className={cn("min-w-0 leading-tight", align === "right" && "text-right")}>
+    <div className={cn("min-w-0 flex-1 leading-tight", align === "right" && "text-right")}>
       <p className="truncate text-xs font-semibold">{isMe ? "You" : player.name.split(" ")[0]}</p>
       <p className="flex items-center gap-1 text-[10px] text-white/70" style={{ justifyContent: align === "right" ? "flex-end" : undefined }}>
         <span className="truncate">{status}</span>
@@ -521,9 +526,8 @@ export function Seat({
     </div>
   )
   return (
-    <div className={cn("flex min-w-0 flex-col gap-1", align === "right" && "items-end", dim && "opacity-60")}>
-      {row === "bottom" ? null : name}
-      <div className={cn("flex items-center gap-1.5", align === "right" && "flex-row-reverse")}>
+    // One compact row — photo, dice, name — so the board gets the height on small phones
+    <div className={cn("flex min-w-0 items-center gap-1.5", align === "right" && "flex-row-reverse", dim && "opacity-60")}>
         <button
           type="button"
           data-throw-anchor={player.uid}
@@ -562,9 +566,8 @@ export function Seat({
             />
           )}
         </button>
-        <div className="flex size-12 items-center justify-center">{dice}</div>
-      </div>
-      {row === "bottom" ? name : null}
+        <div className="flex size-10 shrink-0 items-center justify-center">{dice}</div>
+      {name}
     </div>
   )
 }

@@ -46,6 +46,10 @@ const clampFace = (v: number | null | undefined) =>
  * - `value`: the face it rests on. Never blank: with nothing rolled yet it shows a 6.
  * - `spin`: change it (e.g. to the state's `seq`) to tumble onto `value`.
  * - `rolling`: tumbles on the spot until the roll arrives (tapped, waiting for the server).
+ * - `onRoll` + `glow`: your turn to roll — it glows in your colour and pulses; tap it.
+ *
+ * Keep one instance mounted across the tap (don't swap wrappers): the tumble
+ * lives in this component, and remounting it would cut the animation short.
  */
 export function LudoDice({
   value,
@@ -53,6 +57,8 @@ export function LudoDice({
   rolling = false,
   size = 44,
   dim = false,
+  onRoll,
+  glow,
   className,
 }: {
   value: number | null
@@ -61,6 +67,10 @@ export function LudoDice({
   size?: number
   /** Not this player's turn: rest quietly. */
   dim?: boolean
+  /** Tap to roll (only while it's your roll). */
+  onRoll?: () => void
+  /** Glow colour while it's waiting for your tap. */
+  glow?: string
   className?: string
 }) {
   const face = clampFace(value)
@@ -68,6 +78,18 @@ export function LudoDice({
   const hopRef = React.useRef<HTMLDivElement>(null)
   const lastSpin = React.useRef<number | null>(spin)
   const loop = React.useRef<gsap.core.Tween | null>(null)
+  const boxRef = React.useRef<HTMLDivElement>(null)
+
+  // Your roll: a gentle pulse inviting the tap
+  React.useEffect(() => {
+    const box = boxRef.current
+    if (!box || !glow) return
+    const pulse = gsap.to(box, { scale: 1.12, duration: 0.55, ease: "sine.inOut", yoyo: true, repeat: -1 })
+    return () => {
+      pulse.kill()
+      gsap.to(box, { scale: 1, duration: 0.15 })
+    }
+  }, [glow])
 
   // First paint: rest on the face without animating
   React.useLayoutEffect(() => {
@@ -132,33 +154,40 @@ export function LudoDice({
   const pip = Math.max(5, Math.round(size * 0.17))
   return (
     <div
+      ref={boxRef}
       className={cn(
-        "relative shrink-0 transition-opacity duration-200",
+        "relative shrink-0 transition-[opacity,filter] duration-200",
         dim && "opacity-45",
+        onRoll && "cursor-pointer",
         className
       )}
-      style={{ width: size, height: size, perspective: size * 6 }}
-      role="img"
-      aria-label={`Dice shows ${face}`}
+      // Far perspective: at rest the face sits flat and square to you; the depth shows while it tumbles
+      style={{
+        width: size,
+        height: size,
+        perspective: size * 16,
+        filter: glow ? `drop-shadow(0 0 5px ${glow}) drop-shadow(0 0 10px ${glow})` : "drop-shadow(0 2px 2px rgb(0 0 0 / 0.35))",
+      }}
+      role={onRoll ? "button" : "img"}
+      tabIndex={onRoll ? 0 : undefined}
+      aria-label={onRoll ? "Roll the dice" : `Dice shows ${face}`}
+      onClick={onRoll}
+      onKeyDown={
+        onRoll
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault()
+                onRoll()
+              }
+            }
+          : undefined
+      }
     >
-      {/* Shadow on the table */}
-      <div
-        aria-hidden
-        className="absolute inset-x-1 -bottom-1.5 h-2 rounded-full bg-black/35 blur-[3px]"
-      />
       <div
         ref={hopRef}
         className="absolute inset-0"
         style={{ transformStyle: "preserve-3d" }}
       >
-        {/* A slight tilt, so you see the top and a side: it reads as a real cube */}
-        <div
-          className="absolute inset-0"
-          style={{
-            transformStyle: "preserve-3d",
-            transform: "rotateX(-18deg) rotateY(22deg)",
-          }}
-        >
           <div
             ref={cubeRef}
             className="absolute inset-0"
@@ -198,7 +227,6 @@ export function LudoDice({
               </div>
             ))}
           </div>
-        </div>
       </div>
     </div>
   )
