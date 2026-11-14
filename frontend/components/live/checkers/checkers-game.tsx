@@ -36,6 +36,7 @@ import {
 import { ABANDON_MS } from "@/lib/live/room"
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
+import { playSound, useOnChange } from "@/lib/live/sound"
 import { stateTransaction, updateState } from "@/services/live-rooms"
 import {
   CheckersBoard,
@@ -71,6 +72,11 @@ export function CheckersGame({
   endGame,
 }: LiveGameProps) {
   const { data: state } = useRoomNode<CheckersState>(code, "state")
+  // Sounds: a tap per move, a crack when a piece (goti) is taken
+  useOnChange(state?.moves ?? 0, (n, was) => {
+    if (n <= was) return
+    playSound(state?.lastMove?.captured?.length ? "take" : "move")
+  })
   const ready =
     !!state &&
     !!state.light &&

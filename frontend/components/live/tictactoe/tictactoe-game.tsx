@@ -19,6 +19,7 @@ import {
 } from "@/lib/live/tictactoe"
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
+import { playSound, useOnChange } from "@/lib/live/sound"
 import { stateTransaction } from "@/services/live-rooms"
 
 /** How long a finished round's board stays up before the next one. */
@@ -34,6 +35,10 @@ export function TicTacToeGame({
   endGame,
 }: LiveGameProps) {
   const { data: state } = useRoomNode<TicTacToeState>(code, "state")
+  // Sounds: a pop per mark
+  useOnChange(state?.board?.replace(/[^xo]/g, "").length ?? 0, (n, was) => {
+    if (n > was) playSound("place")
+  })
   const byId = React.useMemo(
     () => Object.fromEntries(players.map((p) => [p.uid, p])),
     [players]

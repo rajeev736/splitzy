@@ -34,6 +34,7 @@ import {
 import { ABANDON_MS } from "@/lib/live/room"
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
+import { playSound, useOnChange } from "@/lib/live/sound"
 import { stateTransaction, updateState } from "@/services/live-rooms"
 import {
   ChessBoard,
@@ -67,6 +68,12 @@ export function ChessGame({
   endGame,
 }: LiveGameProps) {
   const { data: state } = useRoomNode<ChessState>(code, "state")
+  // Sounds: a wooden knock per move, a sharper one for a capture, a chime for check
+  useOnChange(state?.moves?.length ?? 0, (n, was) => {
+    if (n <= was) return
+    const san = state?.moves?.[n - 1] ?? ""
+    playSound(san.includes("+") ? "check" : san.includes("x") ? "take" : "move")
+  })
   const ready =
     !!state && typeof state.fen === "string" && !!state.white && !!state.black
 

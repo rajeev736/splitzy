@@ -7,6 +7,10 @@ import {
   BASE_ORIGIN,
   cellOf,
   HOME_COLUMN,
+  isFrozen,
+  isShielded,
+  lockOf,
+  pieceKey,
   SAFE_SQUARES,
   START_INDEX,
   TRACK,
@@ -16,6 +20,8 @@ import {
   type LudoState,
 } from "@/lib/live/ludo"
 import { cn } from "@/lib/utils"
+import { playSound } from "@/lib/live/sound"
+import { PowerSpawn } from "./power-art"
 import { FLY_MS, STEP_MS, type Positions } from "./use-ludo-animation"
 
 export const TOKEN_COLOURS: Record<LudoColour, string> = {
@@ -285,6 +291,10 @@ function Piece({
   flying,
   label,
   onTap,
+  targetable = false,
+  frozen = false,
+  lock = 0,
+  shielded = false,
 }: {
   id: string
   colour: LudoColour
@@ -295,7 +305,14 @@ function Piece({
   flying: boolean
   label: string
   onTap: () => void
+  /** Power Ludo: can be picked as a power's target right now. */
+  targetable?: boolean
+  frozen?: boolean
+  /** The number this piece waits for (0 = not locked). */
+  lock?: number
+  shielded?: boolean
 }) {
+  const tappable = movable || targetable
   const outer = React.useRef<SVGGElement>(null)
   const hop = React.useRef<SVGGElement>(null)
   const bob = React.useRef<SVGGElement>(null)
@@ -329,6 +346,7 @@ function Piece({
       return
     }
     // A step (or out of base): hop onto the next square, with a little squash on landing
+    playSound("step")
     const t = dist > 1.6 ? 0.34 : (STEP_MS / 1000) * 0.92
     gsap.to(el, { x, y, duration: t, ease: "power1.inOut", overwrite: true })
     gsap.killTweensOf(h)
@@ -357,13 +375,13 @@ function Piece({
   return (
     <g
       ref={outer}
-      className={movable ? "cursor-pointer" : undefined}
-      role={movable ? "button" : undefined}
-      tabIndex={movable ? 0 : undefined}
+      className={tappable ? "cursor-pointer" : undefined}
+      role={tappable ? "button" : undefined}
+      tabIndex={tappable ? 0 : undefined}
       aria-label={label}
-      onClick={movable ? onTap : undefined}
+      onClick={tappable ? onTap : undefined}
       onKeyDown={
-        movable
+        tappable
           ? (e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault()
@@ -385,15 +403,33 @@ function Piece({
           className="animate-pulse"
         />
       )}
+      {targetable && (
+        <circle r={0.62 * scale} fill="none" stroke="#ef4444" strokeWidth={0.09} strokeDasharray="0.18 0.12" className="animate-spin [animation-duration:3s] [transform-box:fill-box] [transform-origin:center]" />
+      )}
       <g ref={hop}>
         <g ref={bob}>
           <g transform={`scale(${scale})`}>
             <Pin id={id} colour={colour} />
+            {shielded && <ellipse cy={-0.2} rx={0.62} ry={0.78} fill="#fde047" fillOpacity={0.22} stroke="#facc15" strokeWidth={0.06} />}
+            {frozen && (
+              <>
+                <ellipse cy={-0.2} rx={0.6} ry={0.76} fill="#7dd3fc" fillOpacity={0.45} stroke="#e0f2fe" strokeWidth={0.05} />
+                <path d="M0 -.62v.5M-.22 -.5l.44 .26M.22 -.5l-.44 .26" stroke="#fff" strokeWidth={0.07} strokeLinecap="round" />
+              </>
+            )}
+            {lock > 0 && (
+              <g transform="translate(.36 -.72)">
+                <circle r={0.26} fill="#334155" stroke="#fff" strokeWidth={0.04} />
+                <text textAnchor="middle" dominantBaseline="central" fontSize={0.3} fontWeight={800} fill="#fff">
+                  {lock}
+                </text>
+              </g>
+            )}
           </g>
         </g>
       </g>
       {/* A generous hit area: roughly 40px on a phone-width board */}
-      {movable && <circle r={0.9} fill="transparent" />}
+      {tappable && <circle r={0.9} fill="transparent" />}
     </g>
   )
 }
@@ -411,6 +447,8 @@ export function LudoBoard({
   onToken,
   turns = 0,
   hidden,
+  targets,
+  onTarget,
   className,
 }: {
   state: LudoState
@@ -425,6 +463,9 @@ export function LudoBoard({
   turns?: number
   /** Players whose pieces are off the board (left, or out for missing turns). */
   hidden?: string[]
+  /** Power Ludo: pieces (`uid:token`) you may aim a power at right now. */
+  targets?: string[]
+  onTarget?: (uid: string, token: number) => void
   className?: string
 }) {
   const id = React.useId().replace(/:/g, "")
@@ -474,8 +515,16 @@ export function LudoBoard({
         <BoardBackground id={id} />
       </g>
       <PieceDefs id={id} />
+      {/* Power Ludo: power-ups waiting on the track */}
+      {state.spawns?.map((sp) => {
+        const cell = trackToCell(sp.sq)
+        const [x, y] = turn(cell.col + 0.5, cell.row + 0.5, turns)
+        return <PowerSpawn key={`s${sp.sq}`} kind={sp.kind} x={x} y={y} />
+      })}
       {placed.map(({ t, x, y, scale }) => {
-        const isMovable = t.uid === meUid && movable.includes(t.index)
+        const key = pieceKey(t.uid, t.index)
+        const targetable = !!targets?.includes(key)
+        const isMovable = !targets && t.uid === meUid && movable.includes(t.index)
         return (
           <Piece
             key={t.key}
@@ -486,8 +535,12 @@ export function LudoBoard({
             scale={scale}
             movable={isMovable}
             flying={flying.includes(t.key)}
-            label={`${t.colour} token ${t.index + 1}${isMovable ? ", tap to move" : ""}`}
-            onTap={() => onToken(t.index)}
+            label={`${t.colour} token ${t.index + 1}${isMovable ? ", tap to move" : targetable ? ", tap to aim the power" : ""}`}
+            onTap={() => (targetable ? onTarget?.(t.uid, t.index) : onToken(t.index))}
+            targetable={targetable}
+            frozen={t.pos >= 0 && isFrozen(state, t.uid, t.index)}
+            lock={t.pos >= 0 ? lockOf(state, t.uid, t.index) : 0}
+            shielded={t.pos >= 0 && isShielded(state, t.uid, t.index)}
           />
         )
       })}

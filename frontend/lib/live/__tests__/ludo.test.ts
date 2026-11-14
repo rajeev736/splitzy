@@ -13,6 +13,10 @@ import {
   initialLudoState,
   isOver,
   LUDO_MAX_MISSED,
+  applyPower,
+  FREEZE_TURNS,
+  rollFor,
+  type PowerKind,
   isSafe,
   legalMoves,
   nextTurn,
@@ -468,5 +472,131 @@ console.log("✓ geometry")
   assert(u.players.a.tokens[0] === 5, "their token stays where it was")
 }
 console.log("✓ missed turns")
+
+/* ── Stats ───────────────────────────────────────────────────────────── */
+{
+  const c = { now: 1 }
+  // red pos 5 = square 5; green pos 44 = square (13 + 44) % 52 = 5
+  let s1 = withTokens(fresh(3), { a: [5, -1, -1, -1], b: [42, -1, -1, -1] })
+  s1 = { ...s1, turn: "b" }
+  s1 = applyMove(applyRoll(s1, "b", 2, c), "b", 0, 2, c)
+  assert(s1.players.b.kills === 1 && s1.players.a.deaths === 1, "a cut counts for both sides")
+  const r = resultOf(s1)
+  assert(r.stats?.b.kills === 1 && r.stats?.a.deaths === 1 && r.stats?.c.kills === 0, "stats in the result")
+  noUndefined(s1)
+}
+console.log("✓ stats")
+
+/* ── Power Ludo ──────────────────────────────────────────────────────── */
+{
+  const three = Array.from({ length: 3 }, (_, i) => player("abc"[i], i))
+  const p1 = initialLudoState(three, { mode: "powers" }, "SEED")
+  const p2 = initialLudoState(three, { mode: "powers" }, "SEED")
+  assert(p1.mode === "powers" && p1.spawns?.length === 2, "two power-ups at the start")
+  assert(JSON.stringify(p1.spawns) === JSON.stringify(p2.spawns), "same room seed, same start on every device")
+  assert(p1.spawns!.every((sp) => !SAFE_SQUARES.includes(sp.sq)), "never on a safe square")
+  assert(!fresh(3).spawns && !fresh(3).mode, "classic has no powers")
+  noUndefined(p1)
+
+  const c = { now: 1, rand: () => 0.5 }
+  const give = (s: LudoState, uid: string, powers: PowerKind[]): LudoState => ({
+    ...s,
+    players: { ...s.players, [uid]: { ...s.players[uid], powers } },
+  })
+  const base = { ...withTokens(fresh(3), { a: [10, -1, -1, -1], b: [10, 20, -1, -1], c: [] }), mode: "powers" as const }
+
+  // Freeze: the piece can't move for 3 of its owner's turns
+  let f = applyPower(give(base, "a", ["freeze"]), "a", "freeze", { uid: "b", token: 0 }, c)
+  assert(!f.players.a.powers, "the power is used up")
+  assert(f.turn === "a" && f.phase === "roll", "using a power keeps your turn")
+  f = { ...f, turn: "b" }
+  assert(!legalMoves(f, "b", 3).includes(0) && legalMoves(f, "b", 3).includes(1), "frozen piece can't move")
+  for (let k = 0; k < FREEZE_TURNS; k++) {
+    f = passTurn({ ...f, turn: "b", phase: "roll" }, "b", "left", c)
+  }
+  assert(legalMoves(f, "b", 3).includes(0), "thawed after its owner's 3 turns")
+  noUndefined(f)
+
+  // Number lock: needs that number (rand 0.5 → 4)
+  let l = applyPower(give(base, "a", ["lock"]), "a", "lock", { uid: "b", token: 0 }, c)
+  assert(l.last?.type === "power" && l.last.value === 4, "lock number")
+  l = { ...l, turn: "b" }
+  const l3 = applyRoll(l, "b", 3, c)
+  assert(l3.dice && !legalMoves(l3, "b", 3).includes(0), "locked: a 3 can't move it")
+  const l4 = applyRoll(l, "b", 4, c)
+  assert(!l4.locked && legalMoves(l4, "b", 4).includes(0), "rolling the number unlocks it")
+
+  // Push back 5, never below the start square
+  const pb = applyPower(give(base, "a", ["push"]), "a", "push", { uid: "b", token: 1 }, c)
+  assert(pb.players.b.tokens[1] === 15, "pushed back 5")
+  const pz = applyPower(give(withTokens(base, { b: [3, -1, -1, -1] }), "a", ["push"]), "a", "push", { uid: "b", token: 0 }, c)
+  assert(pz.players.b.tokens[0] === 0, "no further than its start square")
+
+  // Shield: can't be cut, can't be targeted
+  const sh = applyPower({ ...give(base, "b", ["shield"]), turn: "b" }, "b", "shield", { uid: "b", token: 1 }, c)
+  const shOk = { ...sh, turn: "a" }
+  throws(() => applyPower(give(shOk, "a", ["push"]), "a", "push", { uid: "b", token: 1 }, c), "shielded pieces can't be hit")
+  // a's piece lands on b's shielded piece (red 10 + 7 → square 17; green 20 → square 33… use a direct landing instead)
+  const aAt = (13 + 20 - 0) % TRACK_LENGTH // green pos 20 = square 33; red pos 33 = square 33
+  const land = applyMove(applyRoll(withTokens({ ...shOk, phase: "roll" }, { a: [aAt - 3, -1, -1, -1] }), "a", 3, c), "a", 0, 3, c)
+  assert(land.players.b.tokens[1] === 20 && !(land.last?.type === "move" && land.last.captured), "a shielded piece survives")
+
+  // Jump 4, and it can cut
+  const jp = applyPower(give(withTokens(base, { a: [16, -1, -1, -1], b: [20, -1, -1, -1] }), "a", ["jump"]), "a", "jump", { uid: "a", token: 0 }, c)
+  // red 20 = square 20; green 20 = square 33 → no cut here; check the move
+  assert(jp.players.a.tokens[0] === 20, "jumped 4")
+  throws(() => applyPower(give(withTokens(base, { a: [49, -1, -1, -1] }), "a", ["jump"]), "a", "jump", { uid: "a", token: 0 }, c), "no jumping into the home column")
+
+  // Double: the next roll counts twice; its bonus goes by the dice thrown
+  let d = applyPower(give(withTokens(base, { a: [10, -1, -1, -1] }), "a", ["double"]), "a", "double", null, c)
+  d = applyRoll(d, "a", 3, c)
+  assert(d.dice?.value === 6 && d.dice.x2, "3 doubled to 6")
+  d = applyMove(d, "a", 0, 6, c)
+  assert(d.players.a.tokens[0] === 16 && !(d.last?.type === "move" && d.last.bonus), "moved 6, no bonus for a doubled 3")
+
+  // Picking up a power-up by landing on it
+  const sq = trackIndex("red", 13)
+  let pu: LudoState = { ...withTokens(base, { a: [10, -1, -1, -1] }), spawns: [{ sq, kind: "shield" as PowerKind }] }
+  pu = applyMove(applyRoll(pu, "a", 3, c), "a", 0, 3, c)
+  assert(pu.players.a.powers?.[0] === "shield" && !pu.spawns, "picked up")
+  assert(pu.last?.type === "move" && pu.last.picked === "shield", "and the log knows")
+
+  // First piece out earns a power
+  let fo: LudoState = { ...fresh(3), mode: "powers" }
+  fo = applyMove(applyRoll(fo, "a", 6, c), "a", 0, 6, c)
+  assert(fo.firstOut === "a" && fo.players.a.powers?.length === 1, "first out earns a power")
+
+  // Rules
+  throws(() => applyPower(give(base, "b", ["freeze"]), "b", "freeze", { uid: "a", token: 0 }, c), "only on your turn")
+  throws(() => applyPower(base, "a", "freeze", { uid: "b", token: 0 }, c), "only powers you hold")
+  throws(() => applyPower(give(base, "a", ["freeze"]), "a", "freeze", { uid: "a", token: 0 }, c), "freeze needs a rival")
+  throws(() => applyPower(give(base, "a", ["freeze"]), "a", "freeze", { uid: "b", token: 2 }, c), "not a piece in base")
+  assert(describeLast(pb, (u) => u).includes("pushed"), "power log line")
+}
+console.log("✓ power ludo")
+
+/* ── Dice ────────────────────────────────────────────────────────────── */
+{
+  const count = (s: LudoState, uid: string, n = 30000) => {
+    const seen = [0, 0, 0, 0, 0, 0, 0]
+    for (let i = 0; i < n; i++) seen[rollFor(s, uid, Math.random)]++
+    return seen.map((x) => x / n)
+  }
+  const even = count(fresh(2), "a")
+  assert(even.slice(1).every((p) => p > 0.1), "every face can come up")
+  // Stuck in base after four misses: a 6 is about 3 in 8
+  const stuck = fresh(2)
+  stuck.players.a = { ...stuck.players.a, noSix: 4 }
+  const p6 = count(stuck, "a")[6]
+  assert(p6 > 0.32 && p6 < 0.43, `mercy six (${p6.toFixed(3)})`)
+  // A rival 3 ahead on an unsafe square: a 3 is a bit likelier
+  const hunt = withTokens(fresh(3), { a: [2, -1, -1, -1], b: [44 - 2, -1, -1, -1] })
+  // red 5 = square 5; green 42 = square 55 % 52 = 3 → put green on square 5 instead: pos 44
+  const hunt2 = withTokens(hunt, { b: [44, -1, -1, -1] })
+  const h = count(hunt2, "a")
+  assert(h[3] > h[1] + 0.03, `the hunt (${h[3].toFixed(3)} vs ${h[1].toFixed(3)})`)
+  noUndefined(applyRoll(stuck, "a", rollFor(stuck, "a", Math.random), { now: 1 }))
+}
+console.log("✓ dice")
 
 console.log("\nAll Ludo tests passed.")

@@ -41,6 +41,7 @@ import { cn } from "@/lib/utils"
 import { roomRef, sendChat, updateState } from "@/services/live-rooms"
 import { DefaultMessage, RoomChat } from "../room-chat"
 import { useStageFit } from "../use-stage-fit"
+import { playSound, useOnChange } from "@/lib/live/sound"
 import { hashWord } from "./hash"
 import { ScribbleCanvas } from "./scribble-canvas"
 
@@ -90,6 +91,10 @@ export function ScribbleGame({
   // Only the drawer can read their own secret; for everyone else this is null
   const { data: secret } = useRoomNode<{ word: string }>(code, `secret/${uid}`)
   const chat = useRoomChildren<Msg>(code, "chat", 200)
+  // Sound: a ding whenever someone guesses the word
+  useOnChange(chat.filter((m) => m.value.kind === "correct").length, (n, was) => {
+    if (n > was) playSound("correct")
+  })
   const correct = correctData ?? NO_CORRECT
   // Phones: the game fills the screen, the guess box always in view (above the keyboard while typing)
   const stageRef = useStageFit()

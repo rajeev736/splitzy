@@ -19,7 +19,7 @@ import {
   type LiveOption,
 } from "@/lib/live/games"
 import type { LiveGameId, RoomOptions } from "@/lib/live/types"
-import { cn } from "@/lib/utils"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { createRoom, registerGroupRoom } from "@/services/live-rooms"
 import type { UserProfile } from "@/lib/types"
 import { FriendPicker, sendRoomInvites } from "./invite-friends-sheet"
@@ -195,7 +195,7 @@ export function CreateRoomSheet({
   )
 }
 
-/** One setting as a row of pills, like the coin stakes on a challenge. */
+/** One setting as a row: its name, and a dropdown of the choices. */
 function OptionPills({
   option,
   value,
@@ -205,35 +205,29 @@ function OptionPills({
   value: number | string
   onChange: (value: number | string) => void
 }) {
+  const items = option.choices.map((c) => ({ value: String(c.value), label: c.label }))
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex items-center justify-between gap-3">
       <p className="text-sm font-medium">{option.label}</p>
-      <div
-        role="radiogroup"
-        aria-label={option.label}
-        className="flex flex-wrap gap-1.5"
+      <Select
+        items={items}
+        value={String(value)}
+        onValueChange={(v) => {
+          const choice = option.choices.find((c) => String(c.value) === v)
+          if (choice) onChange(choice.value)
+        }}
       >
-        {option.choices.map((c) => {
-          const on = c.value === value
-          return (
-            <button
-              key={String(c.value)}
-              type="button"
-              role="radio"
-              aria-checked={on}
-              onClick={() => onChange(c.value)}
-              className={cn(
-                "inline-flex h-10 items-center rounded-full border px-3.5 text-sm font-medium transition-colors",
-                on
-                  ? "border-primary bg-primary/5 text-primary"
-                  : "bg-card hover:bg-muted/60"
-              )}
-            >
+        <SelectTrigger className="min-w-40" aria-label={option.label}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {items.map((c) => (
+            <SelectItem key={c.value} value={c.value}>
               {c.label}
-            </button>
-          )
-        })}
-      </div>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   )
 }

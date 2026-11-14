@@ -25,7 +25,14 @@ import {
   ordinal,
   passTurn,
   resultOf,
-  rollDice,
+  applyPower,
+  HOME_COLUMN_START,
+  isShielded,
+  JUMP_BY,
+  pieceKey,
+  POWER_INFO,
+  rollFor,
+  type PowerKind,
   type LudoColour,
   type LudoPlayer,
   type LudoSkipReason,
@@ -37,11 +44,21 @@ import { cn } from "@/lib/utils"
 import { stateTransaction } from "@/services/live-rooms"
 import { colourAtCorner, LudoBoard, TOKEN_COLOURS, TURNS_FOR } from "./ludo-board"
 import { ThrowOverlay, ThrowPicker } from "../throwables"
+import { PowerBadge } from "./power-art"
 import { useStageFit } from "../use-stage-fit"
 import { LudoDice } from "./ludo-dice"
-import { useLudoAnimation } from "./use-ludo-animation"
+import { STEP_MS, useLudoAnimation } from "./use-ludo-animation"
+import { playSound, useOnChange } from "@/lib/live/sound"
 
 const NO_MOVES: number[] = []
+const NO_TARGETS: string[] = []
+
+/** A fair [0, 1) from the browser's CSPRNG, for the dice. */
+const cryptoRand = () => {
+  const buf = new Uint32Array(1)
+  crypto.getRandomValues(buf)
+  return buf[0] / 4294967296
+}
 /**
  * Height a phone keeps for everything but the (square) board: the two rows of
  * seats, the status line, and the table's padding. The board gets the rest.
@@ -124,6 +141,31 @@ export function LudoGame({
   )
   const anim = useLudoAnimation(state)
 
+  // Sounds for what just happened (the step taps come from the pieces as they hop)
+  useOnChange(state?.seq ?? -1, () => {
+    const last = state?.last
+    if (!state || !last) return
+    if (last.type === "roll" || last.type === "no_move") {
+      playSound("dice")
+      if (last.value === 6) window.setTimeout(() => playSound("six"), 650)
+    } else if (last.type === "three_sixes") {
+      playSound("dice")
+    } else if (last.type === "power") {
+      playSound("power")
+    } else if (last.type === "move") {
+      if ((last.picked || last.earned) && last.by === uid)
+        window.setTimeout(() => playSound("power"), (last.from < 0 ? 1 : last.to - last.from) * STEP_MS)
+      // After the piece has walked there
+      const walk = (last.from < 0 ? 1 : last.to - last.from) * STEP_MS
+      if (last.captured?.length) {
+        const mine = last.captured.some((c) => c.uid === uid)
+        window.setTimeout(() => playSound(mine ? "captured" : "capture"), walk)
+      } else if (last.home) window.setTimeout(() => playSound("home"), walk)
+    }
+    if (state.phase === "roll" && state.turn === uid && last.by !== uid && !me.left)
+      window.setTimeout(() => playSound("your_turn"), 900)
+  })
+
   /* ── Writes ──────────────────────────────────────────────────────── */
 
   // Callers check `seq` inside `fn` and throw when the state moved on, so a
@@ -168,12 +210,13 @@ export function LudoGame({
   const [rollLock, setRollLock] = React.useState(-1)
   const roll = () => {
     if (!state || !myTurn || state.phase !== "roll") return
-    const value = rollDice()
+    // Fair at heart, with Ludo King style drama (see rollFor in lib/live/ludo)
+    const value = rollFor(state, uid, cryptoRand)
     const at = state.seq
     setRollLock(at)
     void commit((s) => {
       if (s.seq !== at) throw new Error("stale")
-      return applyRoll(s, uid, value, { now: serverNow(), gone })
+      return applyRoll(s, uid, value, { now: serverNow(), gone, rand: Math.random })
     }).then((ok) => {
       if (!ok) setRollLock(-1)
     })
@@ -183,7 +226,7 @@ export function LudoGame({
     (token: number, expectSeq: number, value: number) =>
       commit((s) => {
         if (s.seq !== expectSeq) throw new Error("stale")
-        return applyMove(s, uid, token, value, { now: serverNow(), gone })
+        return applyMove(s, uid, token, value, { now: serverNow(), gone, rand: Math.random })
       }),
     [commit, uid, serverNow, gone]
   )
@@ -191,6 +234,48 @@ export function LudoGame({
     if (!state?.dice || !movable.includes(token)) return
     void move(token, state.seq, state.dice.value)
   }
+
+  /* ── Power Ludo ──────────────────────────────────────────────────── */
+
+  // The power you're aiming (waiting for you to tap a piece)
+  const [aimingAt, setAiming] = React.useState<{ kind: PowerKind; seq: number } | null>(null)
+  const canUsePower = !!state && myTurn && state.phase === "roll" && rollLock !== state.seq
+  // Aiming lasts only while it's still your turn to roll, in the same state
+  const aiming = aimingAt && canUsePower && state && aimingAt.seq === state.seq ? aimingAt.kind : null
+  const firePower = (kind: PowerKind, target: { uid: string; token: number } | null) => {
+    if (!state || !canUsePower) return
+    const at = state.seq
+    setAiming(null)
+    void commit((s) => {
+      if (s.seq !== at) throw new Error("stale")
+      return applyPower(s, uid, kind, target, { now: serverNow(), gone, rand: Math.random })
+    })
+  }
+  const pickPower = (kind: PowerKind) => {
+    if (!canUsePower || !state) {
+      toast("Use a power on your turn, before you roll")
+      return
+    }
+    if (POWER_INFO[kind].target === "none") firePower(kind, null)
+    else setAiming(aiming === kind ? null : { kind, seq: state.seq })
+  }
+  // Pieces the aimed power can hit: rivals' pieces out on the track (not shielded), or your own
+  const targets = React.useMemo(() => {
+    if (!aiming || !state) return NO_TARGETS
+    const own = POWER_INFO[aiming].target === "own"
+    const out: string[] = []
+    for (const id of state.order) {
+      const p = state.players[id]
+      if (!p || (own ? id !== uid : id === uid || isGone(state, id, gone))) continue
+      p.tokens.forEach((pos, t) => {
+        if (pos < 0 || pos >= HOME_COLUMN_START) return
+        if (!own && isShielded(state, id, t)) return
+        if (aiming === "jump" && pos + JUMP_BY >= HOME_COLUMN_START) return
+        out.push(pieceKey(id, t))
+      })
+    }
+    return out
+  }, [aiming, state, uid, gone])
 
   // Ludo King style: a roll with only one possible move plays itself after a beat
   React.useEffect(() => {
@@ -215,7 +300,7 @@ export function LudoGame({
     const { turn, seq: at } = state
     void commit((s) => {
       if (s.seq !== at) throw new Error("stale")
-      return passTurn(s, turn, reason, { now: serverNow(), gone })
+      return passTurn(s, turn, reason, { now: serverNow(), gone, rand: Math.random })
     }, true)
   }, [isReferee, state, byId, now, gone, meta.startedAt, commit, serverNow])
 
@@ -242,7 +327,13 @@ export function LudoGame({
     state && state.last && isRollEvent(state)
       ? {
           by: state.last.by,
-          value: state.last.type === "three_sixes" ? 6 : "value" in state.last ? state.last.value : 6,
+          // The face actually thrown (a doubled roll shows its single dice)
+          value:
+            state.last.type === "roll" || state.last.type === "no_move"
+              ? state.last.x2
+                ? state.last.value / 2
+                : state.last.value
+              : 6,
         }
       : null
   const [faces, setFaces] = React.useState<Record<string, number>>({})
@@ -376,7 +467,8 @@ export function LudoGame({
       ref={stageRef}
       style={
         {
-          "--board-reserve": `${BOARD_RESERVE_PX}px`,
+          // Power Ludo has a row of powers in the status box too
+          "--board-reserve": `${BOARD_RESERVE_PX + (state.mode === "powers" ? 40 : 0)}px`,
           "--board-reserve-desk": `${BOARD_RESERVE_DESK_PX}px`,
         } as React.CSSProperties
       }
@@ -413,6 +505,8 @@ export function LudoGame({
             onToken={onToken}
             turns={turns}
             hidden={offBoard}
+            targets={aiming ? targets : undefined}
+            onTarget={(id, token) => aiming && firePower(aiming, { uid: id, token })}
             className="rounded-lg"
           />
         </div>
@@ -421,7 +515,37 @@ export function LudoGame({
           {seat(at(2), "right")}
         </div>
         <div className="mt-2 flex min-h-12 flex-col justify-center rounded-xl bg-black/25 px-3 py-1.5 text-center">
-          <p className="truncate text-sm font-semibold">{headline}</p>
+          {state.mode === "powers" && (
+            <div className="mb-1 flex items-center justify-center gap-1.5" role="group" aria-label="Your powers">
+              {(mine?.powers ?? []).length === 0 ? (
+                <span className="text-[11px] text-white/60">Land on a glowing square to grab a power</span>
+              ) : (
+                mine!.powers!.map((k, i) => (
+                  <button
+                    key={`${k}${i}`}
+                    type="button"
+                    onClick={() => pickPower(k)}
+                    title={POWER_INFO[k].blurb}
+                    className={cn(
+                      "flex h-7 items-center gap-1 rounded-full bg-white/12 pr-2.5 pl-0.5 text-[11px] font-semibold transition-[background-color,transform] active:scale-95",
+                      aiming === k && "bg-white/30 ring-2 ring-white",
+                      !canUsePower && "opacity-60"
+                    )}
+                  >
+                    <PowerBadge kind={k} className="size-6" />
+                    {POWER_INFO[k].name}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+          <p className="truncate text-sm font-semibold">
+            {aiming
+              ? POWER_INFO[aiming].target === "own"
+                ? `${POWER_INFO[aiming].name}: tap one of your pieces`
+                : `${POWER_INFO[aiming].name}: tap a rival's piece`
+              : headline}
+          </p>
           {options.length > 1 && diceValue !== null && mine ? (
             // Also a tap target off the board — and the fallback if the auto-move didn't land
             <div

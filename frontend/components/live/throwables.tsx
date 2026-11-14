@@ -15,6 +15,7 @@ import { getErrorMessage } from "@/lib/errors"
 import { THROW_PREFIX, THROWABLE_IDS, THROWABLES, throwableOf, type ThrowableId } from "@/lib/live/throwables"
 import type { Reaction, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
+import { playSound, type SoundEvent } from "@/lib/live/sound"
 import { payForThrow } from "@/services/fun"
 import { sendReaction } from "@/services/live-rooms"
 
@@ -101,6 +102,45 @@ const ART: Record<ThrowableId, React.ReactNode> = {
       <path d="M24 38L9 53c-2 2-5 2-6 0s-1-4 1-6l15-15z" fill="#6d4c41" />
       <circle cx="12" cy="49" r="1.4" fill="#d7ccc8" />
       <circle cx="17" cy="44" r="1.4" fill="#d7ccc8" />
+    </>
+  ),
+  punch: (
+    <>
+      {/* A boxing glove, punching to the right */}
+      <rect x="4" y="24" width="14" height="18" rx="3" fill="#fff" stroke="#d1d5db" strokeWidth="1.5" />
+      <path d="M16 22c0-8 7-13 18-13h6c12 0 20 8 20 21s-8 21-20 21h-9c-9 0-15-5-15-12z" fill="#dc2626" />
+      <path d="M28 12c-4 4-4 10 0 14h10c4 0 6-3 6-7s-2-7-6-7z" fill="#b91c1c" />
+      <ellipse cx="44" cy="20" rx="8" ry="4" fill="#fca5a5" opacity="0.8" />
+      <path d="M16 40h18" stroke="#991b1b" strokeWidth="2" strokeLinecap="round" />
+    </>
+  ),
+  chakra: (
+    <>
+      <circle cx="32" cy="32" r="31" fill="#fde047" opacity="0.35" />
+      <path d="M54.00 32.00L61.42 37.85L52.33 40.42ZM52.33 40.42L56.94 48.67L47.56 47.56ZM47.56 47.56L48.67 56.94L40.42 52.33ZM40.42 52.33L37.85 61.42L32.00 54.00ZM32.00 54.00L26.15 61.42L23.58 52.33ZM23.58 52.33L15.33 56.94L16.44 47.56ZM16.44 47.56L7.06 48.67L11.67 40.42ZM11.67 40.42L2.58 37.85L10.00 32.00ZM10.00 32.00L2.58 26.15L11.67 23.58ZM11.67 23.58L7.06 15.33L16.44 16.44ZM16.44 16.44L15.33 7.06L23.58 11.67ZM23.58 11.67L26.15 2.58L32.00 10.00ZM32.00 10.00L37.85 2.58L40.42 11.67ZM40.42 11.67L48.67 7.06L47.56 16.44ZM47.56 16.44L56.94 15.33L52.33 23.58ZM52.33 23.58L61.42 26.15L54.00 32.00Z" fill="#f59e0b" stroke="#b45309" strokeWidth="0.8" strokeLinejoin="round" />
+      <circle cx="32" cy="32" r="22" fill="#fbbf24" stroke="#b45309" strokeWidth="1.2" />
+      <circle cx="32" cy="32" r="17" fill="#fde68a" />
+      <path d="M32 32L49.00 32.00M32 32L44.02 44.02M32 32L32.00 49.00M32 32L19.98 44.02M32 32L15.00 32.00M32 32L19.98 19.98M32 32L32.00 15.00M32 32L44.02 19.98" stroke="#b45309" strokeWidth="2.2" strokeLinecap="round" />
+      <circle cx="32" cy="32" r="5" fill="#b45309" />
+      <circle cx="32" cy="32" r="2.2" fill="#fef3c7" />
+    </>
+  ),
+  meteor: (
+    <>
+      {/* Points down-right: a fiery tail behind, the rock in front */}
+      <path d="M4 4c10 6 24 16 34 26-8-2-16 0-20 4C14 24 8 14 4 4z" fill="#ff9800" opacity="0.85" />
+      <path d="M10 6c8 6 18 14 26 22-6-1-11 1-14 3C18 23 14 14 10 6z" fill="#ffeb3b" opacity="0.9" />
+      <circle cx="42" cy="42" r="15" fill="#6d4c41" />
+      <circle cx="42" cy="42" r="15" fill="none" stroke="#ff5722" strokeWidth="2.5" />
+      <circle cx="37" cy="38" r="3.5" fill="#4e342e" />
+      <circle cx="47" cy="46" r="2.5" fill="#4e342e" />
+      <circle cx="45" cy="36" r="1.8" fill="#4e342e" />
+    </>
+  ),
+  vajra: (
+    <>
+      <path d="M38 2L14 34h14L22 62l28-36H35L44 2z" fill="#fde047" stroke="#f59e0b" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M37 8L21 31h11l-5 18 15-21H32l6-20z" fill="#fff9c4" />
     </>
   ),
   bomb: (
@@ -193,33 +233,68 @@ export function ThrowPicker({
           </p>
         </div>
       )}
-      <div className="grid grid-cols-4 gap-2 pb-2">
-        {THROWABLE_IDS.map((id) => {
-          const item = THROWABLES[id]
-          const short = (wallet?.balance ?? 0) < item.price
-          return (
-            <button
-              key={id}
-              type="button"
-              disabled={!!busy || short}
-              onClick={() => void throwIt(id)}
-              className={cn(
-                "relative flex flex-col items-center gap-1 rounded-xl border bg-card px-1 pt-2.5 pb-2 transition-[transform,background-color] active:scale-95 disabled:opacity-45",
-                busy === id && "border-primary"
-              )}
-            >
-              {busy === id ? (
-                <span className="flex size-11 items-center justify-center">
-                  <Spinner className="size-5" />
-                </span>
-              ) : (
-                <ThrowableArt id={id} className="size-11" />
-              )}
-              <span className="text-[11px] font-medium">{item.name}</span>
-              <Coins amount={item.price} className="text-[11px]" iconClassName="size-3" />
-            </button>
-          )
-        })}
+      <div className="flex flex-col gap-3 pb-2">
+        <div className="grid grid-cols-4 gap-2">
+          {THROWABLE_IDS.filter((id) => !THROWABLES[id].vip).map((id) => {
+            const item = THROWABLES[id]
+            const short = (wallet?.balance ?? 0) < item.price
+            return (
+              <button
+                key={id}
+                type="button"
+                disabled={!!busy || short}
+                onClick={() => void throwIt(id)}
+                className={cn(
+                  "relative flex flex-col items-center gap-1 rounded-xl border px-1 pt-2.5 pb-2 transition-[transform,background-color] active:scale-95 disabled:opacity-45",
+                  "bg-card",
+                  busy === id && "border-primary"
+                )}
+              >
+                {busy === id ? (
+                  <span className="flex size-11 items-center justify-center">
+                    <Spinner className="size-5" />
+                  </span>
+                ) : (
+                  <ThrowableArt id={id} className="size-11" />
+                )}
+                <span className="line-clamp-1 text-[11px] font-medium">{item.name}</span>
+                <Coins amount={item.price} className="text-[11px]" iconClassName="size-3" />
+              </button>
+            )
+          })}
+        </div>
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
+          VIP <span className="font-normal text-muted-foreground">— big, loud, and seen by everyone</span>
+        </p>
+        <div className="grid grid-cols-4 gap-2">
+          {THROWABLE_IDS.filter((id) => THROWABLES[id].vip).map((id) => {
+            const item = THROWABLES[id]
+            const short = (wallet?.balance ?? 0) < item.price
+            return (
+              <button
+                key={id}
+                type="button"
+                disabled={!!busy || short}
+                onClick={() => void throwIt(id)}
+                className={cn(
+                  "relative flex flex-col items-center gap-1 rounded-xl border px-1 pt-2.5 pb-2 transition-[transform,background-color] active:scale-95 disabled:opacity-45",
+                  "border-amber-400/60 bg-gradient-to-b from-amber-100 to-amber-50 dark:from-amber-500/20 dark:to-amber-500/5",
+                  busy === id && "border-primary"
+                )}
+              >
+                {busy === id ? (
+                  <span className="flex size-11 items-center justify-center">
+                    <Spinner className="size-5" />
+                  </span>
+                ) : (
+                  <ThrowableArt id={id} className="size-11" />
+                )}
+                <span className="line-clamp-1 text-[11px] font-medium">{item.name}</span>
+                <Coins amount={item.price} className="text-[11px]" iconClassName="size-3" />
+              </button>
+            )
+          })}
+        </div>
       </div>
     </BottomSheet>
   )
@@ -298,6 +373,7 @@ function Flight({
 }) {
   const shot = React.useRef<HTMLDivElement>(null)
   const fx = React.useRef<HTMLDivElement>(null)
+  const screenFlash = React.useRef<HTMLDivElement>(null)
   const [splat, setSplat] = React.useState<null | { colour: string; light: string }>(null)
 
   React.useLayoutEffect(() => {
@@ -309,24 +385,61 @@ function Flight({
       onDone(id)
       return
     }
-    const start = anchorOf(from)?.at ?? { x: window.innerWidth / 2, y: window.innerHeight - 60 }
     const end = target.at
+    // Meteors fall from the sky at an angle, the vajra strikes straight down; the rest fly from the thrower
+    const fromSide = end.x > window.innerWidth / 2 ? -1 : 1
+    const start =
+      item === "meteor"
+        ? { x: end.x + fromSide * 240, y: -70 }
+        : item === "vajra"
+          ? { x: end.x, y: -60 }
+          : (anchorOf(from)?.at ?? { x: window.innerWidth / 2, y: window.innerHeight - 60 })
     const dx = end.x - start.x
     const dy = end.y - start.y
     const dist = Math.hypot(dx, dy)
     const ux = dx / (dist || 1)
     const uy = dy / (dist || 1)
-    const lift = Math.min(150, 40 + dist * 0.3)
-    const flight = Math.min(1.05, Math.max(0.55, dist / 650))
+    const sky = item === "meteor" || item === "vajra"
+    const lift = sky ? 0 : item === "chakra" ? 50 : item === "punch" ? 15 : Math.min(150, 40 + dist * 0.3)
+    const flight =
+      item === "vajra"
+        ? 0.22
+        : item === "punch"
+          ? 0.38
+          : item === "meteor"
+            ? 0.85
+            : item === "chakra"
+              ? 1.5
+              : Math.min(1.05, Math.max(0.55, dist / 650))
     const knifeAngle = (Math.atan2(dy, dx) * 180) / Math.PI + 45
-    const spin = item === "knife" ? 0 : item === "bomb" ? 540 : item === "rose" || item === "kiss" ? 20 : 360
+    // The meteor art points down-right; turn it along its fall
+    const meteorAngle = (Math.atan2(dy, dx) * 180) / Math.PI - 45
+    // The glove faces right; turn it toward the target
+    const punchAngle = (Math.atan2(dy, dx) * 180) / Math.PI
+    const spin =
+      item === "knife" || item === "punch" || sky
+        ? 0
+        : item === "chakra"
+          ? 1800
+          : item === "bomb"
+            ? 540
+            : item === "rose" || item === "kiss"
+              ? 20
+              : 360
+    if (item === "chakra") playSound("chakra")
 
     const place = (p: Point) => ({ x: p.x - SIZE / 2, y: p.y - SIZE / 2 })
     gsap.set(layer, { x: end.x, y: end.y })
-    gsap.set(el, { ...place(start), scale: 0.5, opacity: 0, rotation: item === "knife" ? knifeAngle : 0 })
+    gsap.set(el, {
+      ...place(start),
+      scale: 0.5,
+      opacity: 0,
+      rotation: item === "knife" ? knifeAngle : item === "meteor" ? meteorAngle : item === "punch" ? punchAngle : 0,
+    })
 
     const proxy = { t: 0 }
-    const tl = gsap.timeline({ onComplete: () => onDone(id) })
+    // immediateRender off: the hit effects (fromTo) must not show their start until the hit itself
+    const tl = gsap.timeline({ onComplete: () => onDone(id), defaults: { immediateRender: false } })
     tl.to(el, { opacity: 1, scale: 1.1, duration: 0.14, ease: "back.out(2)" })
     tl.to(proxy, {
       t: 1,
@@ -337,8 +450,14 @@ function Flight({
         gsap.set(el, {
           x: start.x + dx * t - SIZE / 2,
           y: start.y + dy * t - lift * 4 * t * (1 - t) - SIZE / 2,
-          rotation: item === "knife" ? knifeAngle : spin * t,
-          scale: 1.1 + 0.25 * Math.sin(Math.PI * t),
+          rotation: item === "knife" ? knifeAngle : item === "meteor" ? meteorAngle : item === "punch" ? punchAngle : spin * t,
+          // The chakra grows as it spins in; sky strikes come in big
+          scale:
+            item === "chakra"
+              ? 0.5 + 1.9 * t
+              : sky
+                ? 1.6 + 0.4 * t
+                : 1.1 + 0.25 * Math.sin(Math.PI * t),
         })
       },
     })
@@ -362,6 +481,8 @@ function Flight({
           height: `${size}px`,
           borderRadius: "50%",
           background: c,
+          // Hidden until the hit
+          opacity: "0",
         })
         layer.appendChild(p)
         made.push(p)
@@ -378,7 +499,43 @@ function Flight({
     }
 
     tl.addLabel("hit")
+    tl.add(() => playSound(`hit_${item}` as SoundEvent), "hit")
     switch (item) {
+      case "chakra":
+      case "meteor":
+      case "vajra": {
+        // VIP: a blinding flash, two shockwaves, a burst of sparks, and the photo rattles
+        const flash = layer.querySelector<HTMLElement>("[data-fx=flash]")!
+        const rings = layer.querySelectorAll<HTMLElement>("[data-fx=ring]")
+        const screen = screenFlash.current
+        const bolt = layer.querySelector<HTMLElement>("[data-fx=bolt]")
+        if (bolt) {
+          // The bolt reaches down from the top of the screen to the photo
+          gsap.set(bolt, { height: end.y + 20, y: -end.y - 20 })
+          tl.fromTo(bolt, { scaleY: 0, opacity: 1 }, { scaleY: 1, duration: 0.12, ease: "power4.in", transformOrigin: "50% 0%" }, "hit-=0.12")
+          tl.to(bolt, { opacity: 0, duration: 0.5, ease: "power2.in" }, "hit+=0.25")
+        }
+        tl.to(el, { scale: item === "chakra" ? 3 : 2.4, duration: 0.14, ease: "power2.in" }, "hit")
+        tl.to(el, { opacity: 0, duration: 0.2 }, "hit+=0.12")
+        if (screen) tl.fromTo(screen, { opacity: item === "chakra" ? 0.5 : 0.75 }, { opacity: 0, duration: 0.5, ease: "power2.out" }, "hit+=0.1")
+        tl.fromTo(flash, { scale: 0.3, opacity: 1 }, { scale: 3.4, opacity: 0, duration: 0.7, ease: "power2.out" }, "hit+=0.1")
+        rings.forEach((r, i) =>
+          tl.fromTo(r, { scale: 0.3, opacity: 0.95 }, { scale: 4.2 + i, opacity: 0, duration: 0.8 + i * 0.2, ease: "power2.out" }, `hit+=${0.1 + i * 0.12}`)
+        )
+        tl.add(() => void shake(10, 13), "hit+=0.1")
+        particles(
+          22,
+          item === "chakra"
+            ? ["#fde047", "#f59e0b", "#fff7ae", "#fb923c"]
+            : item === "meteor"
+              ? ["#ff6f00", "#ffb300", "#ff1744", "#5d4037"]
+              : ["#e0f2fe", "#7dd3fc", "#fde047", "#ffffff"],
+          110,
+          10
+        )
+        tl.to({}, { duration: 0.4 })
+        break
+      }
       case "bomb": {
         // Flash, shockwave, debris, and the target shakes
         const flash = layer.querySelector<HTMLElement>("[data-fx=flash]")!
@@ -390,6 +547,19 @@ function Flight({
         tl.add(() => void shake(7, 9), "hit+=0.1")
         particles(14, ["#ff6f00", "#ffb300", "#ff1744", "#424242"], 70, 9)
         tl.to({}, { duration: 0.35 })
+        break
+      }
+      case "punch": {
+        // Wind up, punch through, POW — and the photo gets knocked back
+        const pow = layer.querySelector<HTMLElement>("[data-fx=pow]")!
+        tl.to(el, { x: `-=${ux * 14}`, y: `-=${uy * 14}`, duration: 0.07, ease: "power1.out" }, "hit")
+        tl.to(el, { x: `+=${ux * 26}`, y: `+=${uy * 26}`, scale: 1.5, duration: 0.07, ease: "power3.in" })
+        tl.fromTo(pow, { scale: 0.2, opacity: 1, rotation: -20 }, { scale: 1.3, rotation: 0, duration: 0.18, ease: "back.out(3)" }, "<")
+        tl.add(() => {
+          gsap.fromTo(target.el, { x: ux * 12, y: uy * 12 }, { x: 0, y: 0, duration: 0.5, ease: "elastic.out(1, 0.35)", clearProps: "x,y" })
+        }, "<")
+        tl.to(pow, { opacity: 0, scale: 1.6, duration: 0.3, ease: "power1.in" }, "+=0.35")
+        tl.to(el, { opacity: 0, scale: 0.8, duration: 0.25 }, "<")
         break
       }
       case "knife": {
@@ -454,7 +624,44 @@ function Flight({
       <div ref={shot} className="absolute top-0 left-0 drop-shadow-lg" style={{ width: SIZE, height: SIZE }}>
         <ThrowableArt id={item} className="size-full" />
       </div>
+      {(item === "chakra" || item === "meteor" || item === "vajra") && (
+        <div
+          ref={screenFlash}
+          className="fixed inset-0 opacity-0"
+          style={{ background: item === "vajra" ? "#f0f9ff" : item === "chakra" ? "#fef9c3" : "#ffedd5" }}
+        />
+      )}
       <div ref={fx} className="absolute top-0 left-0">
+        {(item === "chakra" || item === "meteor" || item === "vajra") && (
+          <>
+            {item === "vajra" && (
+              <svg data-fx="bolt" viewBox="0 0 40 400" preserveAspectRatio="none" className="absolute top-0 -left-5 w-10 opacity-0">
+                <path d="M22 0L10 140L26 150L8 280L30 290L18 400" fill="none" stroke="#7dd3fc" strokeWidth="10" strokeLinejoin="round" opacity="0.5" />
+                <path d="M22 0L10 140L26 150L8 280L30 290L18 400" fill="none" stroke="#fff" strokeWidth="4" strokeLinejoin="round" />
+              </svg>
+            )}
+            <span
+              data-fx="flash"
+              className="absolute -top-14 -left-14 size-28 rounded-full opacity-0"
+              style={{
+                background:
+                  item === "chakra"
+                    ? "radial-gradient(circle, #ffffff 0%, #fde047 30%, #f59e0b 55%, transparent 72%)"
+                    : item === "meteor"
+                      ? "radial-gradient(circle, #fff9c4 0%, #ffb300 30%, #ff3d00 55%, transparent 72%)"
+                      : "radial-gradient(circle, #ffffff 0%, #bae6fd 35%, #38bdf8 55%, transparent 72%)",
+              }}
+            />
+            <span data-fx="ring" className={cn("absolute -top-10 -left-10 size-20 rounded-full border-4 opacity-0", item === "vajra" ? "border-sky-200" : "border-amber-300")} />
+            <span data-fx="ring" className={cn("absolute -top-10 -left-10 size-20 rounded-full border-2 opacity-0", item === "vajra" ? "border-white" : "border-orange-400")} />
+          </>
+        )}
+        {item === "punch" && (
+          <svg data-fx="pow" viewBox="0 0 100 100" className="absolute -top-12 -left-12 size-24 opacity-0" aria-hidden>
+            <path d="M50 2l9 22 22-12-8 24 25 2-21 14 17 19-25-5 2 25-17-19-12 22-6-24-22 12 9-23L2 52l22-11L8 22l25 5z" fill="#fde047" stroke="#dc2626" strokeWidth="4" strokeLinejoin="round" />
+            <text x="50" y="59" textAnchor="middle" fontSize="24" fontWeight="900" fill="#dc2626" fontFamily="system-ui, sans-serif">POW!</text>
+          </svg>
+        )}
         {item === "bomb" && (
           <>
             <span
@@ -483,3 +690,5 @@ function Flight({
     </>
   )
 }
+
+

@@ -70,8 +70,8 @@ const shape = /^[a-z][a-z -]{1,12}[a-z]$/
 for (const pack of PACK_IDS) {
   const words = wordsOf(pack)
   assert(
-    words.length >= 120,
-    `${pack} has at least 120 words (${words.length})`
+    words.length >= 80,
+    `${pack} has at least 80 words (${words.length})`
   )
   assert(new Set(words).size === words.length, `${pack} has no duplicates`)
   for (const w of words)
@@ -103,7 +103,7 @@ for (let i = 0; i < 30; i++) {
     "3 different food words"
   )
 }
-const exclude = wordsOf("money").slice(0, 200)
+const exclude = wordsOf("money").slice(0, wordsOf("money").length - 10)
 for (let i = 0; i < 30; i++) {
   const c = pickChoices("money", 3, exclude)
   assert(

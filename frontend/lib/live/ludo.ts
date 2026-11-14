@@ -38,6 +38,44 @@ export const LUDO_AUTO_MOVE_MS = 700
 /** Turns in a row a player may lose to the clock before they're out of the game. */
 export const LUDO_MAX_MISSED = 3
 
+/* ── Power Ludo ──────────────────────────────────────────────────────── */
+
+/**
+ * Power Ludo (room option "mode": "powers"): power-ups appear on squares of
+ * the track; the first piece to land on one picks it up. The first player to
+ * bring a piece out and the first to get one home also get a power. You use
+ * a power on your turn, before rolling — it doesn't use up the turn.
+ */
+export const POWER_KINDS = ["freeze", "lock", "push", "jump", "shield", "double"] as const
+export type PowerKind = (typeof POWER_KINDS)[number]
+
+export const POWER_INFO: Record<
+  PowerKind,
+  { name: string; blurb: string; target: "rival" | "own" | "none" }
+> = {
+  freeze: { name: "Freeze", blurb: "A rival's piece can't move for 3 of their turns", target: "rival" },
+  lock: { name: "Number lock", blurb: "A rival's piece moves only once they roll a set number", target: "rival" },
+  push: { name: "Push back", blurb: "Knock a rival's piece back 5 squares", target: "rival" },
+  jump: { name: "Jump", blurb: "One of your pieces leaps 4 squares ahead", target: "own" },
+  shield: { name: "Shield", blurb: "Your piece can't be cut or hit for 3 of your turns", target: "own" },
+  double: { name: "Double dice", blurb: "Your next roll counts twice", target: "none" },
+}
+/** Powers a player can hold at once. */
+export const MAX_POWERS = 3
+export const FREEZE_TURNS = 3
+export const SHIELD_TURNS = 3
+export const PUSH_BACK = 5
+export const JUMP_BY = 4
+/** A new power-up appears every this many turns (while fewer than MAX_SPAWNS are on the board). */
+export const SPAWN_EVERY = 3
+export const MAX_SPAWNS = 3
+
+export interface LudoSpawn {
+  /** Absolute track square. */
+  sq: number
+  kind: PowerKind
+}
+
 export interface LudoPlayer {
   uid: string
   colour: LudoColour
@@ -49,6 +87,16 @@ export interface LudoPlayer {
   missed?: number
   /** Out of the game after LUDO_MAX_MISSED missed turns: skipped and their tokens leave the board. */
   out?: true
+  /** Rival pieces this player cut. */
+  kills?: number
+  /** Times this player's pieces were cut. */
+  deaths?: number
+  /** Rolls in a row without a 6 (the dice's mercy for a player stuck in base). */
+  noSix?: number
+  /** Power Ludo: powers held, oldest first. */
+  powers?: PowerKind[]
+  /** Power Ludo: the next roll counts twice. */
+  double?: true
 }
 
 export interface LudoDice {
@@ -57,6 +105,8 @@ export interface LudoDice {
   by: string
   /** Server ms */
   at: number
+  /** Doubled by a power (value is already the doubled number). */
+  x2?: true
 }
 
 export type LudoSkipReason = "idle" | "offline" | "left"
@@ -79,15 +129,33 @@ export interface LudoMove {
   finished?: true
   /** The same player rolls again. */
   bonus?: true
+  /** Power Ludo: a power-up picked up on the landing square… */
+  picked?: PowerKind
+  /** …or earned for the first piece out / first piece home. */
+  earned?: PowerKind
+}
+
+export interface LudoPowerUse {
+  type: "power"
+  by: string
+  kind: PowerKind
+  /** The piece it was used on. */
+  target?: LudoCapture
+  /** Number lock: the number the piece now needs. Push / jump: where it went. */
+  value?: number
+  from?: number
+  to?: number
+  captured?: LudoCapture[]
 }
 
 /** The latest thing that happened: the log line and the token animation come from it. */
 export type LudoLast =
-  | { type: "roll"; by: string; value: number }
+  | { type: "roll"; by: string; value: number; x2?: true }
   | LudoMove
-  | { type: "no_move"; by: string; value: number }
+  | { type: "no_move"; by: string; value: number; x2?: true }
   | { type: "three_sixes"; by: string }
   | { type: "skip"; by: string; reason: LudoSkipReason; out?: true }
+  | LudoPowerUse
 
 export interface LudoState {
   /** roll: waiting for `turn` to roll · move: they rolled, waiting for a token · over: someone won. */
@@ -106,6 +174,21 @@ export interface LudoState {
   /** Bumps on every change, so a device can tell a new state from a replay. */
   seq: number
   last?: LudoLast
+  /** Turns played so far (power-ups appear on a schedule). */
+  turnNo?: number
+  /** "powers" = Power Ludo; absent = classic. */
+  mode?: "powers"
+  /** Power-ups waiting on the track. */
+  spawns?: LudoSpawn[]
+  /** `${uid}:${token}` → owner's turns left frozen. */
+  frozen?: Record<string, number>
+  /** `${uid}:${token}` → the number its owner must roll before it can move. */
+  locked?: Record<string, number>
+  /** `${uid}:${token}` → owner's turns left shielded. */
+  shield?: Record<string, number>
+  /** Who brought the first piece out / got the first piece home (each earns a power). */
+  firstOut?: string
+  firstHome?: string
 }
 
 export interface LudoContext {
@@ -113,7 +196,15 @@ export interface LudoContext {
   now: number
   /** Players who left for good: skipped in the rotation. */
   gone?: string[]
+  /** Random number in [0, 1) for power-ups (defaults to Math.random). */
+  rand?: () => number
 }
+
+/** The key for one piece in the effect maps. */
+export const pieceKey = (uid: string, token: number) => `${uid}:${token}`
+export const isFrozen = (s: LudoState, uid: string, token: number) => (s.frozen?.[pieceKey(uid, token)] ?? 0) > 0
+export const lockOf = (s: LudoState, uid: string, token: number) => s.locked?.[pieceKey(uid, token)] ?? 0
+export const isShielded = (s: LudoState, uid: string, token: number) => (s.shield?.[pieceKey(uid, token)] ?? 0) > 0
 
 /* ── Setup ───────────────────────────────────────────────────────────── */
 
@@ -129,8 +220,7 @@ export function initialLudoState(
   options: RoomOptions,
   seed: string
 ): LudoState {
-  void options
-  void seed
+  const powers = options.mode === "powers"
   const order = players.slice(0, 4).map((p) => p.uid)
   const colours = coloursFor(order.length)
   const entries: Record<string, LudoPlayer> = {}
@@ -142,7 +232,7 @@ export function initialLudoState(
       place: 0,
     }
   })
-  return {
+  const state: LudoState = {
     phase: "roll",
     order,
     players: entries,
@@ -150,7 +240,56 @@ export function initialLudoState(
     sixes: 0,
     turnAt: 0,
     seq: 0,
+    turnNo: 0,
   }
+  if (!powers) return state
+  // Power Ludo: two power-ups on the board from the start
+  const rand = seededRandom(seed)
+  let out: LudoState = { ...state, mode: "powers" }
+  out = spawnPower(out, rand)
+  out = spawnPower(out, rand)
+  return out
+}
+
+/** A repeatable random sequence from a string (every device builds the same start). */
+export function seededRandom(seed: string): () => number {
+  let h = 2166136261
+  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619)
+  let a = h >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+const pick = <T,>(list: readonly T[], rand: () => number): T => list[Math.floor(rand() * list.length) % list.length]
+
+/** A random power. */
+export const randomPower = (rand: () => number): PowerKind => pick(POWER_KINDS, rand)
+
+/**
+ * Puts a power-up on a random free square of the track: not a safe square,
+ * not under a piece, not where one already waits.
+ */
+export function spawnPower(state: LudoState, rand: () => number): LudoState {
+  const spawns = state.spawns ?? []
+  if (spawns.length >= MAX_SPAWNS) return state
+  const taken = new Set(spawns.map((s) => s.sq))
+  for (const id of state.order) {
+    const p = state.players[id]
+    if (!p) continue
+    for (const pos of p.tokens) {
+      const sq = trackIndex(p.colour, pos)
+      if (sq >= 0) taken.add(sq)
+    }
+  }
+  const free: number[] = []
+  for (let sq = 0; sq < TRACK_LENGTH; sq++) if (!SAFE_SQUARES.includes(sq) && !taken.has(sq)) free.push(sq)
+  if (free.length === 0) return state
+  return { ...state, spawns: [...spawns, { sq: pick(free, rand), kind: randomPower(rand) }] }
 }
 
 /* ── Rules ───────────────────────────────────────────────────────────── */
@@ -170,7 +309,10 @@ export function legalMoves(
 ): number[] {
   const p = state.players[uid]
   if (!p) return []
-  return p.tokens.flatMap((pos, i) => (canMove(pos, dice) ? [i] : []))
+  // Power Ludo: frozen pieces sit still; a number-locked piece waits for its number
+  return p.tokens.flatMap((pos, i) =>
+    canMove(pos, dice) && !isFrozen(state, uid, i) && lockOf(state, uid, i) === 0 ? [i] : []
+  )
 }
 
 /** Legal moves with interchangeable tokens (same square) collapsed to one — for auto-play. */
@@ -242,6 +384,32 @@ export function nextTurn(
   return null
 }
 
+/**
+ * The end of `from`'s turn: their frozen / shielded counters tick down, the
+ * turn count goes up, and in Power Ludo a new power-up may appear.
+ */
+function endTurn(state: LudoState, from: string, ctx: LudoContext): LudoState {
+  const tick = (map: Record<string, number> | undefined) => {
+    if (!map) return map
+    const out: Record<string, number> = {}
+    for (const [k, v] of Object.entries(map)) {
+      const left = k.startsWith(`${from}:`) ? v - 1 : v
+      if (left > 0) out[k] = left
+    }
+    return Object.keys(out).length ? out : undefined
+  }
+  const next: LudoState = { ...state, turnNo: (state.turnNo ?? 0) + 1 }
+  const frozen = tick(state.frozen)
+  const shield = tick(state.shield)
+  if (frozen) next.frozen = frozen
+  else delete next.frozen
+  if (shield) next.shield = shield
+  else delete next.shield
+  if (next.mode === "powers" && (next.turnNo ?? 0) % SPAWN_EVERY === 0)
+    return spawnPower(next, ctx.rand ?? Math.random)
+  return next
+}
+
 function pass(
   state: LudoState,
   from: string,
@@ -249,7 +417,7 @@ function pass(
   ctx: LudoContext
 ): LudoState {
   const next: LudoState = {
-    ...state,
+    ...endTurn(state, from, ctx),
     phase: "roll",
     turn: nextTurn(state, from, ctx.gone) ?? from,
     sixes: 0,
@@ -264,6 +432,7 @@ function pass(
 /**
  * `uid` rolled `value`. Either they now pick a token ("move" phase), or the
  * turn passes right away: three 6s in a row, or nothing can move.
+ * Power Ludo: a "double" power doubles it; rolling a piece's lock number unlocks it.
  */
 export function applyRoll(
   state: LudoState,
@@ -277,19 +446,106 @@ export function applyRoll(
     throw new Error("Bad dice")
   const sixes = value === 6 ? state.sixes + 1 : 0
   // Rolling counts as playing: the missed-turn count starts over
-  const played: LudoState = { ...state, players: playedNow(state, uid) }
+  const players = { ...playedNow(state, uid) }
+  const me = { ...players[uid] }
+  me.noSix = value === 6 ? 0 : (me.noSix ?? 0) + 1
+  const x2 = !!me.double
+  delete me.double
+  players[uid] = me
+  const played: LudoState = { ...state, players }
+  // The number a locked piece was waiting for: it's free again
+  if (state.locked) {
+    const locked = { ...state.locked }
+    for (const [k, need] of Object.entries(locked)) if (k.startsWith(`${uid}:`) && need === value) delete locked[k]
+    if (Object.keys(locked).length) played.locked = locked
+    else delete played.locked
+  }
+  const effective = x2 ? value * 2 : value
+  const flag = x2 ? { x2: true as const } : {}
   if (sixes >= 3) return pass(played, uid, { type: "three_sixes", by: uid }, ctx)
-  if (legalMoves(played, uid, value).length === 0)
-    return pass(played, uid, { type: "no_move", by: uid, value }, ctx)
+  if (legalMoves(played, uid, effective).length === 0)
+    return pass(played, uid, { type: "no_move", by: uid, value: effective, ...flag }, ctx)
   return {
     ...played,
     phase: "move",
     sixes,
-    dice: { value, by: uid, at: ctx.now },
+    dice: { value: effective, by: uid, at: ctx.now, ...flag },
     turnAt: ctx.now,
     seq: state.seq + 1,
-    last: { type: "roll", by: uid, value },
+    last: { type: "roll", by: uid, value: effective, ...flag },
   }
+}
+
+/** Every player, with their own copy of tokens (to change safely). */
+function copyPlayers(state: LudoState): Record<string, LudoPlayer> {
+  const players: Record<string, LudoPlayer> = {}
+  for (const id of state.order)
+    players[id] = { ...state.players[id], tokens: [...state.players[id].tokens] }
+  return players
+}
+
+/**
+ * `uid`'s piece lands on `to`: cuts rival pieces on an unsafe shared square
+ * (shielded ones survive) and counts the cuts. Mutates `players`.
+ */
+function landOn(
+  state: LudoState,
+  players: Record<string, LudoPlayer>,
+  uid: string,
+  to: number,
+  ctx: LudoContext
+): LudoCapture[] {
+  const captured: LudoCapture[] = []
+  const square = trackIndex(players[uid].colour, to)
+  if (square < 0 || isSafe(square)) return captured
+  for (const id of state.order) {
+    // Tokens of players who left or are out are off the board
+    if (id === uid || isGone(state, id, ctx.gone)) continue
+    const rival = players[id]
+    rival.tokens.forEach((pos, j) => {
+      if (trackIndex(rival.colour, pos) === square && !isShielded(state, id, j)) {
+        rival.tokens[j] = -1
+        captured.push({ uid: id, token: j })
+      }
+    })
+  }
+  if (captured.length) {
+    players[uid] = { ...players[uid], kills: (players[uid].kills ?? 0) + captured.length }
+    for (const c of captured) players[c.uid] = { ...players[c.uid], deaths: (players[c.uid].deaths ?? 0) + 1 }
+  }
+  return captured
+}
+
+/** Drops the effect-map entries of pieces that were sent back to base. */
+function clearEffects(state: LudoState, pieces: LudoCapture[]) {
+  for (const map of ["frozen", "locked", "shield"] as const) {
+    const m = state[map]
+    if (!m) continue
+    const copy = { ...m }
+    for (const c of pieces) delete copy[pieceKey(c.uid, c.token)]
+    if (Object.keys(copy).length) state[map] = copy
+    else delete state[map]
+  }
+}
+
+/** Power Ludo: picks up a power-up on `uid`'s landing square, if any. */
+function pickUp(state: LudoState, players: Record<string, LudoPlayer>, uid: string, to: number): PowerKind | undefined {
+  if (state.mode !== "powers" || !state.spawns?.length) return undefined
+  const square = trackIndex(players[uid].colour, to)
+  const i = state.spawns.findIndex((s) => s.sq === square)
+  if (i < 0) return undefined
+  const kind = state.spawns[i].kind
+  const spawns = state.spawns.filter((_, j) => j !== i)
+  if (spawns.length) state.spawns = spawns
+  else delete state.spawns
+  give(players, uid, kind)
+  return kind
+}
+
+function give(players: Record<string, LudoPlayer>, uid: string, kind: PowerKind) {
+  const held = players[uid].powers ?? []
+  if (held.length >= MAX_POWERS) return
+  players[uid] = { ...players[uid], powers: [...held, kind] }
 }
 
 /**
@@ -309,33 +565,30 @@ export function applyMove(
     throw new Error("That roll is gone")
   const me = state.players[uid]
   const from = me?.tokens[token]
-  if (from === undefined || !canMove(from, value))
+  if (from === undefined || !legalMoves(state, uid, value).includes(token))
     throw new Error("That token can't move")
   const to = from < 0 ? 0 : from + value
 
-  const players: Record<string, LudoPlayer> = {}
-  for (const id of state.order)
-    players[id] = {
-      ...state.players[id],
-      tokens: [...state.players[id].tokens],
-    }
+  const players = copyPlayers(state)
   players[uid].tokens[token] = to
   delete players[uid].missed
+  const work: LudoState = { ...state }
+  const captured = landOn(state, players, uid, to, ctx)
+  clearEffects(work, captured)
+  const picked = pickUp(work, players, uid, to)
 
-  // Capture: every rival token on the same shared square goes back to base, unless it's a safe square
-  const captured: LudoCapture[] = []
-  const square = trackIndex(me.colour, to)
-  if (square >= 0 && !isSafe(square)) {
-    for (const id of state.order) {
-      // Tokens of players who left or are out are off the board
-      if (id === uid || isGone(state, id, ctx.gone)) continue
-      const rival = players[id]
-      rival.tokens.forEach((pos, j) => {
-        if (trackIndex(rival.colour, pos) === square) {
-          rival.tokens[j] = -1
-          captured.push({ uid: id, token: j })
-        }
-      })
+  // Power Ludo: the first piece out and the first piece home each earn a power
+  let earned: PowerKind | undefined
+  if (work.mode === "powers") {
+    const rand = ctx.rand ?? Math.random
+    if (from < 0 && !work.firstOut) {
+      work.firstOut = uid
+      earned = randomPower(rand)
+      give(players, uid, earned)
+    } else if (to === HOME && !work.firstHome) {
+      work.firstHome = uid
+      earned = randomPower(rand)
+      give(players, uid, earned)
     }
   }
 
@@ -344,16 +597,20 @@ export function applyMove(
   if (finished)
     players[uid].place =
       Math.max(0, ...state.order.map((id) => players[id].place)) + 1
-  const bonus = !finished && (value === 6 || captured.length > 0 || home)
+  // A doubled roll's bonus counts on the dice actually thrown
+  const thrown = state.dice?.x2 ? value / 2 : value
+  const bonus = !finished && (thrown === 6 || captured.length > 0 || home)
 
   const last: LudoMove = { type: "move", by: uid, value, token, from, to }
   if (captured.length) last.captured = captured
   if (home) last.home = true
   if (finished) last.finished = true
   if (bonus) last.bonus = true
+  if (picked) last.picked = picked
+  if (earned) last.earned = earned
 
-  const next: LudoState = {
-    ...state,
+  let next: LudoState = {
+    ...work,
     players,
     phase: "roll",
     sixes: bonus ? state.sixes : 0,
@@ -366,8 +623,143 @@ export function applyMove(
     next.phase = "over"
     return next
   }
-  if (!bonus) next.turn = nextTurn(next, uid, ctx.gone) ?? uid
+  if (!bonus) {
+    next = endTurn(next, uid, ctx)
+    next.turn = nextTurn(next, uid, ctx.gone) ?? uid
+  }
   return next
+}
+
+/**
+ * Power Ludo: `uid` uses one of their powers, on their turn before rolling
+ * (it doesn't use up the turn). `target` is the piece it's used on — a
+ * rival's for freeze / lock / push, your own for jump / shield.
+ */
+export function applyPower(
+  state: LudoState,
+  uid: string,
+  kind: PowerKind,
+  target: LudoCapture | null,
+  ctx: LudoContext
+): LudoState {
+  if (state.phase !== "roll" || state.turn !== uid) throw new Error("Use powers before you roll")
+  const held = state.players[uid]?.powers ?? []
+  const at = held.indexOf(kind)
+  if (at < 0) throw new Error("You don't have that power")
+  const info = POWER_INFO[kind]
+  const players = copyPlayers(state)
+  players[uid] = { ...players[uid], powers: held.filter((_, i) => i !== at) }
+  if (!players[uid].powers?.length) delete players[uid].powers
+  const next: LudoState = { ...state, players, seq: state.seq + 1, turnAt: ctx.now }
+  const last: LudoPowerUse = { type: "power", by: uid, kind }
+
+  if (info.target !== "none") {
+    if (!target) throw new Error("Pick a piece")
+    const owner = state.players[target.uid]
+    const pos = owner?.tokens[target.token]
+    if (pos === undefined) throw new Error("No such piece")
+    if (info.target === "rival" && (target.uid === uid || isGone(state, target.uid, ctx.gone)))
+      throw new Error("Pick a rival's piece")
+    if (info.target === "own" && target.uid !== uid) throw new Error("Pick one of your pieces")
+    // Only pieces out on the shared track (not in base, not in the home column)
+    if (pos < 0 || pos >= HOME_COLUMN_START) throw new Error("That piece is out of reach")
+    if (info.target === "rival" && isShielded(state, target.uid, target.token))
+      throw new Error("That piece is shielded")
+    last.target = target
+    const key = pieceKey(target.uid, target.token)
+    if (kind === "freeze") next.frozen = { ...state.frozen, [key]: FREEZE_TURNS }
+    else if (kind === "shield") next.shield = { ...state.shield, [key]: SHIELD_TURNS }
+    else if (kind === "lock") {
+      const need = 1 + Math.floor((ctx.rand ?? Math.random)() * 6)
+      next.locked = { ...state.locked, [key]: need }
+      last.value = need
+    } else if (kind === "push") {
+      const to = Math.max(0, pos - PUSH_BACK)
+      players[target.uid].tokens[target.token] = to
+      last.from = pos
+      last.to = to
+    } else if (kind === "jump") {
+      const to = pos + JUMP_BY
+      if (to >= HOME_COLUMN_START) throw new Error("Too close to home to jump")
+      players[uid].tokens[target.token] = to
+      const captured = landOn(next, players, uid, to, ctx)
+      clearEffects(next, captured)
+      pickUp(next, players, uid, to)
+      last.from = pos
+      last.to = to
+      if (captured.length) last.captured = captured
+    }
+  } else if (kind === "double") {
+    players[uid] = { ...players[uid], double: true }
+  }
+  next.players = players
+  next.last = last
+  return next
+}
+
+/* ── Dice ─────────────────────────────────────────────────────────────── */
+
+/**
+ * The roll, weighted to keep games lively (Ludo King does much the same):
+ * every face starts equal, then —
+ *  - mercy six: stuck in base, each roll without a 6 makes a 6 likelier
+ *    (up to about 1 in 3 after four misses);
+ *  - the hunt: a number that would land one of your pieces on a rival's
+ *    (unsafe) square gets a little more likely;
+ *  - comeback: well behind the leader, 5s and 6s get a little likelier;
+ *  - no déjà vu: the face you just rolled is a little less likely.
+ * Never certain, never impossible — every face keeps a real chance.
+ * `rand` is a uniform [0, 1) source (the component passes the CSPRNG).
+ */
+export function rollFor(state: LudoState, uid: string, rand: () => number): number {
+  const w = [0, 1, 1, 1, 1, 1, 1]
+  const me = state.players[uid]
+  if (me) {
+    const onBoard = me.tokens.some((t) => t >= 0 && t < HOME)
+    if (!onBoard) w[6] += Math.min(me.noSix ?? 0, 4) * 0.5
+
+    // Rival pieces 1–6 squares ahead of one of mine on an unsafe square
+    const bumped = new Set<number>()
+    for (const pos of me.tokens) {
+      if (pos < 0 || pos >= HOME_COLUMN_START) continue
+      for (let d = 1; d <= 6; d++) {
+        const to = pos + d
+        const sq = trackIndex(me.colour, to)
+        if (sq < 0 || isSafe(sq) || bumped.has(d)) continue
+        const prey = state.order.some(
+          (id) =>
+            id !== uid &&
+            state.players[id] &&
+            !state.players[id].out &&
+            state.players[id].tokens.some((p, j) => trackIndex(state.players[id].colour, p) === sq && !isShielded(state, id, j))
+        )
+        if (prey) {
+          w[d] += 0.5
+          bumped.add(d)
+        }
+      }
+    }
+
+    // Comeback
+    const mine = progressOf(me)
+    const leader = Math.max(...state.order.map((id) => (state.players[id] ? progressOf(state.players[id]) : 0)))
+    if (leader - mine >= 40) {
+      w[5] += 0.35
+      w[6] += 0.35
+    }
+
+    // Less of the same face twice in a row
+    const last = state.last
+    if (last && last.by === uid && (last.type === "roll" || last.type === "no_move") && !last.x2)
+      w[last.value] = Math.max(0.6, w[last.value] - 0.3)
+  }
+  const total = w.reduce((a, b) => a + b, 0)
+  let r = rand() * total
+  for (let face = 1; face <= 6; face++) {
+    r -= w[face]
+    if (r < 0) return face
+  }
+  return 6
 }
 
 /** The referee passes an idle / offline / departed player's turn (any pending roll is dropped). */
@@ -435,10 +827,17 @@ export function resultOf(
 ): LiveResult {
   const ranking = rankingOf(state, gone)
   const anyFinished = state.order.some((id) => state.players[id].place > 0)
+  // Cuts made / taken, for the result screen
+  const stats: Record<string, Record<string, number>> = {}
+  for (const id of state.order) {
+    const p = state.players[id]
+    stats[id] = { kills: p?.kills ?? 0, deaths: p?.deaths ?? 0 }
+  }
   return {
     winnerIds: ranking.slice(0, 1),
     ranking,
     reason: reason ?? (anyFinished ? "all_home" : "abandoned"),
+    stats,
   }
 }
 
@@ -479,10 +878,30 @@ export function describeLast(
         const n = last.captured.length
         return `${who} captured ${victims}'s ${n > 1 ? `${n} tokens` : "token"} — rolls again`
       }
+      if (last.picked || last.earned)
+        return `${who} got a power: ${POWER_INFO[(last.picked ?? last.earned)!].name}!`
       if (last.home) return `${who} got a token home — rolls again`
       if (last.from < 0)
         return `${who} brought a token out${last.bonus ? " — rolls again" : ""}`
       return `${who} moved ${last.value}${last.bonus ? " — rolls again" : ""}`
+    }
+    case "power": {
+      const p = POWER_INFO[last.kind].name
+      const whose = last.target ? `${nameOf(last.target.uid)}'s piece` : ""
+      switch (last.kind) {
+        case "freeze":
+          return `${who} froze ${whose} for ${FREEZE_TURNS} turns`
+        case "lock":
+          return `${who} locked ${whose} — it needs a ${last.value} to move`
+        case "push":
+          return `${who} pushed ${whose} back ${PUSH_BACK} squares`
+        case "jump":
+          return `${who} jumped a piece ${JUMP_BY} squares${last.captured?.length ? " and cut a rival!" : ""}`
+        case "shield":
+          return `${who} shielded a piece for ${SHIELD_TURNS} turns`
+        default:
+          return `${who} used ${p} — next roll counts twice`
+      }
     }
   }
 }

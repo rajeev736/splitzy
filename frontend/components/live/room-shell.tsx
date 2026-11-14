@@ -40,7 +40,7 @@ import { getErrorMessage } from "@/lib/errors"
 import { useGameExit } from "@/lib/games-nav"
 import { LiveGameLogo } from "@/components/live/live-game-logo"
 import { LIVE_GAMES } from "@/lib/live/games"
-import { roomLink } from "@/lib/live/room"
+import { isJoinable, roomLink } from "@/lib/live/room"
 import type { ChatMessage, RoomMeta, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import {
@@ -57,11 +57,36 @@ import {
 } from "@/services/live-rooms"
 import { GameView } from "./game-view"
 import { InviteFriendsSheet } from "./invite-friends-sheet"
+import { playSound } from "@/lib/live/sound"
 import { RoomChat } from "./room-chat"
+import { SoundToggle } from "./sound-settings"
 import { ReactionsOverlay, StickerBar } from "./stickers"
 import { VoiceBar } from "./voice-bar"
 
 const GAMES_TAB = "/challenges?tab=live"
+
+/**
+ * Removed by the host: remembered for this tab (session), so a refresh or the
+ * link doesn't seat you again by itself. "Join again" clears it.
+ */
+const kickedKey = (code: string) => `joysplit_kicked_${code}`
+const wasKicked = (code: string) => {
+  try {
+    return sessionStorage.getItem(kickedKey(code)) === "1"
+  } catch {
+    return false
+  }
+}
+const markKicked = (code: string, on: boolean) => {
+  try {
+    if (on) sessionStorage.setItem(kickedKey(code), "1")
+    else sessionStorage.removeItem(kickedKey(code))
+  } catch {
+    /* storage unavailable */
+  }
+}
+/** Rooms you're leaving yourself right now — so your own exit isn't mistaken for a kick. */
+const leavingRooms = new Set<string>()
 /** Finished rooms shed their drawing / chat this long after the end. */
 const CLEANUP_AFTER_MS = 60 * 1000
 
@@ -78,9 +103,10 @@ export function RoomShell({ code }: { code: string }) {
   const { meta, players, me, isReferee, loaded, notFound, now, serverNow } =
     room
 
-  // Take a seat (or come back to yours) as soon as the room is known
+  // Take a seat (or come back to yours) as soon as the room is known — unless the host removed you
   const [join, setJoin] = React.useState<"idle" | JoinOutcome>("idle")
   const joining = React.useRef(false)
+  const [kicked, setKicked] = React.useState(() => wasKicked(code))
   React.useEffect(() => {
     if (
       !loaded ||
@@ -88,6 +114,7 @@ export function RoomShell({ code }: { code: string }) {
       !user ||
       !meta ||
       me ||
+      kicked ||
       join !== "idle" ||
       joining.current
     )
@@ -99,7 +126,21 @@ export function RoomShell({ code }: { code: string }) {
         toast.error(getErrorMessage(e, "Couldn't join the room"))
         setJoin("not_found")
       })
-  }, [loaded, notFound, user, meta, me, join, code])
+  }, [loaded, notFound, user, meta, me, kicked, join, code])
+
+  // The host removed you from the lobby: out you go, and you stay out until you choose to join again
+  const seatedHere = React.useRef(false)
+  React.useEffect(() => {
+    if (me && !me.left) {
+      seatedHere.current = true
+      return
+    }
+    if (!seatedHere.current || me || !meta || !isJoinable(meta) || leavingRooms.has(code)) return
+    seatedHere.current = false
+    markKicked(code, true)
+    toast.error("The host removed you from the room")
+    exitGame()
+  }, [me, meta, code, exitGame])
 
   // Referee: start the countdown when full, cancel it when someone leaves, start the game on time
   const starting = React.useRef(false)
@@ -131,7 +172,24 @@ export function RoomShell({ code }: { code: string }) {
     return () => window.clearTimeout(id)
   }, [isReferee, meta?.status, meta?.endedAt, code, serverNow])
 
-  if (!loaded || (!me && join === "idle" && !notFound)) {
+  if (kicked && !me && meta && isJoinable(meta)) {
+    return (
+      <Blocked
+        title="Removed from the room"
+        text="The host took you out of this room. You can ask to join again."
+        action={{
+          label: "Join again",
+          onClick: () => {
+            markKicked(code, false)
+            joining.current = false
+            setJoin("idle")
+            setKicked(false)
+          },
+        }}
+      />
+    )
+  }
+  if (!loaded || (!me && join === "idle" && !notFound && !kicked)) {
     return (
       <RoomLoading
         stage={!loaded ? "room" : "seat"}
@@ -215,6 +273,7 @@ function LobbyView({
 
   const leave = async () => {
     setLeaving(true)
+    leavingRooms.add(code)
     try {
       await leaveRoom(uid, code)
       onLeft()
@@ -668,6 +727,7 @@ function PlayingView({
         )}
         <div className="mx-auto flex max-w-3xl items-center gap-2 px-3 py-2">
           <VoiceBar code={code} uid={uid} players={players} voice={voice} />
+          <SoundToggle />
           <Button
             variant={stickers ? "secondary" : "outline"}
             size="sm"
@@ -743,6 +803,14 @@ function EndedView({ room, meta }: { room: LiveRoom; meta: RoomMeta }) {
   const winners = result?.winnerIds ?? []
   const iWon = winners.includes(uid)
   const [pending, setPending] = React.useState(false)
+  // A fanfare (or a sad tune) once, for the players, right as it ends — not when opening an old result
+  const played = !!playersById[uid]
+  React.useEffect(() => {
+    if (!played || !meta.endedAt || room.serverNow() - meta.endedAt > 15_000) return
+    playSound(iWon ? "win" : winners.length ? "lose" : "home")
+    // Once, when this screen opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const nameOf = (id: string) => playersById[id]?.name ?? "Someone"
   const headline =
@@ -817,10 +885,18 @@ function EndedView({ room, meta }: { room: LiveRoom; meta: RoomMeta }) {
                     {i + 1}
                   </span>
                   <UserAvatar src={p?.photo} name={p?.name ?? "?"} size="sm" />
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                    {p?.name ?? "Someone"}
-                    {id === uid && (
-                      <span className="text-muted-foreground"> (you)</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">
+                      {p?.name ?? "Someone"}
+                      {id === uid && (
+                        <span className="text-muted-foreground"> (you)</span>
+                      )}
+                    </span>
+                    {/* Ludo: pieces cut, and times cut */}
+                    {result?.stats?.[id] && "kills" in result.stats[id] && (
+                      <span className="block text-[11px] text-muted-foreground tabular-nums">
+                        Cut {result.stats[id].kills ?? 0} · Got cut {result.stats[id].deaths ?? 0}
+                      </span>
                     )}
                   </span>
                   {score !== undefined && (
@@ -994,7 +1070,16 @@ function RoomLoading({
 
 /* ── Can't get in ────────────────────────────────────────────────────── */
 
-function Blocked({ title, text }: { title: string; text: string }) {
+function Blocked({
+  title,
+  text,
+  action,
+}: {
+  title: string
+  text: string
+  /** A main button above "Back to games". */
+  action?: { label: string; onClick: () => void }
+}) {
   const exitGame = useGameExit(GAMES_TAB)
   return (
     <>
@@ -1004,7 +1089,12 @@ function Blocked({ title, text }: { title: string; text: string }) {
           <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
             <p className="text-lg font-semibold">{title}</p>
             <p className="text-sm text-muted-foreground">{text}</p>
-            <Button className="mt-2" onClick={exitGame}>
+            {action && (
+              <Button className="mt-2 w-full" onClick={action.onClick}>
+                {action.label}
+              </Button>
+            )}
+            <Button className={action ? "w-full" : "mt-2"} variant={action ? "outline" : "default"} onClick={exitGame}>
               Back to games
             </Button>
           </CardContent>

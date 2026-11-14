@@ -31,6 +31,8 @@ export interface LiveResult {
   scores?: Record<string, number>
   /** "checkmate", "timeout", "resign", "abandoned", "all_home", "rounds_over", … */
   reason?: string
+  /** Per player numbers for the result screen, e.g. Ludo { kills, deaths }. */
+  stats?: Record<string, Record<string, number>>
 }
 
 export interface RoomMeta {

@@ -95,8 +95,8 @@ service cloud.firestore {
     /** Coin price of something thrown at a player in a live game (lib/live/throwables). */
     function throwPrice(id) {
       return {
-        'rose': 10, 'kiss': 10, 'cheers': 20, 'tomato': 20, 'egg': 25, 'water': 30,
-        'knife': 40, 'bomb': 50
+        'rose': 10, 'kiss': 10, 'cheers': 20, 'tomato': 20, 'egg': 25, 'water': 30, 'punch': 35,
+        'knife': 40, 'bomb': 50, 'vajra': 100, 'meteor': 120, 'chakra': 150
       }.get(id, 0);
     }
 
