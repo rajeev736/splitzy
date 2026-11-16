@@ -1,6 +1,6 @@
 import * as THREE from "three"
 
-import { LADDERS, SNAKES } from "@/lib/live/snakes"
+import { GATE_LADDERS, SNAKES } from "@/lib/live/snakes"
 
 /**
  * The jungle tower's layout, in world units (y up, the camera looks from +z).
@@ -164,7 +164,7 @@ class Heights {
 
 /* ── Ladders and snakes, derived from the engine's maps ─────────────── */
 
-export const LADDER_LIST = Object.entries(LADDERS).map(([f, t]) => ({ foot: Number(f), top: t }))
+export const LADDER_LIST = Object.entries(GATE_LADDERS).map(([f, t]) => ({ foot: Number(f), top: t }))
 export const SNAKE_LIST = Object.entries(SNAKES).map(([h, t]) => ({ head: Number(h), tail: t }))
 
 /** Rails half-width (a pair sharing a lane are a little narrower). */

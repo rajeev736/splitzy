@@ -253,7 +253,7 @@ export function WelcomeTour() {
       needsFrame={!!wallet && !wallet.welcomeFrame && !wallet.frames.includes(WELCOME_FRAME)}
       needsEarly={needsEarly}
       onNext={(next) => setPhase(next ?? "idle")}
-      onFrameClaimed={() => router.push("/profile/frames")}
+      onFrameClaimed={() => router.push("/profile/inventory#frames")}
       onEarlyDone={() => setSpotsLeft(false)}
     />
   )

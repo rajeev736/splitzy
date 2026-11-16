@@ -24,6 +24,16 @@ export const SNAKES_MAX_MISSED = 3
 export const LADDERS: Record<number, number> = {
   1: 38, 4: 14, 9: 31, 21: 42, 28: 84, 51: 67, 71: 91, 80: 100,
 }
+/**
+ * The 3D tower's ladders: the same, less square 1's — there the gate already
+ * takes the 1 you need to get in, so a ladder waiting right behind it would
+ * make every start the same climb.
+ */
+export const GATE_LADDERS: Record<number, number> = Object.fromEntries(
+  Object.entries(LADDERS).filter(([foot]) => foot !== "1")
+)
+export const laddersFor = (variant: "flat" | "gate") => (variant === "gate" ? GATE_LADDERS : LADDERS)
+
 /** Snakes: head → tail — as drawn on the board picture. */
 export const SNAKES: Record<number, number> = {
   17: 7, 54: 34, 62: 19, 64: 60, 87: 24, 93: 73, 95: 75, 98: 79,
@@ -133,8 +143,10 @@ export function stepTo(s: SnakesState, pos: number, value: number): { to: number
 }
 
 /** Ladders up, snakes down. */
-export const slideFrom = (square: number): { end: number; via?: "ladder" | "snake" } =>
-  LADDERS[square] ? { end: LADDERS[square], via: "ladder" } : SNAKES[square] ? { end: SNAKES[square], via: "snake" } : { end: square }
+export function slideFrom(square: number, variant: "flat" | "gate" = "flat"): { end: number; via?: "ladder" | "snake" } {
+  const ladders = laddersFor(variant)
+  return ladders[square] ? { end: ladders[square], via: "ladder" } : SNAKES[square] ? { end: SNAKES[square], via: "snake" } : { end: square }
+}
 
 function passTo(s: SnakesState, from: string, ctx: SnakesContext): SnakesState {
   return { ...s, phase: "roll", turn: nextTurn(s, from, ctx.gone) ?? from, sixes: 0, turnAt: ctx.now }
@@ -155,7 +167,7 @@ export function applyRoll(s: SnakesState, uid: string, value: number, ctx: Snake
   if (step.blocked) return { ...passTo({ ...s, players }, uid, ctx), seq, last: { type: "blocked", by: uid, value } }
 
   const from = me.pos
-  const { end, via } = slideFrom(step.to)
+  const { end, via } = slideFrom(step.to, s.variant)
   me.pos = end
   if (via === "ladder") me.ladders = (me.ladders ?? 0) + 1
   if (via === "snake") me.snakes = (me.snakes ?? 0) + 1

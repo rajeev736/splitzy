@@ -89,6 +89,52 @@ const STAR_PATHS = STAR_SQUARES.map((i) => {
   const c = trackToCell(i)
   return starPath(c.col + 0.5, c.row + 0.5, 0.34, 0.15)
 })
+/**
+ * A star stitched in cross-stitch: a 9×9 pattern of stitches, for picture
+ * boards that don't print their safe squares (see `LudoLook.safeMarks`).
+ */
+const STITCH_STAR = [
+  "....#....",
+  "...###...",
+  "...#+#...",
+  "####+####",
+  ".#+++++#.",
+  "..#+++#..",
+  "..#+#+#..",
+  ".##...##.",
+  ".#.....#.",
+]
+
+const StitchStars = React.memo(function StitchStars({ turns, ink, fill }: { turns: number; ink: string; fill: string }) {
+  const px = 0.098
+  return (
+    <g pointerEvents="none">
+      {STAR_SQUARES.map((i) => {
+        const c = trackToCell(i)
+        const x0 = c.col + 0.5 - 4.5 * px
+        const y0 = c.row + 0.5 - 4.5 * px
+        return (
+          // Turned back upright when the board turns
+          <g key={i} transform={`rotate(${-turns * 90} ${c.col + 0.5} ${c.row + 0.5})`}>
+            {STITCH_STAR.flatMap((row, r) =>
+              [...row].map((ch, k) =>
+                ch === "." ? null : (
+                  <g key={`${r}-${k}`} stroke={ch === "#" ? ink : fill} strokeWidth={0.036} strokeLinecap="round">
+                    {/* One stitch: an X across its little square */}
+                    <path
+                      d={`M${x0 + k * px + 0.012} ${y0 + r * px + 0.012}l${px - 0.024} ${px - 0.024}M${x0 + (k + 1) * px - 0.012} ${y0 + r * px + 0.012}l${-(px - 0.024)} ${px - 0.024}`}
+                    />
+                  </g>
+                )
+              )
+            )}
+          </g>
+        )
+      })}
+    </g>
+  )
+})
+
 const START_STAR_PATHS = COLOURS.map((c) => {
   const cell = trackToCell(START_INDEX[c])
   return starPath(cell.col + 0.5, cell.row + 0.5, 0.34, 0.15)
@@ -423,6 +469,7 @@ export function Piece({
   lock = 0,
   shielded = false,
   shade,
+  quiet = false,
 }: {
   id: string
   colour: LudoColour
@@ -441,6 +488,8 @@ export function Piece({
   shielded?: boolean
   /** The theme's tones for this colour (default: classic). */
   shade?: Shade
+  /** No step tick on each hop (the game plays its own sounds). */
+  quiet?: boolean
 }) {
   const tappable = movable || targetable
   const outer = React.useRef<SVGGElement>(null)
@@ -476,7 +525,7 @@ export function Piece({
       return
     }
     // A step (or out of base): hop onto the next square, with a little squash on landing
-    playSound("step")
+    if (!quiet) playSound("step")
     const t = dist > 1.6 ? 0.34 : (STEP_MS / 1000) * 0.92
     gsap.to(el, { x, y, duration: t, ease: "power1.inOut", overwrite: true })
     gsap.killTweensOf(h)
@@ -486,7 +535,7 @@ export function Piece({
       .to(h, { y: 0, duration: t / 2, ease: "power2.in" })
       .to(h, { scaleY: 0.86, duration: 0.06, svgOrigin: "0 0.3", ease: "power1.out" })
       .to(h, { scaleY: 1, duration: 0.1, svgOrigin: "0 0.3", ease: "power1.out" })
-  }, [x, y, flying])
+  }, [x, y, flying, quiet])
 
   // Your pieces that can move bob, like in Ludo King
   React.useEffect(() => {
@@ -652,6 +701,7 @@ export function LudoBoard({
     >
       <g transform={`rotate(${turns * 90} 7.5 7.5)`}>
         {look.image ? <ImageBoard id={id} image={look.image} /> : <BoardBackground id={id} look={look} />}
+        {look.image && look.safeMarks && <StitchStars turns={turns} ink={look.safeMarks.ink} fill={look.safeMarks.fill} />}
       </g>
       <PieceDefs id={id} palette={look.palette} />
       {/* Power Ludo: power-ups waiting on the track */}

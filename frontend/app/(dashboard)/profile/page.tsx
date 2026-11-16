@@ -7,8 +7,8 @@ import { useTheme } from "next-themes"
 import {
   ArrowRight01Icon,
   AtIcon,
+  Backpack01Icon,
   BirthdayCakeIcon,
-  CrownIcon,
   Camera01Icon,
   Copy01Icon,
   HelpCircleIcon,
@@ -144,7 +144,7 @@ export default function ProfilePage() {
       <PageContainer className="max-w-xl min-h-[calc(100svh-8.875rem-env(safe-area-inset-bottom,0px))] gap-4 py-4 md:min-h-0 md:py-6">
         {/* You: photo, name, email, UPI — one edit button for all of it */}
         <section className="flex items-center gap-3.5 px-1">
-          <Link href="/profile/frames" data-tour="frame" aria-label="Profile frames" className="shrink-0 p-2.5">
+          <Link href="/profile/inventory#frames" data-tour="frame" aria-label="Profile frames" className="shrink-0 p-2.5">
             <FramedAvatar src={user.photoURL} name={user.displayName} frame={user.frame} size={60} />
           </Link>
           <div className="min-w-0 flex-1">
@@ -203,7 +203,12 @@ export default function ProfilePage() {
         <section className="flex flex-col gap-2">
           <h2 className="px-1 text-sm font-semibold">Make it yours</h2>
           <Card className="gap-0 divide-y py-0">
-            <MenuRow icon={CrownIcon} label="Profile frames" render={<Link href="/profile/frames" />} />
+            <MenuRow
+              icon={Backpack01Icon}
+              label="Inventory"
+              hint="Frames, boards, badges"
+              render={<Link href="/profile/inventory" />}
+            />
             <MenuRow
               icon={BirthdayCakeIcon}
               label="Birthday"

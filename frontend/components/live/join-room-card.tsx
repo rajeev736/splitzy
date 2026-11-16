@@ -50,13 +50,8 @@ export function JoinRoomCard() {
 
   return (
     <Card className="gap-0 py-0">
-      <form onSubmit={submit} className="flex flex-col gap-3 p-4" noValidate>
-        <div>
-          <h2 className="text-sm font-semibold">Join a room</h2>
-          <p className="text-xs text-muted-foreground">
-            Got a code or a link from a friend? Enter it here.
-          </p>
-        </div>
+      {/* One line: a code or a pasted link, and go */}
+      <form onSubmit={submit} className="flex flex-col gap-2 p-2.5" noValidate>
         <div className="flex gap-2">
           <Input
             value={value}
@@ -64,7 +59,7 @@ export function JoinRoomCard() {
               setValue(tidy(e.target.value))
               setError(null)
             }}
-            placeholder="Room code"
+            placeholder="Have a room code?"
             aria-label="Room code"
             aria-invalid={error ? true : undefined}
             autoCapitalize="characters"

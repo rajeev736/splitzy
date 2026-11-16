@@ -8,7 +8,7 @@ import { useWallet } from "@/hooks/use-fun"
 import { SNAKES3D_THEMES, useBoardTheme } from "@/lib/live/themes"
 import { Spinner } from "@/components/ui/spinner"
 import { describeLast, ordinal, SNAKES_MAX_MISSED, type SnakesState } from "@/lib/live/snakes"
-import { playSound, useOnChange } from "@/lib/live/sound"
+import { playSound, useOnChange, type SnakesSound } from "@/lib/live/sound"
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import { TOKEN_COLOURS } from "../ludo/ludo-board"
@@ -107,7 +107,8 @@ export function Snakes3DTable({ code, uid, me, state, myTurn, canRoll, rolling, 
     window.setTimeout(() => setBanner(null), delay + BANNER_MS)
   })
 
-  const onStep = React.useCallback(() => playSound("step"), [])
+  // The tower plays its moments' sounds as they animate (hops, the gate, ladders, snakes, the summit)
+  const onSound = React.useCallback((s: SnakesSound) => playSound(s), [])
 
   const mine = state.players[uid]
   const racing = !!mine && mine.place === 0 && !mine.out && !me.left
@@ -225,12 +226,21 @@ export function Snakes3DTable({ code, uid, me, state, myTurn, canRoll, rolling, 
               meUid={uid}
               followUid={followUid}
               hidden={hidden}
-              onStep={onStep}
+              onSound={onSound}
+              nameOf={nameOf}
               onFail={() => setNoGl(true)}
               className="h-full rounded-lg"
             />
           ) : (
-            <Snakes3DBoard state={state} meUid={uid} followUid={followUid} hidden={hidden} onStep={onStep} className="h-full rounded-lg" />
+            <Snakes3DBoard
+              state={state}
+              meUid={uid}
+              followUid={followUid}
+              hidden={hidden}
+              onSound={onSound}
+              nameOf={nameOf}
+              className="h-full rounded-lg"
+            />
           )}
           {banner && (
             <div className="pointer-events-none absolute inset-x-0 top-1/3 flex justify-center px-4">

@@ -1,29 +1,41 @@
 "use client"
 
 import * as React from "react"
-import { ArrowRight01Icon } from "@hugeicons/core-free-icons"
+import { Search01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { useSession } from "@/components/providers/session-provider"
 import { Card, CardContent } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { isLiveConfigured } from "@/lib/firebase/config"
 import { LiveGameLogo } from "@/components/live/live-game-logo"
 import { LIVE_GAME_IDS, LIVE_GAMES, type LiveGameInfo } from "@/lib/live/games"
 import type { LiveGameId } from "@/lib/live/types"
-import { CreateRoomSheet, playersLabel } from "./create-room-sheet"
+import { CreateRoomSheet } from "./create-room-sheet"
 import { JoinRoomCard } from "./join-room-card"
-import { YourRooms } from "./your-rooms"
+import { ActiveRooms, RecentRooms, RoomInvites, useLiveRooms } from "./your-rooms"
 
 /**
- * The Live tab on Games: pick a game to open a room, join a friend's room by
- * code, and get back into rooms you've been in. The room itself lives at
- * /play/{code} (components/live/room-shell).
+ * The Live tab on Games, in the order you reach for things: a room code box,
+ * the game you're in (if any), friends' invites, then the games to start — and
+ * finished games last, so a long history never pushes the games out of reach.
+ * The room itself lives at /play/{code} (components/live/room-shell).
  */
 export function LiveGamesPanel() {
   const { user } = useSession()
+  const rooms = useLiveRooms(user?.uid)
   const [sheet, setSheet] = React.useState<{ open: boolean; game: LiveGameId }>(
     { open: false, game: "scribble" }
   )
+
+  const [search, setSearch] = React.useState("")
+
+  // Games you played lately come first; the rest keep their usual order
+  const played = [...rooms.active, ...rooms.finished].map((r) => r.meta.game)
+  const recent = LIVE_GAME_IDS.filter((id) => played.includes(id)).sort((a, b) => played.indexOf(a) - played.indexOf(b))
+  const ordered = [...recent, ...LIVE_GAME_IDS.filter((id) => !recent.includes(id))]
+  const q = search.trim().toLowerCase()
+  const shown = q ? ordered.filter((id) => LIVE_GAMES[id].name.toLowerCase().includes(q)) : ordered
 
   if (!isLiveConfigured) return <NotConfigured />
 
@@ -33,22 +45,42 @@ export function LiveGamesPanel() {
         Play together, live — same room, same time. Voice and stickers included.
       </p>
 
-      {/* Joining by code and your open rooms come first, so more games never push them out of sight */}
+      {rooms.watchers}
       <JoinRoomCard />
-      {user && <YourRooms uid={user.uid} />}
+      {user && <ActiveRooms rooms={rooms.active} uid={user.uid} />}
+      <RoomInvites invites={rooms.invites} now={rooms.now} />
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold">Pick a game</h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {LIVE_GAME_IDS.map((id) => (
-            <GameCard
+        {/* Once there are many games, a search box; the tiles stay small so they fit at a glance */}
+        {LIVE_GAME_IDS.length > SEARCH_FROM && (
+          <div className="relative">
+            <HugeiconsIcon icon={Search01Icon} className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search games"
+              aria-label="Search games"
+              className="h-10 pl-9"
+            />
+          </div>
+        )}
+        <div className="grid grid-cols-4 gap-x-1 gap-y-3 rounded-xl border border-card-stroke bg-card p-3 shadow-xs sm:grid-cols-6">
+          {shown.map((id) => (
+            <GameTile
               key={id}
               game={LIVE_GAMES[id]}
+              recent={recent.includes(id)}
               onPlay={() => setSheet({ open: true, game: id })}
             />
           ))}
+          {shown.length === 0 && (
+            <p className="col-span-full py-4 text-center text-sm text-muted-foreground">No game called “{search}”</p>
+          )}
         </div>
       </section>
+
+      {user && <RecentRooms rooms={rooms.finished} uid={user.uid} />}
 
       {/* Keyed by game: each game's sheet starts from its own default options */}
       <CreateRoomSheet
@@ -61,12 +93,17 @@ export function LiveGamesPanel() {
   )
 }
 
-/** One game to start: tap anywhere to set up a room. */
-function GameCard({
+/** More games than this and a search box appears. */
+const SEARCH_FROM = 12
+
+/** One game to start, like an app icon: tap to set up a room (the sheet tells you about the game). */
+function GameTile({
   game,
+  recent,
   onPlay,
 }: {
   game: LiveGameInfo
+  recent: boolean
   onPlay: () => void
 }) {
   return (
@@ -74,24 +111,18 @@ function GameCard({
       type="button"
       onClick={onPlay}
       aria-label={`Play ${game.name}`}
-      className="flex flex-col gap-2 rounded-xl border border-card-stroke bg-card p-3 text-left shadow-xs transition-colors outline-none hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground active:bg-muted/60"
+      className="flex min-w-0 flex-col items-center gap-1.5 rounded-xl p-1 text-center outline-none transition-transform focus-visible:outline-2 focus-visible:outline-foreground active:scale-95"
     >
-      <span className="flex w-full items-start justify-between gap-2">
-        <LiveGameLogo game={game.id} className="size-12 rounded-xl" />
-        <span className="flex h-7 shrink-0 items-center gap-0.5 rounded-full bg-primary/10 pr-1.5 pl-2.5 text-xs font-semibold text-primary">
-          Play
-          <HugeiconsIcon icon={ArrowRight01Icon} className="size-3.5" />
-        </span>
+      <span className="relative">
+        <LiveGameLogo game={game.id} className="size-14 rounded-2xl shadow-sm" />
+        {recent && (
+          <span
+            aria-label="Played lately"
+            className="absolute -top-1 -right-1 size-3 rounded-full bg-primary ring-2 ring-card"
+          />
+        )}
       </span>
-      <span className="min-w-0">
-        <span className="block text-sm font-semibold">{game.name}</span>
-        <span className="mt-0.5 line-clamp-2 block text-xs leading-snug text-muted-foreground">
-          {game.tagline}
-        </span>
-      </span>
-      <span className="mt-auto block text-[11px] text-muted-foreground">
-        {playersLabel(game)} · {game.duration}
-      </span>
+      <span className="line-clamp-2 w-full text-[11px] leading-tight font-medium">{game.shortName ?? game.name}</span>
     </button>
   )
 }

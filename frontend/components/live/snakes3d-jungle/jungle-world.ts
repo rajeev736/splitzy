@@ -2,6 +2,8 @@ import gsap from "gsap"
 import * as THREE from "three"
 
 import type { SnakesLast, SnakesState } from "@/lib/live/snakes"
+import type { SnakesSound } from "@/lib/live/sound"
+import type { EdgePoint } from "../snakes3d/edge-markers"
 import { disposeCharacterCache, disposePiece, makePiece, MARKER_Y, setDim, type Piece } from "./characters"
 import { Fx } from "./fx"
 import { axisAt, COLS, DEPTH, LADDER_SHAPES, RISE, rowOfZ, SNAKE_SHAPES, SPACING, standOf, tileTop, TOP } from "./layout"
@@ -34,10 +36,16 @@ export interface JungleOptions {
   /** A white overlay for the lightning's flash (opacity animated), or null. */
   flash: HTMLElement | null
   reduced: boolean
-  onStep: () => void
+  /** A moment of the animation that has a sound (each hop, the gate, a ladder, a snake, the summit). */
+  onSound: (sound: SnakesSound) => void
   /** The player took the camera (true) or handed it back (false). */
   onFree: (free: boolean) => void
+  /** Each drawn frame: where the other pieces (and yours, in free camera) are on screen, for the off-screen arrows. */
+  onMarkers?: (points: EdgePoint[], w: number, h: number) => void
 }
+
+/** Where on a piece the off-screen arrows point (its middle, above its feet). */
+const BODY_Y = 0.45
 
 /**
  * The jungle tower in three.js: owns the renderer, the scene, the camera and
@@ -56,6 +64,12 @@ export class JungleWorld {
   private readonly sky: THREE.Texture
   private readonly pieces = new Map<string, Piece>()
   private meUid = ""
+  /** Players who left or are out (no off-screen arrow for them). */
+  private hidden = new Set<string>()
+  /** The canvas's size in CSS px, and a scratch vector for projecting the pieces onto it. */
+  private w = 1
+  private h = 1
+  private readonly onScreenAt = new THREE.Vector3()
 
   /** Where each piece is drawn (or will be once the running timeline ends). */
   private shown: Record<string, number> = {}
@@ -172,6 +186,22 @@ export class JungleWorld {
     else if (this.fx.portalOpen) this.fx.spin(dt)
     this.applyCamera()
     this.renderer.render(this.scene, this.camera)
+    this.emitMarkers()
+  }
+
+  /** Project the pieces onto the canvas for the off-screen arrows (after a render, so the camera's matrices are fresh). */
+  private emitMarkers() {
+    const sink = this.opts.onMarkers
+    if (!sink) return
+    const points: EdgePoint[] = []
+    for (const [uid, p] of this.pieces) {
+      if (this.hidden.has(uid) || (uid === this.meUid && !this.free)) continue
+      const v = this.onScreenAt.copy(p.root.position)
+      v.y += BODY_Y
+      v.project(this.camera)
+      points.push({ uid, x: ((v.x + 1) / 2) * this.w, y: ((1 - v.y) / 2) * this.h, pos: this.shown[uid] ?? 0 })
+    }
+    sink(points, this.w, this.h)
   }
 
   /** Busy frames that keep coming slow: lower the resolution a step (never below 1×). */
@@ -236,6 +266,8 @@ export class JungleWorld {
     const host = this.opts.host
     const w = Math.max(1, host.clientWidth)
     const h = Math.max(1, host.clientHeight)
+    this.w = w
+    this.h = h
     this.renderer.setSize(w, h, false)
     this.camera.aspect = w / h
     const tanH = Math.tan(THREE.MathUtils.degToRad(FOV / 2))
@@ -326,8 +358,18 @@ export class JungleWorld {
   backToMe() {
     this.free = false
     this.opts.onFree(false)
+    this.dirty = true
     const to = this.followTarget()
     if (to !== null) this.glide(to, 0.6)
+  }
+
+  /** An off-screen arrow was tapped: glide to that piece and stay there (free camera) — or, for the followed piece, follow again. */
+  focus(uid: string) {
+    const p = this.pieces.get(uid)
+    if (!p) return
+    if (uid === this.followUid) return this.backToMe()
+    this.letGo()
+    this.glide(this.aim(p.root.position), 0.6)
   }
 
   private letGo() {
@@ -335,7 +377,20 @@ export class JungleWorld {
     this.camTween?.kill()
     this.camTween = null
     this.free = true
+    this.dirty = true
     this.opts.onFree(true)
+  }
+
+  /**
+   * Your turn came, or your piece is about to move: the camera leaves free mode
+   * and glides back to you (the move's own tracking then takes it along).
+   */
+  private reclaim() {
+    this.free = false
+    this.opts.onFree(false)
+    this.dirty = true
+    const p = this.pieces.get(this.meUid)
+    if (p) this.glide(this.aim(standOf(this.shown[this.meUid] ?? 0, p.slot)), 0.5)
   }
 
   private unitsPerPx() {
@@ -501,6 +556,7 @@ export class JungleWorld {
   sync(state: SnakesState, meUid: string, hidden: string[]) {
     this.ensurePieces(state, meUid)
     for (const [uid, p] of this.pieces) setDim(p, hidden.includes(uid))
+    this.hidden = new Set(hidden)
     this.dirty = true
 
     const last = state.last
@@ -508,6 +564,10 @@ export class JungleWorld {
     // The same move again (the server stamping its clock on it): nothing new to play
     if (prev === state.seq) return
     this.seen = state.seq
+
+    // Looking around freely: an opponent's move leaves the camera be, but your turn or your own move brings it home
+    const mine = (last && (last.type === "move" || last.type === "blocked") && last.by === meUid) || (state.phase === "roll" && state.turn === meUid)
+    if (this.free && prev !== null && mine && this.pieces.has(meUid)) this.reclaim()
 
     // A state landing mid-animation: finish what was playing, then continue from there
     if (this.tl) {
@@ -587,6 +647,7 @@ export class JungleWorld {
     tl.fromTo(g.lockMat.color, { r: 1, g: 0.25, b: 0.25 }, { r: 0.95, g: 0.79, b: 0.3, duration: 0.7 }, 0)
     tl.fromTo(g.lockMat.emissive, { r: 0.8, g: 0, b: 0 }, { r: 0, g: 0, b: 0, duration: 0.7 }, 0)
     tl.to(p.turn.rotation, { z: 0.12, duration: 0.08, yoyo: true, repeat: 3, ease: "sine.inOut" }, 0.15)
+    tl.call(() => this.opts.onSound("gate_shut"), [], 0.1)
     return tl
   }
 
@@ -635,7 +696,8 @@ export class JungleWorld {
     const shadowOn = p.dim ? 0.2 : 0.5
     const track = (pos: THREE.Vector3, dur: number, position?: gsap.Position) =>
       tl.call(() => this.track(uid, pos, dur), [], position ?? "<")
-    // Hops run back to back from `cursor`; each landing gets a puff and a step sound. The step's
+    const sound = (s: SnakesSound, position: gsap.Position) => tl.call(() => this.opts.onSound(s), [], position)
+    // Hops run back to back from `cursor`; each landing gets a puff and a hop sound. The hop's
     // call goes in last, so a following ">" means "after this landing", not after the puff fades.
     const hopTo = (pos: number, dur: number, lift = 0.36, startAt?: number) => {
       const to = standOf(pos, slot)
@@ -645,13 +707,14 @@ export class JungleWorld {
       const label = `land${landings++}`
       tl.addLabel(label, land)
       this.fx.addPuff(tl, to, label)
-      tl.call(() => this.opts.onStep(), [], land)
+      sound("hop", land)
       cursor = land
       at = to
     }
 
-    // The walk (through the gate on a 1)
+    // The walk (through the gate on a 1, straight onto square 1 — the tower has no ladder there)
     if (last.gate) {
+      sound("gate_open", 0)
       tl.to(g.left.rotation, { y: 1.85, duration: 0.45, ease: "power2.inOut" }, 0)
       tl.to(g.right.rotation, { y: -1.85, duration: 0.45, ease: "power2.inOut" }, 0)
       track(standOf(1, slot), 0.6, 0.3)
@@ -679,6 +742,7 @@ export class JungleWorld {
       tl.to(p.turn.rotation, { y: "+=3", duration: 0.25, ease: "power1.in" }, "ladder")
       tl.to(p.shadowMat, { opacity: 0, duration: 0.15 }, "ladder")
       tl.addLabel("climb", "ladder+=0.12")
+      sound("climb", "ladder")
       if (L) this.fx.addSpark(tl, L.curve, "climb", 0.45, "#ffe680")
       track(end, 0.55, "ladder+=0.1")
       tl.addLabel("top", "ladder+=0.6")
@@ -700,6 +764,7 @@ export class JungleWorld {
       const tailAt = tileTop(last.end)
       tl.addLabel("snake", ">0.1")
       this.fx.addPortalOpen(tl, holeAt, "snake")
+      sound("bite", "snake+=0.12")
       tl.to(p.hop.position, { y: -0.4, duration: 0.45, ease: "power2.in" }, "snake+=0.12")
       tl.to(p.hop.scale, { x: 0.15, y: 0.15, z: 0.15, duration: 0.45, ease: "power2.in" }, "snake+=0.12")
       tl.to(p.turn.rotation, { y: "+=7", duration: 0.55, ease: "power1.in" }, "snake+=0.1")
@@ -728,6 +793,7 @@ export class JungleWorld {
     if (last.finished) {
       const star = this.parts.star
       tl.addLabel("win", ">0.1")
+      sound("summit", "win")
       tl.to(p.hop.position, { y: 0.42, duration: 0.22, ease: "power1.out", yoyo: true, repeat: 5 }, "win")
       tl.to(p.turn.rotation, { y: `+=${Math.PI * 2}`, duration: 0.9, ease: "power1.inOut" }, "win")
       this.fx.addBurst(tl, at.clone().add(new THREE.Vector3(0, 0.4, 0)), "win")

@@ -6,14 +6,15 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
 
 import { Coins } from "@/components/fun/coin"
-import { useSession } from "@/components/providers/session-provider"
 import { BottomSheet } from "@/components/shared/bottom-sheet"
+import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { useWallet } from "@/hooks/use-fun"
-import { getErrorMessage } from "@/lib/errors"
+import { useBuyTheme } from "@/hooks/use-fun-mutations"
 import {
   chooseTheme,
+  ownsTheme,
   THEMES,
   useBoardTheme,
   type BoardTheme,
@@ -21,20 +22,47 @@ import {
   type LudoLook,
   type Snakes3DLook,
   type ThemeGame,
+  type TicTacToeLook,
 } from "@/lib/live/themes"
+import type { Wallet } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { buyTheme } from "@/services/fun"
 import { pieceImage } from "./chess/chess-board"
+import { LiveGameLogo } from "./live-game-logo"
 
-/** A tiny picture of a board in a theme. */
-function Preview({ theme }: { theme: BoardTheme<unknown> }) {
-  if (theme.game === "snakes3d") {
-    const look = theme.look as Snakes3DLook
-    return (
-      // eslint-disable-next-line @next/next/no-img-element -- a small static picture; no optimising needed
-      <img src={look.preview} alt="" loading="lazy" className="block aspect-square w-full rounded-md object-cover object-top" style={{ background: look.table }} />
-    )
-  }
+const fmt = new Intl.NumberFormat("en-IN")
+
+/**
+ * A theme's preview picture, square. Until a picture exists (or if it fails
+ * to load) the game's logo stands in, so a card never shows a broken image.
+ */
+export function ThemePicture({ theme, className }: { theme: BoardTheme<unknown>; className?: string }) {
+  const look = theme.look as Partial<Snakes3DLook & TicTacToeLook>
+  const [failed, setFailed] = React.useState<string | null>(null)
+  const src = look.preview
+  return (
+    <div className={cn("relative aspect-square w-full overflow-hidden bg-muted", className)} style={{ background: look.table }}>
+      {src && failed !== src ? (
+        // eslint-disable-next-line @next/next/no-img-element -- a small static picture; no optimising needed
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          onError={() => setFailed(src)}
+          className="block size-full object-cover object-top"
+        />
+      ) : (
+        <span className="flex size-full items-center justify-center">
+          <LiveGameLogo game={theme.game} className="size-1/2" />
+        </span>
+      )}
+    </div>
+  )
+}
+
+/** A tiny picture of a board in a theme (the game's picker and the inventory's cards). */
+export function BoardThemeThumb({ theme }: { theme: BoardTheme<unknown> }) {
+  // Snakes 3D and Tic Tac Toe themes come with a picture
+  if (theme.game === "snakes3d" || theme.game === "tictactoe") return <ThemePicture theme={theme} className="rounded-md" />
   if (theme.game === "chess") {
     const look = theme.look as ChessLook
     // The top-left quarter of the board, with a few pieces on it
@@ -104,36 +132,101 @@ function Preview({ theme }: { theme: BoardTheme<unknown> }) {
 }
 
 /**
- * The board theme button in the game room's dock (Ludo and Chess): pick a
- * theme you own, or buy one with coins. One theme is free.
+ * The one button for a board theme, wherever it shows (the game room's
+ * picker, the inventory): in use, use it, or buy it after a confirm and play
+ * on it. Ownership comes from the live wallet, so a board bought anywhere is
+ * never sold twice.
+ */
+export function ThemeAction({
+  theme,
+  wallet,
+  using,
+  compact = false,
+  onUsed,
+  className,
+}: {
+  theme: BoardTheme<unknown>
+  wallet: Wallet | null | undefined
+  /** This device plays on it now. */
+  using: boolean
+  /** Short labels, for the cards in the game's picker. */
+  compact?: boolean
+  /** After it's put on (picked or bought). */
+  onUsed?: () => void
+  className?: string
+}) {
+  const buy = useBuyTheme()
+  const [confirming, setConfirming] = React.useState(false)
+  const have = ownsTheme(theme, wallet?.themes)
+  const balance = wallet?.balance ?? 0
+  const short = !have && !!wallet && balance < theme.price
+
+  const use = () => {
+    chooseTheme(theme.game, theme.id)
+    onUsed?.()
+  }
+
+  return (
+    <>
+      <Button
+        size={compact ? "sm" : "default"}
+        variant={using ? "secondary" : have ? "outline" : "default"}
+        disabled={using || buy.isPending || short || (!have && !wallet)}
+        onClick={() => (have ? use() : setConfirming(true))}
+        className={cn("w-full", className)}
+      >
+        {buy.isPending ? (
+          <Spinner />
+        ) : using ? (
+          <>
+            <HugeiconsIcon icon={Tick02Icon} data-icon="inline-start" />
+            {compact ? "Using" : "In use on this device"}
+          </>
+        ) : have ? (
+          compact ? "Use" : "Use on this device"
+        ) : short && !compact ? (
+          `${fmt.format(theme.price - balance)} more coins needed`
+        ) : (
+          <>
+            Buy · <Coins amount={theme.price} iconClassName="size-3.5" />
+          </>
+        )}
+      </Button>
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={`Buy the ${theme.name} board?`}
+        confirmLabel="Buy"
+        isPending={buy.isPending}
+        onConfirm={() =>
+          buy.mutate(theme, {
+            onSuccess: () => {
+              setConfirming(false)
+              toast.success(`${theme.name} board is yours`)
+              onUsed?.()
+            },
+          })
+        }
+        description={
+          <>
+            {fmt.format(theme.price)} coins from your {fmt.format(balance)}. It&apos;s yours on every device, and you&apos;ll
+            play on it from now.
+          </>
+        }
+      />
+    </>
+  )
+}
+
+/**
+ * The board theme button in the game room's dock (Ludo, Chess, Snakes 3D):
+ * pick a theme you own, or buy one with coins. One theme is free.
  */
 export function BoardThemePicker({ game }: { game: ThemeGame }) {
-  const { user } = useSession()
   const wallet = useWallet()
-  const owned = wallet?.themes ?? []
-  const current = useBoardTheme(game, owned)
+  const current = useBoardTheme(game, wallet?.themes)
   const [open, setOpen] = React.useState(false)
-  const [busy, setBusy] = React.useState<string | null>(null)
   const list = THEMES[game] as BoardTheme<unknown>[]
-
-  const pick = async (t: BoardTheme<unknown>) => {
-    if (!user || busy) return
-    const have = t.price === 0 || owned.includes(t.id)
-    if (have) {
-      chooseTheme(game, t.id)
-      return
-    }
-    setBusy(t.id)
-    try {
-      await buyTheme(user.uid, t.id)
-      chooseTheme(game, t.id)
-      toast.success(`${t.name} board is yours`)
-    } catch (e) {
-      toast.error(getErrorMessage(e, "Couldn't buy that board"))
-    } finally {
-      setBusy(null)
-    }
-  }
 
   return (
     <>
@@ -152,9 +245,7 @@ export function BoardThemePicker({ game }: { game: ThemeGame }) {
       >
         <div className="grid grid-cols-2 gap-2.5 pb-2 sm:grid-cols-3">
           {list.map((t) => {
-            const have = t.price === 0 || owned.includes(t.id)
             const using = current.id === t.id
-            const short = !have && (wallet?.balance ?? 0) < t.price
             return (
               <div
                 key={t.id}
@@ -163,33 +254,13 @@ export function BoardThemePicker({ game }: { game: ThemeGame }) {
                   using && "border-primary ring-1 ring-primary"
                 )}
               >
-                <Preview theme={t} />
+                <BoardThemeThumb theme={t} />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold">{t.name}</p>
                   <p className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">{t.blurb}</p>
                 </div>
-                <Button
-                  size="sm"
-                  variant={using ? "secondary" : have ? "outline" : "default"}
-                  disabled={using || !!busy || short}
-                  onClick={() => void pick(t)}
-                  className="w-full"
-                >
-                  {busy === t.id ? (
-                    <Spinner />
-                  ) : using ? (
-                    <>
-                      <HugeiconsIcon icon={Tick02Icon} data-icon="inline-start" />
-                      Using
-                    </>
-                  ) : have ? (
-                    "Use"
-                  ) : (
-                    <>
-                      Buy · <Coins amount={t.price} iconClassName="size-3.5" />
-                    </>
-                  )}
-                </Button>
+                {/* Picking (or buying) a board puts it on and closes the sheet: you're straight back at the game */}
+                <ThemeAction theme={t} wallet={wallet} using={using} compact onUsed={() => setOpen(false)} />
               </div>
             )
           })}

@@ -6,7 +6,8 @@ import * as React from "react"
  * Game sounds, in packs:
  *
  * - "classic": calm, decent effects synthesised with the Web Audio API (dice
- *   rattle, piece taps, a wooden chess knock, a win fanfare) — no voices.
+ *   rattle, piece taps, a wooden chess knock, a win fanfare, arcade blips
+ *   for Snakes & Ladders) — no voices.
  * - "cid": CID & Bollywood memes (Fahh, Nahi nahi Saluke, Tu to gaya bete,
  *   Kaun hai re, Alag hi level ka banda…) on top of the effects.
  * - "internet": internet memes (Emotional damage, Moye moye, Chicken scream,
@@ -43,6 +44,13 @@ export type SoundEvent =
   | "take" // a piece taken (chess / checkers)
   | "check"
   | "place" // tic tac toe
+  // Snakes & Ladders (the boards play these as each moment animates)
+  | "hop" // a piece lands on the next square
+  | "bite" // a snake swallows a piece
+  | "climb" // a piece goes up a ladder
+  | "gate_open" // the tower's gate swings open on a 1
+  | "gate_shut" // the gate rattles and stays shut
+  | "summit" // someone reached 100
   // Scribble
   | "correct"
   | "tick"
@@ -178,6 +186,33 @@ function noise(
   src.stop(at + d + 0.02)
 }
 
+/** A tone sliding from `f` to `to` with a vibrato on top (`rate` Hz, ±`depth` Hz): the arcade "wah-wah". */
+function wobble(a: AudioContext, { f, to, t = 0, d, rate, depth, type = "square", v = 0.05 }: Tone & { rate: number; depth: number }) {
+  const at = a.currentTime + t
+  const o = a.createOscillator()
+  const lfo = a.createOscillator()
+  const lfoGain = a.createGain()
+  const g = a.createGain()
+  o.type = type
+  o.frequency.setValueAtTime(f, at)
+  if (to) o.frequency.exponentialRampToValueAtTime(to, at + d)
+  lfo.frequency.value = rate
+  lfoGain.gain.value = depth
+  lfo.connect(lfoGain).connect(o.frequency)
+  g.gain.setValueAtTime(0.0001, at)
+  g.gain.exponentialRampToValueAtTime(v, at + 0.02)
+  g.gain.setValueAtTime(v, at + d * 0.7)
+  g.gain.exponentialRampToValueAtTime(0.0001, at + d)
+  o.connect(g).connect(bus ?? a.destination)
+  o.start(at)
+  lfo.start(at)
+  o.stop(at + d + 0.02)
+  lfo.stop(at + d + 0.02)
+}
+
+/** Hops alternate between two pitches, so a walk bounces ("toi-toi-toi") instead of droning. */
+let hopCount = 0
+
 /** The effects themselves, shared by every pack. */
 const FX: Record<SoundEvent, (a: AudioContext) => void> = {
   dice: (a) => {
@@ -209,6 +244,43 @@ const FX: Record<SoundEvent, (a: AudioContext) => void> = {
   },
   check: (a) => [880, 660].forEach((f, i) => tone(a, { t: i * 0.12, f, d: 0.16, type: "square", v: 0.06 })),
   place: (a) => tone(a, { f: 520, to: 780, d: 0.09, type: "sine", v: 0.18 }),
+  // Snakes & Ladders: little arcade sounds, quieter than the dice
+  hop: (a) => {
+    const k = hopCount++ % 2 ? 1.19 : 1
+    tone(a, { f: 330 * k, to: 700 * k, d: 0.07, type: "triangle", v: 0.08 })
+    tone(a, { f: 660 * k, to: 1400 * k, d: 0.05, type: "square", v: 0.018 })
+  },
+  bite: (a) => {
+    // "Tau…" then a wobbling slide down: "rew-rew-rew"
+    tone(a, { f: 880, to: 620, d: 0.09, type: "square", v: 0.045 })
+    wobble(a, { t: 0.1, f: 620, to: 120, d: 0.75, rate: 9, depth: 38, type: "square", v: 0.04 })
+    wobble(a, { t: 0.1, f: 310, to: 60, d: 0.75, rate: 9, depth: 19, type: "triangle", v: 0.08 })
+  },
+  climb: (a) => {
+    // A quick sparkly run up the scale, a whoosh under it and a twinkle at the top
+    ;[523, 659, 784, 1047, 1319, 1568, 2093].forEach((f, i) => tone(a, { t: i * 0.05, f, d: 0.12, type: "triangle", v: 0.07 }))
+    tone(a, { f: 300, to: 1500, d: 0.36, v: 0.035 })
+    ;[2637, 3136].forEach((f, i) => tone(a, { t: 0.38 + i * 0.06, f, d: 0.22, v: 0.035 }))
+  },
+  gate_open: (a) => {
+    // The latch clicks, the hinges creak, the door knocks the post
+    noise(a, { d: 0.03, f: 2600, q: 8, v: 0.22 })
+    wobble(a, { t: 0.05, f: 150, to: 230, d: 0.32, rate: 22, depth: 25, type: "sawtooth", v: 0.022 })
+    tone(a, { t: 0.36, f: 150, to: 85, d: 0.09, type: "triangle", v: 0.09 })
+  },
+  gate_shut: (a) => {
+    // Rattle-rattle against the lock, then a dull thud
+    for (let i = 0; i < 4; i++) noise(a, { t: i * 0.065, d: 0.035, f: 1300 + (i % 2) * 400, q: 6, v: 0.2 })
+    tone(a, { t: 0.27, f: 120, to: 70, d: 0.1, type: "triangle", v: 0.09 })
+  },
+  summit: (a) => {
+    // A short happy jingle: up, up, up — ta-daa
+    ;[784, 1047, 1319, 1568].forEach((f, i) => {
+      tone(a, { t: i * 0.085, f, d: 0.12, type: "triangle", v: 0.08 })
+      tone(a, { t: i * 0.085, f: f * 2, d: 0.06, type: "square", v: 0.012 })
+    })
+    ;[1047, 1319, 2093].forEach((f) => tone(a, { t: 0.36, f, d: 0.45, type: "triangle", v: 0.06 }))
+  },
   correct: (a) => [880, 1320].forEach((f, i) => tone(a, { t: i * 0.08, f, d: 0.22, v: 0.15 })),
   tick: (a) => tone(a, { f: 1200, d: 0.03, type: "square", v: 0.05 }),
   win: (a) => [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(a, { t: i * 0.12, f, d: 0.3, type: "triangle", v: 0.16 })),
@@ -296,6 +368,9 @@ const DESI_LINES: Partial<Record<SoundEvent, Line[]>> = {
     { clip: "tu-toh-gaya-beta", say: "Tu toh gaya beta!", packs: CID },
   ],
   check: [{ clip: "shah", say: "Shah!" }],
+  bite: [{ clip: "arre-baap-re", say: "Arre baap re!" }],
+  climb: [{ clip: "shaktimaan", say: "Shaktimaan!" }],
+  summit: [{ clip: "alag-level", say: "Wo alag hi level ka banda tha!" }],
   correct: [{ clip: "sahi-jawab", say: "Sahi jawab!" }],
   win: [
     { clip: "jeet-gaya", say: "Jeet gaya bhai!" },
@@ -330,8 +405,11 @@ const missingClips = new Set<string>()
 let current: { gain: GainNode | null; clip: HTMLAudioElement | null } | null = null
 /** Where the effects being played right now go (the current sound's gain). */
 let bus: AudioNode | null = null
-/** Tiny ticks that never cut another sound off (a piece hopping square by square). */
-const SOFT: SoundEvent[] = ["step", "tick"]
+/** Tiny ticks that never cut another sound off (a piece hopping square by square, the gate's latch). */
+const SOFT: SoundEvent[] = ["step", "tick", "hop", "gate_open", "gate_shut"]
+
+/** The moments a Snakes & Ladders board plays as they animate (see the boards' `onSound`). */
+export type SnakesSound = Extract<SoundEvent, "hop" | "bite" | "climb" | "gate_open" | "gate_shut" | "summit">
 
 function stopCurrent(a: AudioContext | null) {
   const c = current
@@ -376,7 +454,7 @@ function sayMeme(event: SoundEvent, pack: SoundPack, soft: boolean) {
     const voice = window.speechSynthesis.getVoices().find((v) => v.lang.startsWith("hi"))
     if (voice) u.voice = voice
     u.rate = 1.05
-    u.pitch = event === "captured" ? 0.7 : 1.25
+    u.pitch = event === "captured" || event === "bite" ? 0.7 : 1.25
     window.speechSynthesis.cancel()
     window.speechSynthesis.speak(u)
   }

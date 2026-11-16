@@ -1,4 +1,4 @@
-import { LADDERS, SNAKES } from "@/lib/live/snakes"
+import { GATE_LADDERS, SNAKES } from "@/lib/live/snakes"
 
 /**
  * The tower's geometry: a 2:1 isometric staircase of 10 terraces (rows) of
@@ -143,5 +143,5 @@ export function snakePath(head: number, tail: number): { d: string; head: Pt; ta
   return { d, head: h, tail: t, angle }
 }
 
-export const LADDER_LIST = Object.entries(LADDERS).map(([f, t]) => ({ foot: Number(f), top: t }))
+export const LADDER_LIST = Object.entries(GATE_LADDERS).map(([f, t]) => ({ foot: Number(f), top: t }))
 export const SNAKE_LIST = Object.entries(SNAKES).map(([h, t]) => ({ head: Number(h), tail: t }))

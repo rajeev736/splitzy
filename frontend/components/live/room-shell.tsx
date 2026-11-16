@@ -729,7 +729,9 @@ function PlayingView({
         <div className="mx-auto flex max-w-3xl items-center gap-2 px-3 py-2">
           <VoiceBar code={code} uid={uid} players={players} voice={voice} />
           <SoundMenu />
-          {(meta.game === "ludo" || meta.game === "chess" || meta.game === "snakes3d") && <BoardThemePicker game={meta.game} />}
+          {(meta.game === "ludo" || meta.game === "chess" || meta.game === "snakes3d" || meta.game === "tictactoe") && (
+            <BoardThemePicker game={meta.game} />
+          )}
           <Button
             variant={stickers ? "secondary" : "outline"}
             size="sm"

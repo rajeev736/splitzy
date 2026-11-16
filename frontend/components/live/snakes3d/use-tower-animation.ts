@@ -4,6 +4,7 @@ import * as React from "react"
 import gsap from "gsap"
 
 import type { SnakesState } from "@/lib/live/snakes"
+import type { SnakesSound } from "@/lib/live/sound"
 import { standOf, tileCentre, type Pt } from "./geometry"
 
 /** The SVG groups that make up one piece and its effects. */
@@ -35,7 +36,8 @@ const CHAR_SCALE = { scale: 1, opacity: 1, x: 0, y: 0 }
  * one hop per square, then the ladder's lightning or the snake's portal —
  * while the state (and so the seats) is already at the result. Anything else
  * (joining late, a skipped state, a turn skip) just snaps every piece to
- * where the state says.
+ * where the state says. `onSound` hears each moment as it plays (the hops,
+ * the gate, the ladder, the snake, the summit) — once per move.
  */
 export function useTowerAnimation({
   state,
@@ -43,23 +45,23 @@ export function useTowerAnimation({
   svg,
   slotOf,
   camera,
-  onStep,
+  onSound,
 }: {
   state: SnakesState | null | undefined
   refs: React.RefObject<Map<string, CharRefs>>
   svg: React.RefObject<SVGSVGElement | null>
   slotOf: (uid: string) => number
   camera: CameraHandle
-  onStep?: () => void
+  onSound?: (sound: SnakesSound) => void
 }) {
   /** Where each piece is drawn (or will be when the running timeline ends). */
   const shown = React.useRef<Record<string, number>>({})
   const seen = React.useRef<number | null>(null)
   const timeline = React.useRef<gsap.core.Timeline | null>(null)
-  const stepCb = React.useRef(onStep)
+  const soundCb = React.useRef(onSound)
   const cam = React.useRef(camera)
   React.useEffect(() => {
-    stepCb.current = onStep
+    soundCb.current = onSound
     cam.current = camera
   })
 
@@ -124,6 +126,7 @@ export function useTowerAnimation({
       }
       // Rattle: the piece bumps the gate, the gate shudders
       const tl = gsap.timeline({ onComplete: () => (timeline.current = null) })
+      tl.call(() => soundCb.current?.("gate_shut"), [], 0.1)
       tl.to(hop, { x: 4, duration: 0.07, yoyo: true, repeat: 5, ease: "sine.inOut" }).set(hop, { x: 0 })
       if (doorL && doorR) {
         tl.to([doorL, doorR], { rotation: 1.5, duration: 0.06, yoyo: true, repeat: 5, ease: "sine.inOut", transformOrigin: "50% 100%" }, 0.1)
@@ -143,6 +146,7 @@ export function useTowerAnimation({
     const target = state.players[uid]?.pos ?? last.end
     shown.current[uid] = target
     const tl = gsap.timeline({ onComplete: () => (timeline.current = null) })
+    const sound = (s: SnakesSound, position?: gsap.Position) => tl.call(() => soundCb.current?.(s), [], position)
     const hopTo = (pos: number, dur: number) => {
       const p = standOf(pos, slot)
       tl.to(root, { x: p.x, y: p.y, duration: dur, ease: "none" })
@@ -152,15 +156,16 @@ export function useTowerAnimation({
         tl.to(r.shadow, { scale: 0.7, opacity: 0.18, duration: dur / 2, ease: "power1.out" }, "<-" + dur / 2)
         tl.to(r.shadow, { scale: 1, opacity: 0.3, duration: dur / 2, ease: "power1.in" }, ">")
       }
-      tl.call(() => stepCb.current?.())
+      sound("hop")
     }
     const track = (pos: number, dur: number) => {
       const p = standOf(pos, slot)
       tl.call(() => cam.current.track(uid, p, dur), [], "<")
     }
 
-    // The walk (through the gate on a 1)
+    // The walk (through the gate on a 1, straight onto square 1 — the tower has no ladder there)
     if (last.gate) {
+      sound("gate_open", 0)
       if (doorL && doorR) {
         tl.to(doorL, { scaleX: 0.06, duration: 0.45, ease: "power2.inOut", transformOrigin: "0% 50%" }, 0)
         tl.to(doorR, { scaleX: 0.06, duration: 0.45, ease: "power2.inOut", transformOrigin: "100% 50%" }, 0)
@@ -185,6 +190,7 @@ export function useTowerAnimation({
       const end = standOf(last.end, slot)
       const glow = svgEl?.querySelector(`[data-ladder-glow="${last.to}"]`)
       tl.addLabel("ladder", ">0.1")
+      sound("climb", "ladder")
       tl.set(r.fx, { x: at.x, y: at.y, opacity: 1, scale: 0.5, transformOrigin: "50% 80%" }, "ladder")
       tl.to(r.fx, { scale: 1.25, duration: 0.2, ease: "power2.out" }, "ladder")
       tl.to(hop, { scale: 0, opacity: 0, duration: 0.2, ease: "power2.in" }, "ladder+=0.05")
@@ -207,6 +213,7 @@ export function useTowerAnimation({
       const end = standOf(last.end, slot)
       const glow = svgEl?.querySelector(`[data-snake-glow="${last.to}"]`)
       tl.addLabel("snake", ">0.1")
+      sound("bite", "snake+=0.12")
       tl.set(r.portal, { x: at.x, y: at.y + 1, opacity: 1, scaleX: 0, scaleY: 0.7, transformOrigin: "50% 50%" }, "snake")
       tl.to(r.portal, { scaleX: 1, scaleY: 1, duration: 0.3, ease: "back.out(1.6)" }, "snake")
       if (glow) tl.fromTo(glow, { opacity: 0.7 }, { opacity: 0, duration: 0.9, ease: "power1.out" }, "snake")
@@ -227,6 +234,7 @@ export function useTowerAnimation({
     if (last.finished) {
       const top = tileCentre(100)
       tl.addLabel("win", ">0.1")
+      sound("summit", "win")
       tl.to(hop, { y: -22, duration: 0.22, ease: "power1.out", yoyo: true, repeat: 3 }, "win")
       const bits = svgEl ? Array.from(svgEl.querySelectorAll<SVGElement>("[data-confetti]")) : []
       bits.forEach((b, i) => {
@@ -255,5 +263,17 @@ export function useTowerAnimation({
 
   /** Where `uid` is drawn right now (the real position once its move has played). */
   const drawnPos = React.useCallback((uid: string) => shown.current[uid] ?? state?.players[uid]?.pos ?? 0, [state])
-  return { drawnPos }
+  /** Where `uid`'s piece stands on the tower this very frame (mid-hop too), in scene units. */
+  const liveAt = React.useCallback(
+    (uid: string): Pt => {
+      const root = refs.current?.get(uid)?.root
+      const x = root ? Number(gsap.getProperty(root, "x")) : NaN
+      const y = root ? Number(gsap.getProperty(root, "y")) : NaN
+      return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : standOf(drawnPos(uid), slotOf(uid))
+    },
+    [refs, drawnPos, slotOf]
+  )
+  /** A move is playing. */
+  const busy = React.useCallback(() => !!timeline.current?.isActive(), [])
+  return React.useMemo(() => ({ drawnPos, liveAt, busy }), [drawnPos, liveAt, busy])
 }

@@ -3,8 +3,8 @@
 import * as React from "react"
 import { serverTimestamp } from "firebase/database"
 
-import { UserAvatar } from "@/components/shared/user-avatar"
 import { Spinner } from "@/components/ui/spinner"
+import { useWallet } from "@/hooks/use-fun"
 import { useRoomNode } from "@/hooks/use-live-room"
 import { ABANDON_MS } from "@/lib/live/room"
 import {
@@ -18,9 +18,11 @@ import {
   type TicTacToeState,
 } from "@/lib/live/tictactoe"
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
-import { cn } from "@/lib/utils"
 import { playSound, useOnChange } from "@/lib/live/sound"
+import { useBoardTheme } from "@/lib/live/themes"
 import { stateTransaction } from "@/services/live-rooms"
+import { TTT_SKINS } from "./skins"
+import type { TttSeat } from "./skins/types"
 
 /** How long a finished round's board stays up before the next one. */
 const ROUND_PAUSE_MS = 2500
@@ -44,11 +46,25 @@ export function TicTacToeGame({
     [players]
   )
   const [busy, setBusy] = React.useState(false)
+  // The table is drawn by the skin of this device's chosen (and owned) theme
+  const wallet = useWallet()
+  const theme = useBoardTheme("tictactoe", wallet?.themes)
+  const Scene = TTT_SKINS[theme.look.skin]
+
+  // The cell that was just played, so the skin can animate it in
+  const board = state?.board ?? null
+  const [seen, setSeen] = React.useState<{ board: string | null; lastMove: number | null }>({ board, lastMove: null })
+  let lastMove = seen.lastMove
+  if (seen.board !== board) {
+    const was = seen.board
+    const placed = board && was && board.length === was.length ? [...board].findIndex((c, i) => c !== "." && was[i] === ".") : -1
+    lastMove = placed >= 0 ? placed : null
+    setSeen({ board, lastMove })
+  }
 
   const s = state ?? null
   const myMark = s ? markOf(s, uid) : null
   const opponentId = s?.players.find((p) => p !== uid) ?? null
-  const opponent = opponentId ? byId[opponentId] : undefined
 
   // Referee: after a round, start the next one or end the match
   const roundOver = s?.roundOver ?? null
@@ -117,132 +133,53 @@ export function TicTacToeGame({
   }
 
   const turnUid = uidOf(s, s.turn)
+  const roundWinner = s.roundOver && s.roundOver !== "draw" ? uidOf(s, s.roundOver) : null
   const status = s.roundOver
     ? s.roundOver === "draw"
       ? "Round drawn"
-      : uidOf(s, s.roundOver) === uid
+      : roundWinner === uid
         ? "You won the round!"
-        : `${first(byId[uidOf(s, s.roundOver)])} won the round`
+        : `${first(byId[roundWinner ?? ""])} won the round`
     : myTurn
       ? "Your move"
       : `Waiting for ${first(byId[turnUid])}…`
+  const tone = s.roundOver
+    ? s.roundOver === "draw"
+      ? "draw"
+      : roundWinner === uid
+        ? "win"
+        : "lose"
+    : myTurn
+      ? "turn"
+      : "wait"
+  const seat = (id: string | null, you: boolean): TttSeat => {
+    const p = id ? byId[id] : undefined
+    return {
+      name: you ? "You" : first(p),
+      photo: p?.photo,
+      mark: id ? markOf(s, id) : null,
+      wins: id ? (s.wins[id] ?? 0) : 0,
+      active: !s.roundOver && !!id && turnUid === id,
+      away: !!p && (p.left || !p.online),
+    }
+  }
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col items-center gap-4">
-      {/* Score */}
-      <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-2">
-        <PlayerChip
-          player={byId[uid]}
-          mark={myMark}
-          wins={s.wins[uid] ?? 0}
-          active={!s.roundOver && turnUid === uid}
-          you
-        />
-        <div className="text-center text-xs text-muted-foreground">
-          Round {Math.min(s.round, s.bestOf)}
-          <br />
-          first to {toWin(s.bestOf)}
-        </div>
-        <PlayerChip
-          player={opponent}
-          mark={opponentId ? markOf(s, opponentId) : null}
-          wins={opponentId ? (s.wins[opponentId] ?? 0) : 0}
-          active={!s.roundOver && turnUid === opponentId}
-        />
-      </div>
-
-      <p
-        className={cn(
-          "text-sm font-semibold",
-          s.roundOver &&
-            s.roundOver !== "draw" &&
-            uidOf(s, s.roundOver) === uid &&
-            "text-success",
-          myTurn && "text-primary"
-        )}
-        aria-live="polite"
-      >
-        {status}
-      </p>
-
-      {/* Board */}
-      <div
-        className="grid aspect-square w-full max-w-[min(88vw,22rem)] grid-cols-[repeat(3,minmax(0,1fr))] grid-rows-[repeat(3,minmax(0,1fr))] gap-2"
-        role="grid"
-        aria-label="Board"
-      >
-        {Array.from(s.board).map((cell, i) => {
-          const win = s.winLine?.includes(i)
-          const empty = cell === "."
-          return (
-            <button
-              key={i}
-              type="button"
-              role="gridcell"
-              aria-label={
-                empty
-                  ? `Square ${i + 1}, empty`
-                  : `Square ${i + 1}, ${cell.toUpperCase()}`
-              }
-              disabled={!myTurn || !empty || busy}
-              onClick={() => void play(i)}
-              className={cn(
-                "flex min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-xl border-2 bg-card text-5xl leading-none font-black transition-all",
-                empty &&
-                  myTurn &&
-                  "hover:border-primary/50 hover:bg-primary/5 active:scale-95",
-                win && "border-success bg-success/10",
-                !empty && "animate-in duration-200 zoom-in-50"
-              )}
-            >
-              {cell === "x" && <span className="text-sky-500">✕</span>}
-              {cell === "o" && <span className="text-rose-500">◯</span>}
-            </button>
-          )
-        })}
-      </div>
-    </div>
+    <Scene
+      board={s.board}
+      winLine={s.winLine}
+      lastMove={lastMove}
+      canPlay={myTurn && !busy}
+      onPlay={(i) => void play(i)}
+      me={seat(uid, true)}
+      opponent={seat(opponentId, false)}
+      status={status}
+      tone={tone}
+      round={s.round}
+      bestOf={s.bestOf}
+      toWin={toWin(s.bestOf)}
+    />
   )
 }
 
 const first = (p?: RoomPlayer) => (p ? p.name.split(" ")[0] : "Someone")
-
-function PlayerChip({
-  player,
-  mark,
-  wins,
-  active,
-  you,
-}: {
-  player?: RoomPlayer
-  mark: "x" | "o" | null
-  wins: number
-  active: boolean
-  you?: boolean
-}) {
-  return (
-    <div
-      className={cn(
-        "flex min-w-0 items-center gap-2 rounded-lg border bg-card px-2 py-2 transition-colors",
-        you ? "flex-row" : "flex-row-reverse text-right",
-        active && "border-primary ring-1 ring-primary"
-      )}
-    >
-      <UserAvatar
-        src={player?.photo}
-        name={player?.name ?? "?"}
-        size="sm"
-        className="shrink-0"
-      />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-xs font-medium">
-          {you ? "You" : first(player)}{" "}
-          <span className={mark === "x" ? "text-sky-500" : "text-rose-500"}>
-            {mark === "x" ? "✕" : mark === "o" ? "◯" : ""}
-          </span>
-        </p>
-        <p className="text-lg leading-none font-bold tabular-nums">{wins}</p>
-      </div>
-    </div>
-  )
-}

@@ -180,20 +180,43 @@ function Checkers({ id }: ArtProps) {
   )
 }
 
-/** The grid with an X and an O — three in a row waiting to happen. */
+/** A glossy grid: three coral X's winning across the middle, amber O's, and the winning stroke. */
 function TicTacToe({ id }: ArtProps) {
+  const x = (cx: number, cy: number, key: string) => (
+    <g key={key} strokeLinecap="round">
+      <path d={`M${cx - 2.7} ${cy - 1.7}l5.4 5.4M${cx + 2.7} ${cy - 1.7}l-5.4 5.4`} stroke="#1e1b4b" strokeOpacity="0.3" strokeWidth="3" />
+      <path d={`M${cx - 2.7} ${cy - 2.7}l5.4 5.4M${cx + 2.7} ${cy - 2.7}l-5.4 5.4`} stroke={`url(#${id}-x)`} strokeWidth="3" />
+    </g>
+  )
+  const o = (cx: number, cy: number, key: string) => (
+    <g key={key}>
+      <circle cx={cx} cy={cy + 1} r="2.8" fill="none" stroke="#1e1b4b" strokeOpacity="0.3" strokeWidth="2.7" />
+      <circle cx={cx} cy={cy} r="2.8" fill="none" stroke={`url(#${id}-o)`} strokeWidth="2.7" />
+    </g>
+  )
   return (
     <>
-      <Tile id={id} from="#38bdf8" to="#1d4ed8" />
-      <g stroke="#fff" strokeOpacity="0.85" strokeWidth="2.6" strokeLinecap="round">
-        <path d="M19 9.5v29M29 9.5v29M9.5 19h29M9.5 29h29" />
+      <defs>
+        <linearGradient id={`${id}-x`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#fda4af" />
+          <stop offset="1" stopColor="#e11d48" />
+        </linearGradient>
+        <linearGradient id={`${id}-o`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#fef08a" />
+          <stop offset="1" stopColor="#f59e0b" />
+        </linearGradient>
+      </defs>
+      <Tile id={id} from="#60a5fa" to="#1e3a8a" />
+      {/* The board: a soft panel and its grid */}
+      <rect x="7" y="7" width="34" height="34" rx="7" fill="#fff" fillOpacity="0.12" />
+      <g stroke="#fff" strokeOpacity="0.9" strokeWidth="2" strokeLinecap="round">
+        <path d="M19.3 10.5v27M28.7 10.5v27M10.5 19.3h27M10.5 28.7h27" />
       </g>
-      <g stroke="#fff" strokeWidth="3.2" strokeLinecap="round">
-        <path d="M11.2 11.2l4.6 4.6M15.8 11.2l-4.6 4.6" />
-        <path d="M32.2 32.2l4.6 4.6M36.8 32.2l-4.6 4.6" />
-      </g>
-      <circle cx="24" cy="24" r="3" fill="none" stroke="#fde047" strokeWidth="3" />
-      <circle cx="34.5" cy="13.5" r="2.8" fill="none" stroke="#fde047" strokeWidth="3" />
+      {o(14.4, 14.4, "o1")}
+      {o(33.6, 33.6, "o2")}
+      {x(14.4, 24, "x1")}
+      {x(24, 24, "x2")}
+      {x(33.6, 24, "x3")}
     </>
   )
 }
@@ -236,33 +259,101 @@ function Snakes({ id }: ArtProps) {
   )
 }
 
-/** Isometric grass-topped blocks climbing up a jungle cliff, with a ladder and a spark of lightning. */
+/**
+ * The jungle tower in two steps: a grass-topped stone block with an explorer
+ * on it, a bamboo ladder up to a taller block behind, and a fat orange snake
+ * coiled on top, draping down its side. Sunlit teal haze behind.
+ */
 function Snakes3D({ id }: ArtProps) {
-  // An isometric block: top diamond + two sides, at (x, y) with height h
-  const block = (x: number, y: number, h: number, key: string) => (
-    <g key={key}>
-      <path d={`M${x} ${y}l9 4.5v${h}l-9-4.5z`} fill="#57534e" />
-      <path d={`M${x + 18} ${y}l-9 4.5v${h}l9-4.5z`} fill="#44403c" />
-      <path d={`M${x} ${y}l9-4.5 9 4.5-9 4.5z`} fill="#4ade80" />
-      <path d={`M${x} ${y}l9 4.5 9-4.5`} fill="none" stroke="#166534" strokeWidth="1" />
-    </g>
-  )
+  // An isometric block: top diamond centred at (cx, cy), half-width w, sides h deep
+  const block = (cx: number, cy: number, w: number, h: number, key: string) => {
+    const q = w / 2
+    return (
+      <g key={key}>
+        <path d={`M${cx - w} ${cy}L${cx} ${cy + q}V${cy + q + h}L${cx - w} ${cy + h}z`} fill={`url(#${id}-stoneL)`} />
+        <path d={`M${cx + w} ${cy}L${cx} ${cy + q}V${cy + q + h}L${cx + w} ${cy + h}z`} fill={`url(#${id}-stoneR)`} />
+        {/* Stone courses */}
+        <path
+          d={`M${cx - w} ${cy + h * 0.45}L${cx} ${cy + q + h * 0.45}L${cx + w} ${cy + h * 0.45}`}
+          fill="none"
+          stroke="#1e293b"
+          strokeOpacity="0.25"
+          strokeWidth="0.7"
+        />
+        {/* Grass fringe and top */}
+        <path d={`M${cx - w} ${cy}L${cx} ${cy + q}L${cx + w} ${cy}v2.4L${cx} ${cy + q + 2.4}L${cx - w} ${cy + 2.4}z`} fill="#15803d" />
+        <path d={`M${cx - w} ${cy}L${cx} ${cy - q}L${cx + w} ${cy}L${cx} ${cy + q}z`} fill={`url(#${id}-grass)`} />
+        <path d={`M${cx - w + 2.5} ${cy}L${cx} ${cy - q + 1.25}`} stroke="#fff" strokeOpacity="0.5" strokeWidth="0.9" strokeLinecap="round" />
+      </g>
+    )
+  }
+  const body = "M33.5 13.6c3.6.6 6.4 2.4 6.2 5.2-.2 2.6-2.8 3.6-2.6 6.6.2 3 2.6 4.6 1.8 8"
   return (
     <>
-      <Tile id={id} from="#166534" to="#052e16" />
-      <circle cx="38" cy="10" r="5" fill="#fef9c3" opacity="0.25" />
-      <path d="M40 2v14" stroke="#7dd3fc" strokeWidth="2.5" opacity="0.55" strokeLinecap="round" />
-      {block(4, 34, 9, "a")}
-      {block(14, 26, 14, "b")}
-      {block(24, 18, 19, "c")}
-      {/* Ladder up the steps */}
-      <g stroke="#b45309" strokeWidth="1.6" strokeLinecap="round">
-        <path d="M13 36L21 21M17 38L25 23" />
-        <path d="M14.4 33.4l3.6 1.8M16.4 29.6l3.6 1.8M18.4 25.8l3.6 1.8" strokeWidth="1.3" />
+      <defs>
+        <linearGradient id={`${id}-sky`} x1="0" y1="0" x2="0.35" y2="1">
+          <stop offset="0" stopColor="#99f6e4" />
+          <stop offset="0.5" stopColor="#14b8a6" />
+          <stop offset="1" stopColor="#065f46" />
+        </linearGradient>
+        <radialGradient id={`${id}-sun`} cx="0.82" cy="0.1" r="0.45">
+          <stop offset="0" stopColor="#fffbeb" />
+          <stop offset="1" stopColor="#fffbeb" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id={`${id}-grass`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#d9f99d" />
+          <stop offset="1" stopColor="#4ade80" />
+        </linearGradient>
+        <linearGradient id={`${id}-stoneL`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#94a3b8" />
+          <stop offset="1" stopColor="#475569" />
+        </linearGradient>
+        <linearGradient id={`${id}-stoneR`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#64748b" />
+          <stop offset="1" stopColor="#334155" />
+        </linearGradient>
+        <linearGradient id={`${id}-snake`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#fdba74" />
+          <stop offset="1" stopColor="#f97316" />
+        </linearGradient>
+        <clipPath id={`${id}-clip`}>
+          <rect width="48" height="48" rx="11" />
+        </clipPath>
+      </defs>
+      <g clipPath={`url(#${id}-clip)`}>
+        <rect width="48" height="48" fill={`url(#${id}-sky)`} />
+        <rect width="48" height="48" fill={`url(#${id}-sun)`} />
+        {/* Far jungle, then mist */}
+        <path d="M0 24c3-3 6-2 8-4s5-4 8-2 4 3 7 1 5-3 8-1v30H0z" fill="#0d9488" opacity="0.55" />
+        <rect y="30" width="48" height="18" fill="#ccfbf1" opacity="0.12" />
+        {block(31, 16, 11, 26, "high")}
+        {block(17, 28, 11, 14, "low")}
+        {/* Bamboo ladder from the low step up to the high one */}
+        <g strokeLinecap="round">
+          <path d="M18.6 30.4L24.4 17.8M22.8 31.6L28.6 19" stroke="#a16207" strokeWidth="1.8" />
+          <path d="M19.9 27.9l4 1.2M21.3 24.8l4 1.2M22.7 21.7l4 1.2" stroke="#facc15" strokeWidth="1.3" />
+        </g>
+        {/* The snake: coiled on the high block, draping down its side */}
+        <path d={body} fill="none" stroke="#9a3412" strokeWidth="4.6" strokeLinecap="round" />
+        <path d={body} fill="none" stroke={`url(#${id}-snake)`} strokeWidth="3.1" strokeLinecap="round" />
+        <path d={body} fill="none" stroke="#7c2d12" strokeWidth="3.1" strokeDasharray="1 2.4" strokeOpacity="0.5" />
+        <ellipse cx="31.6" cy="12.6" rx="3.6" ry="2.9" fill="#fb923c" stroke="#9a3412" strokeWidth="0.9" />
+        <circle cx="30.5" cy="11.8" r="1.15" fill="#fff" />
+        <circle cx="33" cy="11.8" r="1.15" fill="#fff" />
+        <circle cx="30.3" cy="12" r="0.55" fill="#0f172a" />
+        <circle cx="32.8" cy="12" r="0.55" fill="#0f172a" />
+        <path d="M28.2 13.4h-1.6l-.8-.8M26.6 13.4l-.8.8" stroke="#dc2626" strokeWidth="0.65" strokeLinecap="round" fill="none" />
+        {/* The explorer on the low step */}
+        <ellipse cx="12.5" cy="29.4" rx="2.8" ry="0.9" fill="#14532d" opacity="0.45" />
+        <path d="M10.3 29c0-2.6 1-4 2.2-4s2.2 1.4 2.2 4z" fill="#ef4444" />
+        <circle cx="12.5" cy="23.6" r="2" fill="#fde68a" />
+        <ellipse cx="12.5" cy="22.2" rx="2.9" ry="0.9" fill="#92400e" />
+        <path d="M10.8 22.2a1.7 1.7 0 0 1 3.4 0z" fill="#d97706" />
+        {/* A leaf in front, for depth */}
+        <path d="M-1 48c2-8 7-12 13-12-2 6-6 10-13 12z" fill="#166534" />
+        <path d="M0 47c3-4 6-7 10-9.5" stroke="#4ade80" strokeWidth="0.6" fill="none" opacity="0.7" />
       </g>
-      {/* A little lightning over the top */}
-      <path d="M34 4l-4 7h3l-2 6 6-8h-3l2-5z" fill="#fde047" stroke="#f59e0b" strokeWidth="0.8" strokeLinejoin="round" />
-      <circle cx="9" cy="40" r="2.2" fill="#ef4444" stroke="#fff" strokeWidth="0.8" />
+      <rect width="48" height="48" rx="11" fill="none" stroke="#000" strokeOpacity="0.1" />
     </>
   )
 }

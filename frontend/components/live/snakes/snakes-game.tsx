@@ -4,6 +4,7 @@ import * as React from "react"
 
 import { Spinner } from "@/components/ui/spinner"
 import { describeLast, LAST, ordinal, type SnakesState } from "@/lib/live/snakes"
+import { playSound, type SnakesSound } from "@/lib/live/sound"
 import { SQUARE_GEO, type LudoPlayer } from "@/lib/live/ludo"
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
@@ -30,9 +31,14 @@ export const SnakesBoardArt = React.memo(function Board() {
   return <image href="/boards/snakes-classic.webp" x={0} y={0} width={10} height={10} preserveAspectRatio="none" />
 })
 
-/** Square-by-square positions on screen, lagging the state while a move plays out. */
-function useWalk(state: SnakesState | null | undefined) {
-  type Frame = { pos: Record<string, number>; ms: number }
+/**
+ * Square-by-square positions on screen, lagging the state while a move plays
+ * out. Each frame can carry a sound (a hop, the ladder, the snake, the
+ * summit), played once as the frame shows — so a move sounds as it animates,
+ * and Firebase echoing the same `seq` plays nothing again.
+ */
+function useWalk(state: SnakesState | null | undefined, onSound: (s: SnakesSound) => void) {
+  type Frame = { pos: Record<string, number>; ms: number; sound?: SnakesSound }
   const target = React.useMemo(
     () => (state ? Object.fromEntries(state.order.map((u) => [u, state.players[u].pos])) : {}),
     [state]
@@ -46,12 +52,14 @@ function useWalk(state: SnakesState | null | undefined) {
       let cur = shown
       for (let p = last.from + 1; p <= last.to; p++) {
         cur = { ...cur, [last.by]: p }
-        frames.push({ pos: cur, ms: 230 })
+        frames.push({ pos: cur, ms: 230, sound: "hop" })
       }
       if (last.via) {
+        // A beat on the snake's head / the ladder's foot, then the slide or the climb
         frames.push({ pos: { ...cur }, ms: 350 })
-        frames.push({ pos: target, ms: 0 })
-      } else frames.push({ pos: target, ms: 0 })
+        frames.push({ pos: target, ms: last.finished ? 600 : 0, sound: last.via === "ladder" ? "climb" : "bite" })
+      } else frames.push({ pos: target, ms: last.finished ? 250 : 0 })
+      if (last.finished) frames.push({ pos: target, ms: 0, sound: "summit" })
     } else frames.push({ pos: target, ms: 0 })
     setAnim({ seq: state.seq, frames, step: 0 })
   }
@@ -63,30 +71,60 @@ function useWalk(state: SnakesState | null | undefined) {
     )
     return () => window.clearTimeout(id)
   }, [anim])
+  const played = React.useRef("")
+  const soundRef = React.useRef(onSound)
+  React.useEffect(() => {
+    soundRef.current = onSound
+  })
+  React.useEffect(() => {
+    const sound = anim?.frames[anim.step]?.sound
+    const key = `${anim?.seq}:${anim?.step}`
+    if (!sound || played.current === key) return
+    played.current = key
+    soundRef.current(sound)
+  }, [anim])
   return anim ? anim.frames[Math.min(anim.step, anim.frames.length - 1)].pos : target
 }
 
 /** Snakes & Ladders on a flat 10×10 board, 2–5 players. */
 export function SnakesGame(props: LiveGameProps) {
-  const { code, uid, me } = props
-  const { state, canRoll, rolling, roll, byId, nameOf, gone, countdown } = useSnakesGame(props)
-  const shown = useWalk(state)
-  const stageRef = useStageFit()
-  const [throwAt, setThrowAt] = React.useState<RoomPlayer | null>(null)
-  const id = React.useId().replace(/:/g, "")
-  // The face each player's dice rests on
-  const [faces, setFaces] = React.useState<Record<string, number>>({})
-  const lastRoll =
-    state?.last && (state.last.type === "move" || state.last.type === "blocked") ? { by: state.last.by, value: state.last.value } : null
-  if (lastRoll && faces[lastRoll.by] !== lastRoll.value) setFaces((f) => ({ ...f, [lastRoll.by]: lastRoll.value }))
-
-  if (!state) {
+  const game = useSnakesGame(props)
+  if (!game.state) {
     return (
       <div className="flex justify-center py-16">
         <Spinner className="size-6" />
       </div>
     )
   }
+  return <SnakesTable {...game} state={game.state} code={props.code} uid={props.uid} me={props.me} />
+}
+
+export interface SnakesTableProps {
+  /** The room; "" previews the table without one (no throwables). */
+  code: string
+  uid: string
+  me: RoomPlayer
+  state: SnakesState
+  canRoll: boolean
+  rolling: boolean
+  roll: () => void
+  byId: Record<string, RoomPlayer>
+  nameOf: (uid: string) => string
+  gone: string[]
+  countdown: number | null
+}
+
+/** The table: seats around the board, the pieces walking square by square, the status line. */
+export function SnakesTable({ code, uid, me, state, canRoll, rolling, roll, byId, nameOf, gone, countdown }: SnakesTableProps) {
+  const shown = useWalk(state, playSound)
+  const stageRef = useStageFit()
+  const [throwAt, setThrowAt] = React.useState<RoomPlayer | null>(null)
+  const id = React.useId().replace(/:/g, "")
+  // The face each player's dice rests on
+  const [faces, setFaces] = React.useState<Record<string, number>>({})
+  const lastRoll =
+    state.last && (state.last.type === "move" || state.last.type === "blocked") ? { by: state.last.by, value: state.last.value } : null
+  if (lastRoll && faces[lastRoll.by] !== lastRoll.value) setFaces((f) => ({ ...f, [lastRoll.by]: lastRoll.value }))
 
   const mine = state.players[uid]
   const myTurn = state.phase !== "over" && state.turn === uid
@@ -133,7 +171,7 @@ export function SnakesGame(props: LiveGameProps) {
             />
           ) : null
         }
-        onTap={u !== uid && !me.left ? () => setThrowAt(rp) : undefined}
+        onTap={u !== uid && !me.left && code ? () => setThrowAt(rp) : undefined}
       />
     )
   }
@@ -199,6 +237,7 @@ export function SnakesGame(props: LiveGameProps) {
                 movable={false}
                 flying={false}
                 label={`${nameOf(p.u)}'s piece`}
+                quiet
                 onTap={() => undefined}
               />
             ))}
@@ -213,8 +252,12 @@ export function SnakesGame(props: LiveGameProps) {
         </div>
       </div>
       <p className="px-1 text-center text-[11px] text-muted-foreground max-md:hidden">Tap another player&apos;s photo to throw something at them</p>
-      <ThrowOverlay code={code} />
-      <ThrowPicker code={code} target={throwAt} onOpenChange={(o) => !o && setThrowAt(null)} />
+      {code && (
+        <>
+          <ThrowOverlay code={code} />
+          <ThrowPicker code={code} target={throwAt} onOpenChange={(o) => !o && setThrowAt(null)} />
+        </>
+      )}
     </div>
   )
 }

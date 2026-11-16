@@ -160,6 +160,8 @@ export const FRAMES: Record<FrameId, FrameInfo> = {
 export const isFrameId = (v: unknown): v is FrameId => typeof v === "string" && v in FRAMES
 export const isMilestoneFrame = (id: FrameId) => !!FRAMES[id].milestone
 export const isFreeFrame = (id: FrameId) => FRAMES[id].price === 0 && !isMilestoneFrame(id)
+/** Free, bought or claimed (`owned` = the wallet's frames): the one ownership check every screen uses. */
+export const ownsFrame = (id: FrameId, owned: string[] | undefined) => isFreeFrame(id) || !!owned?.includes(id)
 
 /* ── Gifts ────────────────────────────────────────────────────────────── */
 

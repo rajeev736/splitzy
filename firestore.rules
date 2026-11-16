@@ -103,8 +103,10 @@ service cloud.firestore {
     /** Coin price of a game board theme (lib/live/themes); 0 = free or unknown. */
     function themePrice(id) {
       return {
-        'ludo_flat': 250, 'ludo_mandala': 450, 'ludo_stitch': 450, 'ludo_mughal': 600,
-        'chess_wood': 350, 'chess_green': 250
+        'ludo_flat': 1500, 'ludo_mandala': 2500, 'ludo_stitch': 2500, 'ludo_mughal': 3500,
+        'chess_wood': 2500, 'chess_green': 2000, 'snakes3d_jungle': 5000,
+        'tictactoe_candy': 2000, 'tictactoe_arcade': 2000, 'tictactoe_neon': 1500,
+        'tictactoe_flat': 1500, 'tictactoe_pastel': 2000, 'tictactoe_metal': 2500
       }.get(id, 0);
     }
 

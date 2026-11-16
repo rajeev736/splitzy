@@ -78,7 +78,8 @@ export function BadgeGrid({
   )
 }
 
-function BadgeDetail({ badge, earlyBird }: { badge: BadgeSummary; earlyBird?: number }) {
+/** How a badge is earned, with its bronze / silver / gold steps (inside a Dialog). */
+export function BadgeDetail({ badge, earlyBird }: { badge: BadgeSummary; earlyBird?: number }) {
   const info = BADGES[badge.id as BadgeId]
   const single = isSingleBadge(badge.id)
   return (

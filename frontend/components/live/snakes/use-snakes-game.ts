@@ -117,18 +117,13 @@ export function useSnakesGame({ code, meta, players, uid, me, isReferee, now, se
     return () => window.clearTimeout(id)
   }, [state, gone, isReferee, uid, endGame])
 
-  // Sounds
+  // Sounds: the dice, a 6 and your turn here; the boards play the hops, ladders, snakes, the gate and
+  // the summit themselves, as each one animates (once per move: a new `seq`, never Firebase's echo)
   useOnChange(seq, () => {
     const last = state?.last
     if (!state || !last) return
     if (last.type === "move" || last.type === "blocked" || last.type === "three_sixes") playSound("dice")
-    if (last.type === "move") {
-      const walk = 400 + Math.abs(last.to - last.from) * 180
-      if (last.via === "ladder") window.setTimeout(() => playSound("power"), walk)
-      else if (last.via === "snake") window.setTimeout(() => playSound(last.by === uid ? "captured" : "capture"), walk)
-      else if (last.finished) window.setTimeout(() => playSound("home"), walk)
-      if (last.value === 6 && !last.finished) window.setTimeout(() => playSound("six"), 650)
-    }
+    if (last.type === "move" && last.value === 6 && !last.finished) window.setTimeout(() => playSound("six"), 650)
     if (state.phase === "roll" && state.turn === uid && last.by !== uid && !me.left)
       window.setTimeout(() => playSound("your_turn"), 1200)
   })

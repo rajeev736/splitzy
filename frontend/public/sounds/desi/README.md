@@ -18,6 +18,9 @@ Use only clips you have the right to use — the app is public.
 | `gaya-kaam-se.mp3`, `tu-toh-gaya-beta.mp3` | Chess / checkers: a piece taken |
 | `shah.mp3` | Chess: check |
 | `sahi-jawab.mp3` | Scribble: someone guessed it |
+| `arre-baap-re.mp3` | Snakes & Ladders: a snake bites |
+| `shaktimaan.mp3` | Snakes & Ladders: up a ladder |
+| `alag-level.mp3` | Snakes & Ladders: someone reached 100 |
 | `jeet-gaya.mp3`, `alag-level.mp3` | You won |
 | `arre-yaar.mp3`, `arre-baap-re.mp3`, `chicken-scream.mp3` *(clip only)*, `nahi-nahi.mp3`, `depression.mp3` *(clip only)*, `moye-moye.mp3`, `dukh-khatam-nahi-hota.mp3`, `meri-jung.mp3` *(clip only)* | You lost |
 | `dhamaaka.mp3` | Bomb hit |

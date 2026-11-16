@@ -40,8 +40,9 @@ let g = fresh(2, "gate")
 g = applyRoll(g, "a", 5, ctx)
 assert(g.players.a.pos === 0 && g.last?.type === "blocked" && g.turn === "b", "the gate stays shut on a 5")
 g = applyRoll({ ...g, turn: "a" }, "a", 1, ctx)
-// square 1 has a ladder to 38
-assert(g.last?.type === "move" && g.last.gate && g.players.a.pos === 38, "a 1 opens the gate (and square 1's ladder)")
+// On the tower square 1 has no ladder (on the flat board it climbs to 38)
+assert(g.last?.type === "move" && g.last.gate && g.players.a.pos === 1 && !g.last.via, "a 1 opens the gate onto square 1")
+assert(applyRoll(fresh(2), "a", 1, ctx).players.a.pos === 38, "flat board: square 1's ladder")
 assert(describeLast(fresh(2, "gate"), (u) => u).includes("roll a 1"), "how to start")
 
 // Finishing and the end

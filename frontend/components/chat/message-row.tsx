@@ -206,7 +206,7 @@ export const MessageRow = React.memo(function MessageRow({
         "relative -mx-2 flex px-2 sm:-mx-3 sm:px-3",
         mine ? "justify-end" : "justify-start",
         firstInRun ? "mt-2" : "mt-0.5",
-        reactions.length > 0 && "mb-3",
+        reactions.length > 0 && "mb-6",
         selected && "rounded-lg bg-primary/10"
       )}
       style={{ touchAction: "pan-y" }}
@@ -369,7 +369,7 @@ export const MessageRow = React.memo(function MessageRow({
               onReactions(msg)
             }}
             className={cn(
-              "absolute -bottom-3.5 z-[1] flex h-6 items-center gap-0.5 rounded-full border border-background bg-chat-in px-1.5 text-[13px] leading-none shadow-sm transition-transform active:scale-95",
+              "absolute -bottom-[22px] z-[1] flex h-6 items-center gap-0.5 rounded-full border border-background bg-chat-in px-1.5 text-[13px] leading-none shadow-sm transition-transform active:scale-95",
               mine ? "right-2" : "left-2",
               msg.reactions?.[meUid] && "ring-1 ring-primary/40"
             )}

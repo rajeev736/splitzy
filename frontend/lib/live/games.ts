@@ -11,6 +11,8 @@ export interface LiveOption {
 export interface LiveGameInfo {
   id: LiveGameId
   name: string
+  /** For the small game tiles, when the name is too long for two short lines. */
+  shortName?: string
   tagline: string
   /** How it's played, one short paragraph for the lobby. */
   howTo: string
@@ -191,6 +193,7 @@ export const LIVE_GAMES: Record<LiveGameId, LiveGameInfo> = {
   snakes3d: {
     id: "snakes3d",
     name: "Snakes & Ladders 3D",
+    shortName: "Snakes 3D",
     tagline: "Climb the jungle tower — roll a 1 to open the gate",
     howTo:
       "Everyone starts behind the gate at the foot of a jungle tower; it opens only when you roll a 1. Then climb from 1 to 100: ladders zap you up in a flash of lightning, snakes drop you through a portal to their tail. A 6 rolls again; land on 100 exactly. Swipe up and down to look around the tower.",

@@ -32,7 +32,7 @@ export function notificationHref(n: AppNotification): string {
   if (d?.roomCode) return `/play/${d.roomCode}`
   if (d?.challengeId) return `/challenges/${d.challengeId}`
   if (n.type === "PAYMENT_REMINDER" && d?.awaitingConfirm && d.actorId) return `/friends/${d.actorId}`
-  if (n.type === "BADGE") return d?.frame ? "/profile/frames#milestones" : "/profile#badges"
+  if (n.type === "BADGE") return d?.frame ? "/profile/inventory#milestones" : "/profile#badges"
   if ((n.type === "MOMENT" || n.type.startsWith("PLAN") || n.type.startsWith("BOND")) && d?.actorId) return `/friends/${d.actorId}`
   if (n.type === "FRIEND_REQUEST") return "/friends/requests"
   if (n.type.startsWith("FRIEND")) return "/friends"

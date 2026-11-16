@@ -4,14 +4,18 @@ import * as React from "react"
 import gsap from "gsap"
 
 import type { SnakesColour, SnakesState } from "@/lib/live/snakes"
+import type { SnakesSound } from "@/lib/live/sound"
 import { cn } from "@/lib/utils"
 import { SHADES } from "../ludo/ludo-board"
+import { BACK_PILL_W, EdgeMarkers, type EdgeMarkersHandle, type EdgePoint } from "./edge-markers"
 import { SCENE_H, SCENE_W, standOf, type Pt } from "./geometry"
 import { Scene, SCENE_CSS } from "./scene"
 import { useTowerAnimation, type CameraHandle, type CharRefs } from "./use-tower-animation"
 
 /** Where in the viewport the followed piece sits (share of the height from the top). */
 const EYE_LINE = 0.56
+/** Where on a piece the off-screen arrows point (its middle, above its feet), in scene units. */
+const BODY_Y = 16
 
 /* ── Pieces ──────────────────────────────────────────────────────────── */
 
@@ -72,17 +76,21 @@ export interface Snakes3DBoardProps {
   followUid: string | null
   /** Players who left or are out: their pieces fade. */
   hidden?: string[]
-  /** Called on every hop (for the step sound). */
-  onStep?: () => void
+  /** A moment of the animation that has a sound (each hop, the gate, a ladder, a snake, the summit). */
+  onSound?: (sound: SnakesSound) => void
+  /** Names, for the off-screen arrows' labels. */
+  nameOf?: (uid: string) => string
   className?: string
 }
 
 /**
  * The jungle tower, in a scrolling viewport. Pure: it draws the state it is
  * given, animating each change (see useTowerAnimation), and the camera
- * follows `followUid` until you swipe away — then "back to me" brings it back.
+ * follows `followUid` until you swipe away — then "back to me" brings it back
+ * (and so do your turn and your own move). Arrows on the top and bottom edges
+ * point at the pieces out of view.
  */
-export function Snakes3DBoard({ state, meUid, followUid, hidden, onStep, className }: Snakes3DBoardProps) {
+export function Snakes3DBoard({ state, meUid, followUid, hidden, onSound, nameOf, className }: Snakes3DBoardProps) {
   const viewport = React.useRef<HTMLDivElement>(null)
   const svg = React.useRef<SVGSVGElement>(null)
   const refs = React.useRef(new Map<string, CharRefs>())
@@ -140,7 +148,7 @@ export function Snakes3DBoard({ state, meUid, followUid, hidden, onStep, classNa
     [scrollToY]
   )
 
-  const anim = useTowerAnimation({ state, refs, svg, slotOf, camera, onStep })
+  const anim = useTowerAnimation({ state, refs, svg, slotOf, camera, onSound })
 
   const lookAt = React.useCallback(
     (uid: string | null, dur: number) => {
@@ -179,13 +187,85 @@ export function Snakes3DBoard({ state, meUid, followUid, hidden, onStep, classNa
   }, [])
   const onScroll = () => {
     const el = viewport.current
+    kick()
     if (el && Math.abs(el.scrollTop - ours.current) > 2) letGo()
   }
-  const backToMe = () => {
+  const backToMe = React.useCallback(() => {
     freeRef.current = false
     setFree(false)
     lookAt(followRef.current, 0.6)
+  }, [lookAt])
+  // An off-screen arrow: glide to that piece and stay there (free camera) — or, for the followed piece, follow again
+  const focus = (uid: string) => {
+    if (uid === followRef.current) return backToMe()
+    freeRef.current = true
+    setFree(true)
+    lookAt(uid, 0.6)
   }
+
+  /* Off-screen arrows: placed from a frame loop that runs only while something moves (a move, the camera, a scroll) */
+  const markers = React.useRef<EdgeMarkersHandle>(null)
+  const hiddenKey = (hidden ?? []).join("|")
+  const placeMarkers = React.useCallback(() => {
+    const el = viewport.current
+    const s = svg.current
+    if (!el || !s || !markers.current) return
+    const scale = s.clientWidth / SCENE_W
+    const gone = hiddenKey ? hiddenKey.split("|") : []
+    const points: EdgePoint[] = []
+    for (const uid of order) {
+      if (gone.includes(uid) || (uid === meUid && !freeRef.current)) continue
+      const at = anim.liveAt(uid)
+      points.push({ uid, x: at.x * scale, y: (at.y - BODY_Y) * scale - el.scrollTop, pos: anim.drawnPos(uid) })
+    }
+    markers.current.update(points, el.clientWidth, el.clientHeight)
+  }, [anim, order, meUid, hiddenKey])
+  const raf = React.useRef(0)
+  const until = React.useRef(0)
+  const placeRef = React.useRef(placeMarkers)
+  React.useLayoutEffect(() => {
+    placeRef.current = placeMarkers
+  }, [placeMarkers])
+  const kick = React.useCallback(
+    (ms = 250) => {
+      until.current = Math.max(until.current, performance.now() + ms)
+      if (raf.current) return
+      const loop = () => {
+        placeRef.current()
+        const moving = performance.now() < until.current || anim.busy() || !!camTween.current?.isActive()
+        raf.current = moving ? requestAnimationFrame(loop) : 0
+      }
+      raf.current = requestAnimationFrame(loop)
+    },
+    [anim]
+  )
+  React.useEffect(() => {
+    const el = viewport.current
+    if (!el) return
+    const ro = new ResizeObserver(() => kick())
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      cancelAnimationFrame(raf.current)
+      raf.current = 0
+    }
+  }, [kick])
+
+  // A new state: looking around freely, an opponent's move leaves the camera be — but your turn or your own move brings it home
+  const seenSeq = React.useRef(state.seq)
+  React.useEffect(() => {
+    if (seenSeq.current !== state.seq) {
+      seenSeq.current = state.seq
+      const l = state.last
+      const mine = (l && (l.type === "move" || l.type === "blocked") && l.by === meUid) || (state.phase === "roll" && state.turn === meUid)
+      if (freeRef.current && mine && state.players[meUid]) {
+        freeRef.current = false
+        setFree(false)
+        lookAt(meUid, 0.5)
+      }
+    }
+    kick(400)
+  }, [state, meUid, lookAt, kick, free, hiddenKey])
 
   // Desktop: drag the tower with the mouse
   const drag = React.useRef<{ y: number; top: number } | null>(null)
@@ -275,11 +355,19 @@ export function Snakes3DBoard({ state, meUid, followUid, hidden, onStep, classNa
       {/* Fade the viewport's edges so the tower looks like it continues */}
       <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-black/35 to-transparent" />
       <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-black/35 to-transparent" />
+      <EdgeMarkers
+        ref={markers}
+        players={order
+          .filter((u) => state.players[u])
+          .map((u) => ({ uid: u, colour: state.players[u].colour, name: nameOf?.(u) ?? "Player", isMe: u === meUid }))}
+        reserveBottomRight={free && followUid ? BACK_PILL_W : 0}
+        onPick={focus}
+      />
       {free && followUid && (
         <button
           type="button"
           onClick={backToMe}
-          className="absolute right-2.5 bottom-2.5 flex h-8 items-center gap-1.5 rounded-full bg-white/90 px-3 text-xs font-semibold text-[#0d2463] shadow-lg backdrop-blur-sm transition-transform active:scale-95 animate-in fade-in-0 zoom-in-95"
+          className="absolute right-2.5 bottom-2.5 z-20 flex h-8 items-center gap-1.5 rounded-full bg-white/90 px-3 text-xs font-semibold text-[#0d2463] shadow-lg backdrop-blur-sm transition-transform active:scale-95 animate-in fade-in-0 zoom-in-95"
         >
           <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden>
             <path d="M8 2 L8 14 M3 7 L8 2 L13 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />

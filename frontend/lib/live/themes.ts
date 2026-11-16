@@ -10,7 +10,7 @@ import type { LudoColour } from "./ludo"
  * and kept in the wallet's `themes`. Which theme you play on is per device.
  */
 
-export type ThemeGame = "ludo" | "chess" | "snakes3d"
+export type ThemeGame = "ludo" | "chess" | "snakes3d" | "tictactoe"
 
 export type Shade = { light: string; mid: string; dark: string }
 
@@ -28,6 +28,8 @@ export interface BoardImage {
 export interface LudoLook {
   /** Draw the board from this picture (the colours below still tint pieces). */
   image?: BoardImage
+  /** Stitched stars on the safe squares, for a picture that doesn't mark them (thread colours). */
+  safeMarks?: { ink: string; fill: string }
   /** Base, home column and piece colours for each seat colour. */
   palette: Record<LudoColour, Shade>
   /** Track squares and their lines. */
@@ -68,6 +70,13 @@ export interface Snakes3DLook {
   preview: string
   /** The table around the board (CSS background). */
   table: string
+}
+
+export interface TicTacToeLook {
+  /** Which skin draws the table (components/live/tictactoe/skins). */
+  skin: "classic" | "candy" | "arcade" | "neon" | "flat" | "pastel" | "metal"
+  /** A picture for the theme picker. */
+  preview: string
 }
 
 export interface BoardTheme<L> {
@@ -114,7 +123,7 @@ export const LUDO_THEMES: BoardTheme<LudoLook>[] = [
     game: "ludo",
     name: "Flat",
     blurb: "The board from the box: bold, flat colours",
-    price: 250,
+    price: 1500,
     look: {
       image: { src: "/boards/ludo-flat.webp", breaks: [12 / 736, 297 / 736, 439 / 736, 724 / 736] },
       palette: {
@@ -139,7 +148,7 @@ export const LUDO_THEMES: BoardTheme<LudoLook>[] = [
     game: "ludo",
     name: "Mandala",
     blurb: "Deep colours, cream track, mandalas in every base",
-    price: 450,
+    price: 2500,
     look: {
       image: { src: "/boards/ludo-mandala.webp", breaks: [20 / 600, 244 / 600, 356 / 600, 580 / 600] },
       // The picture's top-right base is blue and bottom-left green
@@ -166,9 +175,10 @@ export const LUDO_THEMES: BoardTheme<LudoLook>[] = [
     game: "ludo",
     name: "Cross-stitch",
     blurb: "Embroidered: muted colours and stitched motifs",
-    price: 450,
+    price: 2500,
     look: {
       image: { src: "/boards/ludo-stitch.webp", breaks: [171 / 1200, 506 / 1200, 694 / 1200, 1029 / 1200] },
+      safeMarks: { ink: "#3f3f46", fill: "#a8854f" },
       palette: {
         red: flat("#a73046", "#6f0e23", "#e07790"),
         green: flat("#638553", "#234621", "#8dbb8a"),
@@ -192,7 +202,7 @@ export const LUDO_THEMES: BoardTheme<LudoLook>[] = [
     game: "ludo",
     name: "Mughal floral",
     blurb: "Miniature-painting palette with flowers",
-    price: 600,
+    price: 3500,
     look: {
       image: { src: "/boards/ludo-mughal.webp", breaks: [86 / 736, 321 / 736, 410 / 736, 650 / 736] },
       // The picture's bases: yellow, pink, maroon, olive (clockwise from top-left)
@@ -230,7 +240,7 @@ export const CHESS_THEMES: BoardTheme<ChessLook>[] = [
     game: "chess",
     name: "Wood",
     blurb: "Maple and walnut in a dark frame",
-    price: 350,
+    price: 2500,
     look: { light: "#d7b185", dark: "#382214", framed: "/boards/chess-wood.webp", frameInset: 27 / 1084, highlight: "#d1a52d" },
   },
   {
@@ -238,7 +248,7 @@ export const CHESS_THEMES: BoardTheme<ChessLook>[] = [
     game: "chess",
     name: "Tournament green",
     blurb: "Cream and green",
-    price: 250,
+    price: 2000,
     look: { light: "#ebecd0", dark: "#739552", board: "/chess/green-board.webp", highlight: "#ffff33" },
   },
 ]
@@ -248,8 +258,8 @@ export const SNAKES3D_THEMES: BoardTheme<Snakes3DLook>[] = [
     id: "snakes3d_jungle",
     game: "snakes3d",
     name: "Jungle",
-    blurb: "Real 3D: stone pillars, vines and a waterfall",
-    price: 0,
+    blurb: "Premium real 3D: stone pillars, vines and a waterfall",
+    price: 5000,
     look: {
       scene: "jungle",
       preview: "/boards/snakes3d-jungle.webp",
@@ -270,10 +280,34 @@ export const SNAKES3D_THEMES: BoardTheme<Snakes3DLook>[] = [
   },
 ]
 
-export const THEMES = { ludo: LUDO_THEMES, chess: CHESS_THEMES, snakes3d: SNAKES3D_THEMES }
-export const ALL_THEMES: BoardTheme<unknown>[] = [...LUDO_THEMES, ...CHESS_THEMES, ...SNAKES3D_THEMES]
+const ttt = (id: string, name: string, blurb: string, price: number, skin: TicTacToeLook["skin"]): BoardTheme<TicTacToeLook> => ({
+  id,
+  game: "tictactoe",
+  name,
+  blurb,
+  price,
+  look: { skin, preview: `/boards/ttt-${skin}.webp` },
+})
+
+export const TICTACTOE_THEMES: BoardTheme<TicTacToeLook>[] = [
+  ttt("tictactoe_classic", "Classic", "Clean and simple", 0, "classic"),
+  ttt("tictactoe_candy", "Candy", "Squishy X's and O's with googly eyes", 2000, "candy"),
+  ttt("tictactoe_arcade", "Arcade", "Pixel art on a retro grid", 2000, "arcade"),
+  ttt("tictactoe_neon", "Night blue", "Bold marks, the winning row lights up", 1500, "neon"),
+  ttt("tictactoe_flat", "Flat duo", "Chunky red and blue on navy tiles", 1500, "flat"),
+  ttt("tictactoe_pastel", "Pastel", "Soft pinks and blues on a lavender board", 2000, "pastel"),
+  ttt("tictactoe_metal", "Brushed steel", "Glossy pieces in a steel case", 2500, "metal"),
+]
+
+export const THEMES = { ludo: LUDO_THEMES, chess: CHESS_THEMES, snakes3d: SNAKES3D_THEMES, tictactoe: TICTACTOE_THEMES }
+export const ALL_THEMES: BoardTheme<unknown>[] = [...LUDO_THEMES, ...CHESS_THEMES, ...SNAKES3D_THEMES, ...TICTACTOE_THEMES]
 export const themePrice = (id: string) => ALL_THEMES.find((t) => t.id === id)?.price ?? 0
 export const isFreeTheme = (id: string) => themePrice(id) === 0 && ALL_THEMES.some((t) => t.id === id)
+/** Free, or bought (`owned` = the wallet's themes): the one ownership check every screen uses. */
+export const ownsTheme = (theme: BoardTheme<unknown>, owned: string[] | undefined) =>
+  theme.price === 0 || !!owned?.includes(theme.id)
+/** The free theme a game starts on. */
+const defaultTheme = (game: ThemeGame) => (THEMES[game] as BoardTheme<unknown>[]).find((t) => t.price === 0)!.id
 
 /* ── Which theme this device plays on ──────────────────────────────────── */
 
@@ -283,7 +317,7 @@ const cache: Partial<Record<ThemeGame, string>> = {}
 
 function readChosen(game: ThemeGame): string {
   if (cache[game]) return cache[game]!
-  let v = THEMES[game][0].id
+  let v = defaultTheme(game)
   try {
     const raw = localStorage.getItem(KEY(game))
     if (raw && THEMES[game].some((t) => t.id === raw)) v = raw
@@ -315,9 +349,12 @@ export function useBoardTheme<G extends ThemeGame>(game: G, owned: string[] | un
       return () => listeners.delete(l)
     },
     () => readChosen(game),
-    () => THEMES[game][0].id
+    () => defaultTheme(game)
   )
-  const list = THEMES[game] as BoardTheme<G extends "ludo" ? LudoLook : G extends "chess" ? ChessLook : Snakes3DLook>[]
-  const usable = list.find((t) => t.id === id && (t.price === 0 || owned?.includes(t.id))) ?? list[0]
+  const list = THEMES[game] as BoardTheme<
+    G extends "ludo" ? LudoLook : G extends "chess" ? ChessLook : G extends "snakes3d" ? Snakes3DLook : TicTacToeLook
+  >[]
+  const usable =
+    list.find((t) => t.id === id && ownsTheme(t, owned)) ?? list.find((t) => t.price === 0)!
   return usable
 }

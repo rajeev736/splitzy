@@ -5,6 +5,7 @@ import { useMutation } from "@tanstack/react-query"
 import { useSession } from "@/components/providers/session-provider"
 import { AppError } from "@/lib/errors"
 import type { BondId, FrameId, MoodId } from "@/lib/fun/catalog"
+import { chooseTheme, type BoardTheme } from "@/lib/live/themes"
 import type { Friendship, Moment } from "@/lib/types"
 import * as fun from "@/services/fun"
 
@@ -54,6 +55,21 @@ export function useEndBond() {
 export function useBuyFrame() {
   const me = useUser()
   return useMutation({ mutationFn: (frame: FrameId) => fun.buyFrame(me().uid, frame) })
+}
+
+/**
+ * Buys a board theme and plays on it on this device. The game room's picker
+ * and the inventory both buy through this, and both read ownership from the
+ * live wallet, so a board bought in one place is never offered in the other.
+ */
+export function useBuyTheme() {
+  const me = useUser()
+  return useMutation({
+    mutationFn: async (theme: BoardTheme<unknown>) => {
+      await fun.buyTheme(me().uid, theme.id)
+      chooseTheme(theme.game, theme.id)
+    },
+  })
 }
 
 export function useEquipFrame() {
