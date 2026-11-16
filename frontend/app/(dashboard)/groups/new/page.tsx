@@ -4,6 +4,7 @@ import * as React from "react"
 import { useRouter } from "nextjs-toploader/app"
 import { toast } from "sonner"
 import {
+  Add01Icon,
   AlertCircleIcon,
   Camera01Icon,
   Cancel01Icon,
@@ -18,10 +19,11 @@ import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
 import { EmptyState } from "@/components/shared/empty-state"
 import {
-  DEFAULT_GROUP_ICON,
-  GROUP_ICONS,
+  GROUP_ILLUSTRATIONS,
   GroupIcon,
+  NEW_GROUP_ICON,
 } from "@/components/shared/group-icon"
+import { GroupIconPicker } from "@/components/shared/group-icon-picker"
 import { ListSkeleton, QueryError } from "@/components/shared/query-state"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
@@ -51,10 +53,11 @@ import {
   ItemTitle,
 } from "@/components/ui/item"
 import { Spinner } from "@/components/ui/spinner"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useCreateGroup } from "@/hooks/mutations"
 import { useFriends, useUserSearch } from "@/hooks/queries"
+import { GROUP_DESCRIPTION_MAX, GROUP_NAME_MAX } from "@/lib/groups"
 import type { Group, UserProfile } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 export default function CreateGroupPage() {
   const router = useRouter()
@@ -62,14 +65,13 @@ export default function CreateGroupPage() {
   const friendsQuery = useFriends()
   const friends = friendsQuery.data
   const createGroup = useCreateGroup({
-    successMessage: (data) =>
-      `Group "${(data as Group).name}" created!`,
+    successMessage: (data) => `Group "${(data as Group).name}" created!`,
   })
 
   const [groupName, setGroupName] = React.useState("")
   const [description, setDescription] = React.useState("")
-  const [selectedIcon, setSelectedIcon] =
-    React.useState<string>(DEFAULT_GROUP_ICON)
+  const [selectedIcon, setSelectedIcon] = React.useState<string>(NEW_GROUP_ICON)
+  const [iconPickerOpen, setIconPickerOpen] = React.useState(false)
   // On initial load, select ZERO additional members by default. No hardcoded sample users.
   const [selectedMemberIds, setSelectedMemberIds] = React.useState<string[]>([])
   // Non-friends found by JoySplit ID: always get a group invite, a friend request only if chosen
@@ -129,7 +131,10 @@ export default function CreateGroupPage() {
       photoURL: u.photoURL,
       createdAt: new Date().toISOString(),
     }
-    setSelectedNonFriends((prev) => [...prev, { user: full, sendFriendRequest }])
+    setSelectedNonFriends((prev) => [
+      ...prev,
+      { user: full, sendFriendRequest },
+    ])
     resetSearch()
     toast.success(
       sendFriendRequest
@@ -177,47 +182,67 @@ export default function CreateGroupPage() {
 
       <PageContainer className="max-w-xl">
         <form onSubmit={handleCreate} className="flex flex-col gap-6">
-          {/* Icon selector */}
-          <div className="flex flex-col items-center gap-2">
-            <div className="relative mb-1">
+          {/* Icon: tap for the full picker (upload a picture, illustrations, photos) */}
+          <div className="flex flex-col items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setIconPickerOpen(true)}
+              aria-label="Choose group icon"
+              className="group relative rounded-[1.75rem] outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
               <GroupIcon
                 src={selectedIcon}
-                alt="Group Icon"
-                className="size-24 rounded-lg"
+                alt="Group icon"
+                className="size-24 rounded-[1.75rem] shadow-sm"
               />
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-black/15">
-                <HugeiconsIcon
-                  icon={Camera01Icon}
-                  className="size-6 text-white"
-                />
-              </div>
-            </div>
-            <span className="text-xs font-medium text-muted-foreground">
-              Select group icon
-            </span>
-            <ToggleGroup
-              aria-label="Group icon"
-              spacing={3}
-              value={[selectedIcon]}
-              onValueChange={(next) => {
-                if (next.length > 0) setSelectedIcon(next[0] as string)
-              }}
+              <span className="absolute -right-1 -bottom-1 flex size-9 items-center justify-center rounded-full border-[3px] border-background bg-primary text-primary-foreground transition-transform group-active:scale-95">
+                <HugeiconsIcon icon={Camera01Icon} className="size-4" />
+              </span>
+            </button>
+            <div
+              role="group"
+              aria-label="Quick icon picks"
+              className="grid w-full max-w-xs grid-cols-6 gap-2"
             >
-              {GROUP_ICONS.map((icon) => (
-                <ToggleGroupItem
+              {GROUP_ILLUSTRATIONS.slice(0, 5).map((icon) => (
+                <button
                   key={icon.id}
-                  value={icon.id}
+                  type="button"
                   aria-label={icon.label}
-                  className="size-12 rounded-md p-0 opacity-60 transition-opacity hover:bg-transparent hover:opacity-100 aria-pressed:bg-transparent aria-pressed:opacity-100 aria-pressed:ring-2 aria-pressed:ring-primary aria-pressed:ring-offset-2 aria-pressed:ring-offset-background"
+                  aria-pressed={selectedIcon === icon.id}
+                  onClick={() => setSelectedIcon(icon.id)}
+                  className="rounded-[10px] outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                 >
                   <GroupIcon
                     src={icon.id}
-                    alt={icon.label}
-                    className="size-12 rounded-md"
+                    alt=""
+                    className={cn(
+                      "aspect-square size-auto w-full rounded-[10px] transition-opacity",
+                      selectedIcon === icon.id
+                        ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                        : "opacity-75 hover:opacity-100"
+                    )}
                   />
-                </ToggleGroupItem>
+                </button>
               ))}
-            </ToggleGroup>
+              <button
+                type="button"
+                aria-label="More icons or upload a picture"
+                onClick={() => setIconPickerOpen(true)}
+                className="flex aspect-square w-full items-center justify-center rounded-[10px] border border-dashed bg-card text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <HugeiconsIcon icon={Add01Icon} className="size-5" />
+              </button>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              Tap the icon to upload a picture or see all icons
+            </span>
+            <GroupIconPicker
+              open={iconPickerOpen}
+              onOpenChange={setIconPickerOpen}
+              value={selectedIcon}
+              onSelect={setSelectedIcon}
+            />
           </div>
 
           {/* Group details */}
@@ -231,6 +256,7 @@ export default function CreateGroupPage() {
                     value={groupName}
                     onChange={(e) => setGroupName(e.target.value)}
                     placeholder="e.g. Goa Trip"
+                    maxLength={GROUP_NAME_MAX}
                     required
                     className="h-10"
                   />
@@ -244,6 +270,7 @@ export default function CreateGroupPage() {
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="e.g. Trip to North Goa"
+                    maxLength={GROUP_DESCRIPTION_MAX}
                     className="h-10"
                   />
                 </Field>
@@ -254,13 +281,15 @@ export default function CreateGroupPage() {
           {/* Members */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">Invite members</CardTitle>
+              <CardTitle className="text-sm font-semibold">
+                Invite members
+              </CardTitle>
               <CardDescription className="text-xs">
-                You join as creator. Everyone else gets a group invitation
-                and joins once they accept.
+                You join as creator. Everyone else gets a group invitation and
+                joins once they accept.
               </CardDescription>
               <CardAction>
-                <span className="text-xs font-medium tabular-nums text-muted-foreground">
+                <span className="text-xs font-medium text-muted-foreground tabular-nums">
                   {totalSelectedCount} selected
                 </span>
               </CardAction>
@@ -284,7 +313,9 @@ export default function CreateGroupPage() {
                     <MemberChip
                       key={nf.user.uid}
                       user={nf.user}
-                      invite={nf.sendFriendRequest ? "Invite + Friend" : "Invite"}
+                      invite={
+                        nf.sendFriendRequest ? "Invite + Friend" : "Invite"
+                      }
                       onRemove={() => removeNonFriend(nf.user.uid)}
                     />
                   ))}
@@ -312,7 +343,10 @@ export default function CreateGroupPage() {
                     className="text-xs"
                   />
                   {memberSearch.trim().length >= 3 && (
-                    <InputGroupAddon align="inline-end" className="pr-1.5 has-[>button]:mr-0">
+                    <InputGroupAddon
+                      align="inline-end"
+                      className="pr-1.5 has-[>button]:mr-0"
+                    >
                       <Button
                         type="button"
                         onClick={handleSearchId}
@@ -321,7 +355,9 @@ export default function CreateGroupPage() {
                         className="h-7 gap-1.5 rounded-md px-3 text-xs font-medium"
                       >
                         {isSearchingId && <Spinner className="size-3" />}
-                        <span>{isSearchingId ? "Searching..." : "Lookup ID"}</span>
+                        <span>
+                          {isSearchingId ? "Searching..." : "Lookup ID"}
+                        </span>
                       </Button>
                     </InputGroupAddon>
                   )}
@@ -396,7 +432,10 @@ export default function CreateGroupPage() {
                           searchResult.status !== "FRIENDS" && (
                             <ItemFooter className="flex-col items-stretch gap-1 border-t pt-2">
                               {searchResult.status === "CAN_ADD" ? (
-                                <Field orientation="horizontal" className="gap-2">
+                                <Field
+                                  orientation="horizontal"
+                                  className="gap-2"
+                                >
                                   <Checkbox
                                     id="also-friend-request"
                                     checked={alsoSendFriendRequest}
@@ -467,7 +506,7 @@ export default function CreateGroupPage() {
                     <Item
                       key={friend.uid}
                       size="sm"
-                      className="cursor-pointer flex-nowrap select-none rounded-md px-2 hover:bg-muted/60"
+                      className="cursor-pointer flex-nowrap rounded-md px-2 select-none hover:bg-muted/60"
                       render={<label />}
                     >
                       <ItemMedia>
@@ -527,7 +566,12 @@ function MemberChip({
 }) {
   return (
     <span className="inline-flex h-7 items-center gap-1.5 rounded-md border bg-card pr-0.5 pl-1 text-xs font-medium">
-      <UserAvatar uid={user.uid} src={user.photoURL} name={user.displayName} size="xs" />
+      <UserAvatar
+        uid={user.uid}
+        src={user.photoURL}
+        name={user.displayName}
+        size="xs"
+      />
       <span>{user.displayName}</span>
       {invite && (
         <span className="text-[11px] text-muted-foreground">· {invite}</span>

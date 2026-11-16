@@ -9,12 +9,14 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
+import { useChatUnreadCount } from "@/components/chat/chat-inbox"
 import { Coins } from "@/components/fun/coin"
 import { useSession } from "@/components/providers/session-provider"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
 import { useUnreadCount } from "@/hooks/queries"
 import { useWallet } from "@/hooks/use-fun"
+import { cn } from "@/lib/utils"
 
 /** Time-of-day greeting for the home header. */
 function greeting() {
@@ -46,11 +48,18 @@ export function AppHeader({
   const router = useRouter()
   const { user } = useSession()
   const unread = useUnreadCount()
+  const chatUnread = useChatUnreadCount()
 
   return (
     <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 px-4 py-2.5 backdrop-blur-2xl backdrop-saturate-150 sm:px-6">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
+        <div
+          className={cn(
+            "flex min-w-0 items-center gap-3",
+            // A custom title (chat, group) takes all the room the actions leave
+            titleContent && "flex-1"
+          )}
+        >
           {showBack && (
             <Button
               variant="ghost"
@@ -107,11 +116,19 @@ export function AppHeader({
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Messages"
+              aria-label={
+                chatUnread > 0 ? `Messages, ${chatUnread} unread` : "Messages"
+              }
+              className="relative"
               nativeButton={false}
               render={<Link href="/chat" />}
             >
               <HugeiconsIcon icon={BubbleChatIcon} className="size-5" />
+              {chatUnread > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] leading-none font-semibold text-primary-foreground tabular-nums ring-2 ring-background">
+                  {chatUnread > 9 ? "9+" : chatUnread}
+                </span>
+              )}
             </Button>
           )}
           {rightAction ?? (

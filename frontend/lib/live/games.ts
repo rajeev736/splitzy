@@ -175,10 +175,79 @@ export const LIVE_GAMES: Record<LiveGameId, LiveGameInfo> = {
     ],
     tone: "bg-sky-500/12",
   },
+  snakes: {
+    id: "snakes",
+    name: "Snakes & Ladders",
+    tagline: "Climb the ladders, dodge the snakes",
+    howTo:
+      "Roll and move your piece up the board from 1 to 100. Land at the foot of a ladder to climb it; land on a snake's head and slide down to its tail. A 6 rolls again (three 6s lose the turn). You must land on 100 exactly. First to 100 wins — the rest race for 2nd, 3rd…",
+    emoji: "🐍",
+    minPlayers: 2,
+    maxPlayers: 5,
+    duration: "~10 min",
+    options: [],
+    tone: "bg-emerald-500/12",
+  },
+  snakes3d: {
+    id: "snakes3d",
+    name: "Snakes & Ladders 3D",
+    tagline: "Climb the jungle tower — roll a 1 to open the gate",
+    howTo:
+      "Everyone starts behind the gate at the foot of a jungle tower; it opens only when you roll a 1. Then climb from 1 to 100: ladders zap you up in a flash of lightning, snakes drop you through a portal to their tail. A 6 rolls again; land on 100 exactly. Swipe up and down to look around the tower.",
+    emoji: "🪜",
+    minPlayers: 2,
+    maxPlayers: 5,
+    duration: "~12 min",
+    options: [],
+    tone: "bg-lime-500/12",
+  },
+  sudoku: {
+    id: "sudoku",
+    name: "Sudoku Race",
+    tagline: "Same puzzle, everyone at once — fastest wins",
+    howTo:
+      "Everyone gets the same Sudoku, each on their own board. Fill every row, column and 3×3 box with 1–9. The first to finish is 1st, then 2nd, 3rd… When time runs out, the rest are ranked by how much they filled.",
+    emoji: "🔢",
+    minPlayers: 1,
+    maxPlayers: 5,
+    duration: "~15 min",
+    options: [
+      {
+        key: "level",
+        label: "Level",
+        choices: [
+          { value: "easy", label: "Easy" },
+          { value: "medium", label: "Medium" },
+          { value: "hard", label: "Hard" },
+        ],
+        default: "medium",
+      },
+      {
+        key: "minutes",
+        label: "Time",
+        choices: [
+          { value: 10, label: "10 min" },
+          { value: 20, label: "20 min" },
+          { value: 30, label: "30 min" },
+        ],
+        default: 20,
+      },
+    ],
+    tone: "bg-violet-500/12",
+  },
 }
 
 /** Display order on the Games tab. */
-export const LIVE_GAME_IDS: LiveGameId[] = ["scribble", "ludo", "chess", "checkers", "tictactoe"]
+export const LIVE_GAME_IDS: LiveGameId[] = [
+  "scribble",
+  "ludo",
+  "snakes3d",
+  "snakes",
+  "sudoku",
+  "chess",
+  "checkers",
+  "tictactoe",
+]
 
 export const isLiveGameId = (v: unknown): v is LiveGameId => typeof v === "string" && v in LIVE_GAMES
 

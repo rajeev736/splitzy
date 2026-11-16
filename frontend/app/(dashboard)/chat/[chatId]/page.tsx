@@ -1,37 +1,49 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import { useParams } from "next/navigation"
-import { SentIcon } from "@hugeicons/core-free-icons"
-import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
 
+import {
+  ChatHeaderTitle,
+  ChatInfoSheet,
+  memberLine,
+  typingLabel,
+} from "@/components/chat/chat-header"
+import {
+  ConversationView,
+  type ConversationActions,
+  type ConversationModel,
+} from "@/components/chat/conversation-view"
+import type { ChatPerson } from "@/components/chat/message-row"
 import { AppHeader } from "@/components/layout/app-header"
 import { useSession } from "@/components/providers/session-provider"
 import { EmptyState } from "@/components/shared/empty-state"
-import { GroupIcon } from "@/components/shared/group-icon"
-import { UserAvatar } from "@/components/shared/user-avatar"
-import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
-import { Textarea } from "@/components/ui/textarea"
 import { useFriends, useGroup } from "@/hooks/queries"
-import { useNow } from "@/hooks/use-now"
 import {
+  useChatInfo,
   useChatMessages,
   useGroupChatAccess,
-  type KeyedMessage,
+  useHiddenMessages,
+  useInitialLastRead,
+  useReceipts,
+  useTypingUids,
 } from "@/hooks/use-chat"
-import {
-  dayLabel,
-  dmPartner,
-  MESSAGE_MAX,
-  parseChatId,
-  timeLabel,
-} from "@/lib/chat"
+import { dmPartner, parseChatId, type KeyedMessage } from "@/lib/chat"
 import { isLiveConfigured } from "@/lib/firebase/config"
-import { cn } from "@/lib/utils"
-import { markRead, sendMessage } from "@/services/chat"
+import type { Group } from "@/lib/types"
+import {
+  deleteForEveryone,
+  editMessage,
+  loadPhoto,
+  markRead,
+  newMessageId,
+  sendMessage,
+  sendPhoto,
+  setReaction,
+  setTyping,
+} from "@/services/chat"
 
 export default function ConversationPage() {
   const { chatId } = useParams<{ chatId: string }>()
@@ -41,11 +53,6 @@ export default function ConversationPage() {
   const isMine = parsed?.kind === "dm" ? parsed.uids.includes(uid) : !!parsed
 
   const partnerId = parsed?.kind === "dm" ? dmPartner(chatId, uid) : null
-  const { data: friends } = useFriends()
-  const friend = partnerId
-    ? friends.find((f) => f.uid === partnerId)
-    : undefined
-
   const groupId = parsed?.kind === "group" ? parsed.groupId : undefined
   const { data: group } = useGroup(groupId)
   const groupIds = React.useMemo(() => (groupId ? [groupId] : []), [groupId])
@@ -53,270 +60,360 @@ export default function ConversationPage() {
   const allowed =
     parsed?.kind === "dm" ? isMine : !!groupId && access.allowed.has(groupId)
 
-  const header =
-    parsed?.kind === "group" ? (
-      <Link
-        href={`/groups/${groupId}`}
-        className="flex min-w-0 items-center gap-3"
-      >
-        <GroupIcon
-          src={group?.icon}
-          alt={group?.name ?? "Group"}
-          size="sm"
-          className="size-9 rounded-full"
-        />
-        <div className="min-w-0">
-          <h1 className="truncate text-base font-semibold">
-            {group?.name ?? "Group chat"}
-          </h1>
-          {group && (
-            <p className="-mt-0.5 truncate text-xs text-muted-foreground">
-              {group.members.length} members
-            </p>
-          )}
-        </div>
-      </Link>
-    ) : (
-      <Link
-        href={partnerId ? `/friends/${partnerId}` : "/friends"}
-        className="flex min-w-0 items-center gap-3"
-      >
-        <UserAvatar
-          uid={partnerId ?? undefined}
-          src={friend?.photoURL}
-          name={friend?.displayName ?? "Friend"}
-          size="sm"
-          className="size-9"
-        />
-        <h1 className="truncate text-base font-semibold">
-          {friend?.displayName ?? "Chat"}
-        </h1>
-      </Link>
-    )
+  const viewport = useKeyboardViewport()
 
   return (
-    // Full height: the messages scroll, the box to type in stays at the bottom
-    <div className="flex h-dvh flex-col md:h-[calc(100dvh-2rem)]">
-      <AppHeader showBack titleContent={header} rightAction={<span />} />
+    // Full height: the messages scroll, the box to type in stays at the bottom.
+    // On phones it follows the visible area, so the keyboard never covers it.
+    <div
+      className="flex h-dvh flex-col overflow-hidden md:h-[calc(100dvh-2rem)]"
+      style={
+        viewport
+          ? {
+              position: "fixed",
+              insetInline: 0,
+              top: viewport.top,
+              height: viewport.height,
+            }
+          : undefined
+      }
+    >
       {!isLiveConfigured ? (
-        <EmptyState
-          title="Chat isn't set up yet"
-          description="The Realtime Database URL is missing on this server."
-        />
+        <Shell>
+          <EmptyState
+            title="Chat isn't set up yet"
+            description="The Realtime Database URL is missing on this server."
+          />
+        </Shell>
       ) : !parsed || !isMine ? (
-        <EmptyState
-          title="Chat not found"
-          description="This conversation doesn't exist or isn't yours."
-        />
+        <Shell>
+          <EmptyState
+            title="Chat not found"
+            description="This conversation doesn't exist or isn't yours."
+          />
+        </Shell>
       ) : parsed.kind === "group" && !access.ready ? (
-        <div className="flex flex-1 items-center justify-center">
-          <Spinner />
-        </div>
+        <Shell>
+          <div className="flex flex-1 items-center justify-center">
+            <Spinner />
+          </div>
+        </Shell>
       ) : !allowed ? (
-        <EmptyState
-          title="You're not in this group"
-          description={
-            access.error ?? "Only the group's members can read its chat."
-          }
-        />
+        <Shell>
+          <EmptyState
+            title="You're not in this group"
+            description={
+              access.error ?? "Only the group's members can read its chat."
+            }
+          />
+        </Shell>
       ) : (
-        <Conversation chatId={chatId} showNames={parsed.kind === "group"} />
+        <Conversation
+          key={chatId}
+          chatId={chatId}
+          partnerId={partnerId}
+          group={parsed.kind === "group" ? (group ?? null) : undefined}
+          keyboardOpen={viewport?.keyboard ?? false}
+        />
       )}
     </div>
   )
 }
 
-function Conversation({
-  chatId,
-  showNames,
-}: {
-  chatId: string
-  showNames: boolean
-}) {
-  const { user } = useSession()
-  const uid = user?.uid ?? ""
-  const { messages, loaded, error } = useChatMessages(chatId)
-  const now = useNow(0)
-  const [text, setText] = React.useState("")
-  const [sending, setSending] = React.useState(false)
-  const listRef = React.useRef<HTMLDivElement>(null)
-  const stickToBottom = React.useRef(true)
-  const last = messages.at(-1)
-
-  // Follow new messages unless the reader scrolled up; your own always scroll
-  React.useEffect(() => {
-    const el = listRef.current
-    if (el && (stickToBottom.current || last?.uid === uid))
-      el.scrollTop = el.scrollHeight
-  }, [last?.id, last?.uid, uid])
-
-  // Seen everything up to the latest message
-  React.useEffect(() => {
-    if (uid && loaded) void markRead(uid, chatId)
-  }, [uid, chatId, loaded, last?.id])
-
-  const submit = async () => {
-    const clean = text.trim()
-    if (!clean || !user || sending) return
-    setSending(true)
-    try {
-      await sendMessage(chatId, user, clean)
-      setText("")
-    } catch {
-      toast.error("Couldn't send. Check your connection and try again.")
-    } finally {
-      setSending(false)
-    }
-  }
-
-  const today = Math.max(now, last?.at ?? 0)
-
+function Shell({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <div
-        ref={listRef}
-        onScroll={(e) => {
-          const el = e.currentTarget
-          stickToBottom.current =
-            el.scrollHeight - el.scrollTop - el.clientHeight < 60
-        }}
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-3 py-3"
-      >
-        <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-0.5">
-          {error ? (
-            <p className="my-auto text-center text-sm text-muted-foreground">
-              Couldn&apos;t load messages: {error}
-            </p>
-          ) : !loaded ? (
-            <div className="my-auto flex justify-center">
-              <Spinner />
-            </div>
-          ) : messages.length === 0 ? (
-            <p className="my-auto text-center text-sm text-muted-foreground">
-              No messages yet. Say hi 👋
-            </p>
-          ) : (
-            <>
-              {/* Pushes a short conversation to the bottom, like a messenger */}
-              <div className="flex-1" />
-              {messages.map((m, i) => (
-                <MessageRow
-                  key={m.id}
-                  msg={m}
-                  prev={messages[i - 1]}
-                  mine={m.uid === uid}
-                  showName={showNames}
-                  today={today}
-                />
-              ))}
-            </>
-          )}
-        </div>
-      </div>
-
-      <form
-        className="pb-safe border-t bg-background"
-        onSubmit={(e) => {
-          e.preventDefault()
-          void submit()
-        }}
-      >
-        <div className="mx-auto flex w-full max-w-3xl items-end gap-2 p-2">
-          <Textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              // Enter sends on a keyboard; Shift+Enter (and phones' return key) add a line
-              if (
-                e.key === "Enter" &&
-                !e.shiftKey &&
-                !e.nativeEvent.isComposing &&
-                window.matchMedia("(pointer: fine)").matches
-              ) {
-                e.preventDefault()
-                void submit()
-              }
-            }}
-            placeholder="Message"
-            maxLength={MESSAGE_MAX}
-            rows={1}
-            autoComplete="off"
-            className="max-h-32 min-h-10 resize-none bg-card py-2"
-          />
-          <Button
-            type="submit"
-            size="icon"
-            className="size-10 shrink-0 rounded-full"
-            aria-label="Send"
-            disabled={!text.trim() || sending}
-          >
-            <HugeiconsIcon icon={SentIcon} />
-          </Button>
-        </div>
-      </form>
+      <AppHeader showBack title="Chat" rightAction={<span />} />
+      {children}
     </>
   )
 }
 
-function MessageRow({
-  msg,
-  prev,
-  mine,
-  showName,
-  today,
+function Conversation({
+  chatId,
+  partnerId,
+  group,
+  keyboardOpen,
 }: {
-  msg: KeyedMessage
-  prev?: KeyedMessage
-  mine: boolean
-  showName: boolean
-  today: number
+  chatId: string
+  partnerId: string | null
+  /** The group (null while it loads); undefined in a DM. */
+  group: Group | null | undefined
+  keyboardOpen: boolean
 }) {
-  const day = dayLabel(msg.at, today)
-  const newDay = !prev || dayLabel(prev.at, today) !== day
-  // A new run of messages: someone else spoke last, a new day, or a 5 minute gap
-  const newRun =
-    newDay || prev?.uid !== msg.uid || msg.at - (prev?.at ?? 0) > 5 * 60_000
+  const { user } = useSession()
+  const uid = user?.uid ?? ""
+  const isGroup = group !== undefined
+  const { data: friends } = useFriends()
+  const friend = partnerId ? friends.find((f) => f.uid === partnerId) : undefined
+
+  const feed = useChatMessages(chatId)
+  const info = useChatInfo(chatId)
+  const receipts = useReceipts(chatId)
+  const typing = useTypingUids(chatId, uid)
+  const initialLastRead = useInitialLastRead(uid, chatId)
+  const { hidden, hide } = useHiddenMessages(uid, chatId)
+  const [pending, setPending] = React.useState<ReadonlySet<string>>(EMPTY_SET)
+  const [infoOpen, setInfoOpen] = React.useState(false)
+
+  /* ── Who's who ─────────────────────────────────────────────────── */
+
+  const me: ChatPerson = React.useMemo(
+    () => ({
+      uid,
+      name: user?.displayName ?? "You",
+      photo: user?.photoURL ?? undefined,
+      role: group?.memberDetails?.[uid]?.role,
+    }),
+    [uid, user?.displayName, user?.photoURL, group]
+  )
+
+  // Names for everyone who ever spoke (from their messages), then the real details
+  const people = React.useMemo(() => {
+    const out: Record<string, ChatPerson> = {}
+    for (const m of feed.messages)
+      if (!out[m.uid]) out[m.uid] = { uid: m.uid, name: m.name }
+    if (group) {
+      for (const d of Object.values(group.formerMemberDetails ?? {}))
+        out[d.uid] = { uid: d.uid, name: d.name, photo: d.photoURL }
+      for (const d of Object.values(group.memberDetails ?? {}))
+        out[d.uid] = { uid: d.uid, name: d.name, photo: d.photoURL, role: d.role }
+    }
+    if (friend)
+      out[friend.uid] = {
+        uid: friend.uid,
+        name: friend.displayName,
+        photo: friend.photoURL,
+      }
+    else if (partnerId && !out[partnerId])
+      out[partnerId] = { uid: partnerId, name: "Friend" }
+    out[uid] = me
+    return out
+  }, [feed.messages, group, friend, partnerId, uid, me])
+
+  const others = React.useMemo(
+    () =>
+      isGroup
+        ? (group?.members ?? []).filter((m) => m !== uid)
+        : partnerId
+          ? [partnerId]
+          : [],
+    [isGroup, group, partnerId, uid]
+  )
+
+  /* ── What you do ───────────────────────────────────────────────── */
+
+  const track = React.useCallback((id: string, p: Promise<unknown>) => {
+    setPending((s) => new Set(s).add(id))
+    p.catch(() =>
+      toast.error("Couldn't send. Check your connection and try again.")
+    ).finally(() =>
+      setPending((s) => {
+        const next = new Set(s)
+        next.delete(id)
+        return next
+      })
+    )
+  }, [])
+
+  // Typing: one write every few seconds while keys are pressed, cleared when you pause
+  const typingState = React.useRef({ last: 0, timer: 0 })
+  const stopTyping = React.useCallback(() => {
+    const t = typingState.current
+    window.clearTimeout(t.timer)
+    if (t.last) void setTyping(chatId, uid, false)
+    t.last = 0
+  }, [chatId, uid])
+  const onTyping = React.useCallback(
+    (active: boolean) => {
+      const t = typingState.current
+      if (!active) return stopTyping()
+      const now = Date.now()
+      if (now - t.last > 3000) {
+        t.last = now
+        void setTyping(chatId, uid, true)
+      }
+      window.clearTimeout(t.timer)
+      t.timer = window.setTimeout(stopTyping, 5000)
+    },
+    [chatId, uid, stopTyping]
+  )
+  React.useEffect(() => stopTyping, [stopTyping])
+
+  // The latest preview line, read when you edit or unsend
+  const infoRef = React.useRef(info)
+  React.useEffect(() => {
+    infoRef.current = info
+  })
+
+  // Read receipts: at most one write per couple of seconds, the last one always lands
+  const seqRef = React.useRef<number | undefined>(undefined)
+  React.useEffect(() => {
+    seqRef.current = info?.seq
+  })
+  const readState = React.useRef({ last: 0, timer: 0 })
+  const doMarkRead = React.useCallback(() => {
+    const r = readState.current
+    const run = () => {
+      r.last = Date.now()
+      r.timer = 0
+      void markRead(uid, chatId, seqRef.current)
+    }
+    if (r.timer) return
+    const wait = 2000 - (Date.now() - r.last)
+    if (wait <= 0) run()
+    else r.timer = window.setTimeout(run, wait)
+  }, [uid, chatId])
+  React.useEffect(
+    () => () => window.clearTimeout(readState.current.timer),
+    []
+  )
+  // The count can land after the message: catch up the marker then too
+  const seq = info?.seq
+  React.useEffect(() => {
+    if (seq && document.visibilityState === "visible") doMarkRead()
+  }, [seq, doMarkRead])
+
+  const actions: ConversationActions = React.useMemo(
+    () => ({
+      loadMore: feed.loadMore,
+      send: (text, replyTo) => {
+        if (!user) return
+        stopTyping()
+        const id = newMessageId(chatId)
+        track(id, sendMessage(chatId, user, text, { replyTo, id }))
+      },
+      sendPhoto: (photo, caption, replyTo) => {
+        if (!user) return
+        const id = newMessageId(chatId)
+        track(id, sendPhoto(chatId, user, photo, caption, { replyTo, id }))
+      },
+      edit: (msg, text) => editMessage(chatId, msg, text, infoRef.current),
+      deleteForEveryone: (msg) =>
+        deleteForEveryone(chatId, msg, infoRef.current),
+      deleteForMe: (msg: KeyedMessage) => hide(msg.id),
+      react: (msg, emoji) => setReaction(chatId, msg.id, uid, emoji),
+      typing: onTyping,
+      markRead: doMarkRead,
+      loadPhoto: (msgId) => loadPhoto(chatId, msgId),
+    }),
+    [feed.loadMore, user, chatId, track, stopTyping, hide, uid, onTyping, doMarkRead]
+  )
+
+  const model: ConversationModel = {
+    chatId,
+    kind: isGroup ? "group" : "dm",
+    me,
+    people,
+    others,
+    messages: feed.messages,
+    loaded: feed.loaded,
+    error: feed.error,
+    hasMore: feed.hasMore,
+    loadingMore: feed.loadingMore,
+    receipts,
+    typing,
+    pending,
+    hidden,
+    initialLastRead,
+  }
+
+  /* ── Header ────────────────────────────────────────────────────── */
+
+  const partner = partnerId ? people[partnerId] : undefined
+  const title = isGroup
+    ? (group?.name ?? "Group chat")
+    : (partner?.name ?? "Chat")
+  const members = React.useMemo(
+    () =>
+      group
+        ? group.members.map(
+            (m) =>
+              people[m] ?? { uid: m, name: group.memberDetails?.[m]?.name ?? "Member" }
+          )
+        : [],
+    [group, people]
+  )
+  const typingText = typingLabel(
+    typing.map((u) => people[u]?.name ?? "Someone"),
+    isGroup
+  )
 
   return (
     <>
-      {newDay && (
-        <div className="my-2 flex justify-center">
-          <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-            {day}
-          </span>
-        </div>
-      )}
-      <div
-        className={cn(
-          "flex flex-col",
-          mine ? "items-end" : "items-start",
-          newRun && "mt-2"
-        )}
-      >
-        {showName && !mine && newRun && (
-          <span className="mb-0.5 px-3 text-[11px] font-medium text-muted-foreground">
-            {msg.name.split(" ")[0]}
-          </span>
-        )}
-        <div
-          className={cn(
-            "max-w-[80%] rounded-2xl px-3 py-1.5 text-sm leading-snug break-words whitespace-pre-wrap",
-            mine
-              ? "rounded-br-md bg-primary text-primary-foreground"
-              : "rounded-bl-md bg-muted text-foreground"
-          )}
-        >
-          {msg.text}
-          <span
-            className={cn(
-              "ml-2 inline-block translate-y-0.5 text-[10px]",
-              mine ? "text-primary-foreground/70" : "text-muted-foreground"
-            )}
-          >
-            {timeLabel(msg.at)}
-          </span>
-        </div>
-      </div>
+      <AppHeader
+        showBack
+        rightAction={<span />}
+        titleContent={
+          <ChatHeaderTitle
+            group={isGroup}
+            title={title}
+            photo={partner?.photo}
+            groupIcon={group?.icon}
+            uid={partnerId ?? undefined}
+            typing={typingText}
+            subtitle={isGroup && group ? memberLine(members, uid) : null}
+            onOpen={() => setInfoOpen(true)}
+          />
+        }
+      />
+      <ConversationView
+        model={model}
+        actions={actions}
+        safeBottom={!keyboardOpen}
+      />
+      <ChatInfoSheet
+        open={infoOpen}
+        onOpenChange={setInfoOpen}
+        group={isGroup}
+        title={title}
+        photo={partner?.photo}
+        groupIcon={group?.icon}
+        uid={partnerId ?? undefined}
+        description={group?.description}
+        members={members}
+        meUid={uid}
+        href={isGroup ? `/groups/${group?.id ?? ""}` : `/friends/${partnerId ?? ""}`}
+        hrefLabel={isGroup ? "Open group" : "View profile"}
+      />
     </>
   )
+}
+
+const EMPTY_SET: ReadonlySet<string> = new Set()
+
+/* ── Phones: fit the visible area above the keyboard ────────────────── */
+
+// "height|top|keyboard" of the visual viewport, or "" where it isn't needed
+function readViewport() {
+  const vv = window.visualViewport
+  if (!vv || !window.matchMedia("(max-width: 767px)").matches) return ""
+  const keyboard = vv.height < window.innerHeight * 0.8 ? 1 : 0
+  return `${Math.round(vv.height)}|${Math.round(vv.offsetTop)}|${keyboard}`
+}
+
+function subscribeViewport(onChange: () => void) {
+  const vv = window.visualViewport
+  vv?.addEventListener("resize", onChange)
+  vv?.addEventListener("scroll", onChange)
+  window.addEventListener("resize", onChange)
+  return () => {
+    vv?.removeEventListener("resize", onChange)
+    vv?.removeEventListener("scroll", onChange)
+    window.removeEventListener("resize", onChange)
+  }
+}
+
+/**
+ * On phones the on-screen keyboard shrinks only the *visual* viewport, so a
+ * full-height chat would hide its text box behind it. This tracks the visible
+ * area so the chat can pin itself to exactly that. Null on desktop and SSR.
+ */
+function useKeyboardViewport() {
+  const raw = React.useSyncExternalStore(subscribeViewport, readViewport, () => "")
+  return React.useMemo(() => {
+    if (!raw) return null
+    const [height, top, keyboard] = raw.split("|").map(Number)
+    return { height, top, keyboard: keyboard === 1 }
+  }, [raw])
 }

@@ -21,7 +21,7 @@ import { useSession } from "@/components/providers/session-provider"
 import { GameDiscountTag } from "@/components/games/game-discount-amount"
 import { Amount } from "@/components/shared/amount"
 import { PayPersonButton } from "@/components/shared/pay-person-button"
-import { DEFAULT_GROUP_ICON } from "@/components/shared/group-icon"
+import { groupIconSrc } from "@/components/shared/group-icon"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -127,7 +127,7 @@ function ExpenseDetails({ expense }: { expense: Expense }) {
         {/* Hero banner */}
         <div className="relative h-44 overflow-hidden rounded-lg border sm:h-52">
           <Image
-            src={expense.groupIcon || DEFAULT_GROUP_ICON}
+            src={groupIconSrc(expense.groupIcon)}
             alt={expense.title}
             fill
             sizes="(min-width: 672px) 672px, 100vw"

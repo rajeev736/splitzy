@@ -4,6 +4,7 @@ import * as React from "react"
 import { usePathname, useRouter as useNextRouter } from "next/navigation"
 import { useRouter } from "nextjs-toploader/app"
 
+import { ChatInboxProvider } from "@/components/chat/chat-inbox"
 import { useSession } from "@/components/providers/session-provider"
 import { JoySplitLogoIcon } from "@/components/shared/joysplit-logo"
 import { Spinner } from "@/components/ui/spinner"
@@ -75,19 +76,22 @@ export function AppShell({ children, hideNav = false }: { children: React.ReactN
   const showBottomNav = !hideNav && isBottomNavPage(pathname)
 
   return (
-    <div className="flex min-h-svh flex-col md:flex-row">
-      {!hideNav && <AppSidebar />}
-      {/* Room for the bottom nav, plus the floating add button where there is one */}
-      <main
-        className={cn(
-          "flex min-w-0 flex-1 flex-col",
-          showBottomNav ? (showsAddExpenseFab(pathname) ? "pb-36 md:pb-8" : "pb-20 md:pb-8") : "md:pb-8"
-        )}
-      >
-        {children}
-      </main>
-      {showBottomNav && <BottomNav />}
-    </div>
+    // Chats stay live app-wide: unread badges, and delivered ticks for senders
+    <ChatInboxProvider>
+      <div className="flex min-h-svh flex-col md:flex-row">
+        {!hideNav && <AppSidebar />}
+        {/* Room for the bottom nav, plus the floating add button where there is one */}
+        <main
+          className={cn(
+            "flex min-w-0 flex-1 flex-col",
+            showBottomNav ? (showsAddExpenseFab(pathname) ? "pb-36 md:pb-8" : "pb-20 md:pb-8") : "md:pb-8"
+          )}
+        >
+          {children}
+        </main>
+        {showBottomNav && <BottomNav />}
+      </div>
+    </ChatInboxProvider>
   )
 }
 

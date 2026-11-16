@@ -24,6 +24,8 @@ export interface Wallet {
   balance: number;
   /** Premium frames bought. */
   frames: string[];
+  /** Game board themes bought (lib/live/themes). */
+  themes?: string[];
   /** Reason for the last change, e.g. "frame:laurel", "gift:{friendshipId}:{momentId}". */
   lastTx: string;
   /** Claimed the 10,000-coin welcome bonus. */
@@ -41,7 +43,7 @@ export interface Wallet {
 /** One line of coin history (wallets/{uid}/txs/{id}). */
 export interface CoinTx {
   id: string;
-  kind: "welcome" | "frame" | "gift" | "stake" | "win" | "refund" | "throw";
+  kind: "welcome" | "frame" | "gift" | "stake" | "win" | "refund" | "throw" | "theme";
   /** Coins in (+) or out (−). */
   amount: number;
   label: string;
@@ -141,19 +143,29 @@ export interface GroupInviteInfo {
   invitedAt: string;
 }
 
+/** Group permissions, WhatsApp style. The security rules enforce them too. */
+export interface GroupSettings {
+  /** Who may change the name, icon and description. */
+  editInfo: "admins" | "all";
+  /** Who may add people. */
+  addMembers: "admins" | "all";
+}
+
 export interface Group {
   id: string;
   name: string;
   description?: string;
-  icon: string; // icon identifier or asset path
+  icon: string; // asset path (/assets, /group-icons) or an uploaded picture as a small data URL
   createdBy: string;
   creatorName?: string;
   members: string[]; // active member UIDs
-  formerMembers?: string[]; // departed former member UIDs (preserved for history)
+  formerMembers?: string[]; // departed or removed member UIDs (preserved for history)
   invitedMembers?: string[]; // pending invited member UIDs
   invitedMemberDetails?: Record<string, GroupInviteInfo>; // who was invited, by whom
   memberDetails: Record<string, GroupMemberInfo>;
   formerMemberDetails?: Record<string, GroupMemberInfo>;
+  /** Who may do what. Missing on groups made before it existed: everyone may do both. */
+  settings?: GroupSettings;
   status?: "ACTIVE" | "ARCHIVED" | "DELETED";
   createdAt: string;
   updatedAt?: string;
@@ -242,6 +254,8 @@ export type NotificationType =
   | "GROUP_INVITE_ACCEPTED"
   | "GROUP_ACCEPTED"
   | "GROUP_MEMBER_LEFT"
+  | "GROUP_REMOVED"
+  | "GROUP_ROLE"
   | "NEW_EXPENSE"
   | "EXPENSE_DELETED"
   | "PAYMENT_REPORTED"

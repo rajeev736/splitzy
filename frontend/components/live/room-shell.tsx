@@ -60,6 +60,7 @@ import { InviteFriendsSheet } from "./invite-friends-sheet"
 import { playSound } from "@/lib/live/sound"
 import { RoomChat } from "./room-chat"
 import { SoundMenu } from "./sound-settings"
+import { BoardThemePicker } from "./board-theme-picker"
 import { ReactionsOverlay, StickerBar } from "./stickers"
 import { VoiceBar } from "./voice-bar"
 
@@ -728,6 +729,7 @@ function PlayingView({
         <div className="mx-auto flex max-w-3xl items-center gap-2 px-3 py-2">
           <VoiceBar code={code} uid={uid} players={players} voice={voice} />
           <SoundMenu />
+          {(meta.game === "ludo" || meta.game === "chess" || meta.game === "snakes3d") && <BoardThemePicker game={meta.game} />}
           <Button
             variant={stickers ? "secondary" : "outline"}
             size="sm"
@@ -898,6 +900,12 @@ function EndedView({ room, meta }: { room: LiveRoom; meta: RoomMeta }) {
                         Cut {result.stats[id].kills ?? 0} · Got cut {result.stats[id].deaths ?? 0}
                       </span>
                     )}
+                    {/* Snakes & Ladders: ladders climbed, snakes that bit */}
+                    {result?.stats?.[id] && "ladders" in result.stats[id] && (
+                      <span className="block text-[11px] text-muted-foreground tabular-nums">
+                        Ladders {result.stats[id].ladders ?? 0} · Snakes {result.stats[id].snakes ?? 0}
+                      </span>
+                    )}
                   </span>
                   {score !== undefined && (
                     <span className="text-sm font-semibold tabular-nums">
@@ -973,6 +981,9 @@ function reasonText(reason: string) {
     all_home: "All four tokens home",
     rounds_over: "All rounds played",
     no_moves: "No moves left",
+    reached_100: "Reached 100",
+    all_solved: "Everyone solved it",
+    time_up: "Time ran out",
   }
   return map[reason] ?? reason.replace(/_/g, " ")
 }

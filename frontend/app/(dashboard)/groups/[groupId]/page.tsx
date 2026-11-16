@@ -6,29 +6,22 @@ import { useParams } from "next/navigation"
 import { useRouter } from "nextjs-toploader/app"
 import {
   AddCircleIcon,
-  Alert02Icon,
   BubbleChatIcon,
   ChartIncreaseIcon,
-  Delete02Icon,
-  Logout01Icon,
-  PencilEdit02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { AppHeader } from "@/components/layout/app-header"
 import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
-import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { GroupIcon } from "@/components/shared/group-icon"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { useDeleteGroup, useLeaveGroup } from "@/hooks/mutations"
-import { useExpenses, useGroup, useGroupExpenses } from "@/hooks/queries"
+import { useGroup, useGroupExpenses } from "@/hooks/queries"
 import { groupChatId } from "@/lib/chat"
-import { canDeleteGroup, canUserLeaveGroup } from "@/lib/money"
+import { canAddGroupMembers, canEditGroupInfo } from "@/lib/groups"
 import { GroupInviteCard } from "../../_components/group-invite-card"
-import { EditGroupDialog } from "./_components/edit-group-dialog"
+import { EditGroupSheet } from "./_components/edit-group-sheet"
 import { GroupActionsMenu } from "./_components/group-actions-menu"
 import { GroupExpenseList } from "./_components/group-expense-list"
 import {
@@ -37,6 +30,10 @@ import {
   GroupNotFound,
 } from "./_components/group-state"
 import { InviteDialog } from "./_components/invite-dialog"
+import {
+  DeleteGroupDialog,
+  LeaveGroupDialog,
+} from "./_components/leave-delete-dialogs"
 import { MembersTab } from "./_components/members-tab"
 import { OverviewTab } from "./_components/overview-tab"
 import { useQueryTab } from "@/hooks/use-query-tab"
@@ -61,7 +58,6 @@ function GroupDashboardContent() {
 
   const groupQuery = useGroup(groupId)
   const { data: groupExpenses } = useGroupExpenses(groupId)
-  const { data: expenses } = useExpenses()
 
   const [activeTab, setActiveTab] = useQueryTab<Tab>({
     defaultValue: "overview",
@@ -75,13 +71,6 @@ function GroupDashboardContent() {
   )
   const [dialog, setDialog] = React.useState<OpenDialog>(null)
   const closeDialog = (open: boolean) => !open && setDialog(null)
-
-  const leaveGroup = useLeaveGroup({
-    successMessage: "You have left the group",
-  })
-  const deleteGroup = useDeleteGroup({
-    successMessage: "Group deleted successfully",
-  })
 
   const group = groupQuery.data
 
@@ -107,12 +96,9 @@ function GroupDashboardContent() {
   }
 
   const isCreator = user?.uid === group.createdBy
-  const leaveCheck = user
-    ? canUserLeaveGroup(user.uid, group, expenses)
-    : { allowed: false, reason: "" }
-  const deleteCheck = user
-    ? canDeleteGroup(user.uid, group, expenses)
-    : { allowed: false, reason: "" }
+  const canEdit = canEditGroupInfo(group, user?.uid)
+  const canAdd = canAddGroupMembers(group, user?.uid)
+  const infoHref = `/groups/${group.id}/info`
   const addExpenseHref = `/expenses/new?groupId=${group.id}`
 
   const goToGroups = () => {
@@ -125,34 +111,27 @@ function GroupDashboardContent() {
       <AppHeader
         showBack
         titleContent={
-          <div className="flex min-w-0 items-center gap-3">
+          // Tap the name for group info, like WhatsApp
+          <Link
+            href={infoHref}
+            aria-label={`${group.name}: group info`}
+            className="-my-1 -ml-1 flex min-w-0 items-center gap-3 rounded-md py-1 pr-2 pl-1 transition-colors hover:bg-muted/60"
+          >
             <GroupIcon
               src={group.icon}
-              alt={group.name}
+              alt=""
               size="sm"
               className="size-9 rounded-md"
             />
             <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-0.5">
-                <h1 className="truncate text-base font-semibold">
-                  {group.name}
-                </h1>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="shrink-0 text-muted-foreground"
-                  aria-label="Edit group"
-                  title="Edit group"
-                  onClick={() => setDialog("edit")}
-                >
-                  <HugeiconsIcon icon={PencilEdit02Icon} className="size-4" />
-                </Button>
-              </div>
-              <p className="-mt-1 truncate text-xs text-muted-foreground">
+              <h1 className="truncate text-base leading-tight font-semibold">
+                {group.name}
+              </h1>
+              <p className="truncate text-xs text-muted-foreground">
                 {group.description || `${group.members.length} members`}
               </p>
             </div>
-          </div>
+          </Link>
         }
         rightAction={
           <div className="flex items-center">
@@ -168,7 +147,9 @@ function GroupDashboardContent() {
             </Button>
             <GroupActionsMenu
               isCreator={isCreator}
-              onViewMembers={() => router.push(`/groups/${group.id}/members`)}
+              canEdit={canEdit}
+              canAdd={canAdd}
+              onViewInfo={() => router.push(infoHref)}
               onInvite={() => setDialog("invite")}
               onEdit={() => setDialog("edit")}
               onLeave={() => setDialog("leave")}
@@ -273,69 +254,29 @@ function GroupDashboardContent() {
         </div>
       </PageContainer>
 
-      <EditGroupDialog
-        group={group}
-        open={dialog === "edit"}
-        onOpenChange={closeDialog}
-      />
+      {canEdit && (
+        <EditGroupSheet
+          group={group}
+          open={dialog === "edit"}
+          onOpenChange={closeDialog}
+        />
+      )}
 
-      <ConfirmDialog
+      <LeaveGroupDialog
+        group={group}
         open={dialog === "leave"}
         onOpenChange={closeDialog}
-        title="Leave Group"
-        icon={Logout01Icon}
-        destructive
-        confirmLabel="Leave Group"
-        isPending={leaveGroup.isPending}
-        confirmDisabled={!leaveCheck.allowed}
-        description={
-          leaveCheck.allowed ? (
-            <>
-              Are you sure you want to leave <strong>{group.name}</strong>? All
-              historical expenses and your records in them will be preserved.
-              {isCreator &&
-                " You created this group, so the next member becomes its admin."}
-            </>
-          ) : undefined
-        }
-        onConfirm={() => leaveGroup.mutate(group.id, { onSuccess: goToGroups })}
-      >
-        {!leaveCheck.allowed && (
-          <BlockedNotice
-            title="Cannot Leave Group"
-            reason={leaveCheck.reason}
-          />
-        )}
-      </ConfirmDialog>
+        onLeft={goToGroups}
+      />
 
-      <ConfirmDialog
-        open={dialog === "delete"}
-        onOpenChange={closeDialog}
-        title="Delete Group"
-        icon={Delete02Icon}
-        destructive
-        confirmLabel="Delete Group"
-        isPending={deleteGroup.isPending}
-        confirmDisabled={!deleteCheck.allowed}
-        description={
-          deleteCheck.allowed ? (
-            <>
-              Are you sure you want to delete and archive{" "}
-              <strong>{group.name}</strong>? All balances are fully settled.
-            </>
-          ) : undefined
-        }
-        onConfirm={() =>
-          deleteGroup.mutate(group.id, { onSuccess: goToGroups })
-        }
-      >
-        {!deleteCheck.allowed && (
-          <BlockedNotice
-            title="Cannot Delete Group"
-            reason={deleteCheck.reason}
-          />
-        )}
-      </ConfirmDialog>
+      {isCreator && (
+        <DeleteGroupDialog
+          group={group}
+          open={dialog === "delete"}
+          onOpenChange={closeDialog}
+          onDeleted={goToGroups}
+        />
+      )}
 
       <InviteDialog
         group={group}
@@ -343,19 +284,6 @@ function GroupDashboardContent() {
         onOpenChange={closeDialog}
       />
     </>
-  )
-}
-
-/** Explains why leave/delete is currently blocked (unsettled balances etc.). */
-function BlockedNotice({ title, reason }: { title: string; reason?: string }) {
-  return (
-    <Alert>
-      <HugeiconsIcon icon={Alert02Icon} className="text-warning" />
-      <AlertTitle className="font-semibold">{title}</AlertTitle>
-      <AlertDescription className="leading-relaxed text-foreground">
-        {reason}
-      </AlertDescription>
-    </Alert>
   )
 }
 

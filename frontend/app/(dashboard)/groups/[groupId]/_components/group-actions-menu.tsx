@@ -2,11 +2,11 @@
 
 import {
   Delete02Icon,
+  InformationCircleIcon,
   Logout01Icon,
   MoreVerticalIcon,
   PencilEdit02Icon,
   UserAdd01Icon,
-  UserGroupIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
@@ -19,17 +19,24 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
-/** Header 3-dot menu: members, invite, edit, and leave (member) / delete (creator). */
+/**
+ * Header 3-dot menu: group info, add members / edit info (when the group lets
+ * you), leave, and delete (creator only).
+ */
 export function GroupActionsMenu({
   isCreator,
-  onViewMembers,
+  canEdit,
+  canAdd,
+  onViewInfo,
   onInvite,
   onEdit,
   onLeave,
   onDelete,
 }: {
   isCreator: boolean
-  onViewMembers: () => void
+  canEdit: boolean
+  canAdd: boolean
+  onViewInfo: () => void
   onInvite: () => void
   onEdit: () => void
   onLeave: () => void
@@ -37,32 +44,40 @@ export function GroupActionsMenu({
 }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label="Group options" />}>
+      <DropdownMenuTrigger
+        render={
+          <Button variant="ghost" size="icon" aria-label="Group options" />
+        }
+      >
         <HugeiconsIcon icon={MoreVerticalIcon} className="size-5" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuItem onClick={onViewMembers}>
-          <HugeiconsIcon icon={UserGroupIcon} />
-          View Members
+      <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuItem onClick={onViewInfo}>
+          <HugeiconsIcon icon={InformationCircleIcon} />
+          Group info
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onInvite}>
-          <HugeiconsIcon icon={UserAdd01Icon} />
-          Invite Members
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onEdit}>
-          <HugeiconsIcon icon={PencilEdit02Icon} />
-          Edit Group
-        </DropdownMenuItem>
+        {canAdd && (
+          <DropdownMenuItem onClick={onInvite}>
+            <HugeiconsIcon icon={UserAdd01Icon} />
+            Add members
+          </DropdownMenuItem>
+        )}
+        {canEdit && (
+          <DropdownMenuItem onClick={onEdit}>
+            <HugeiconsIcon icon={PencilEdit02Icon} />
+            Edit group info
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
-        {/* Everyone can leave; a leaving creator hands the group to the next member */}
+        {/* Everyone can leave; a leaving creator hands the group to another admin or the next member */}
         <DropdownMenuItem variant="destructive" onClick={onLeave}>
           <HugeiconsIcon icon={Logout01Icon} />
-          Leave Group
+          Leave group
         </DropdownMenuItem>
         {isCreator && (
           <DropdownMenuItem variant="destructive" onClick={onDelete}>
             <HugeiconsIcon icon={Delete02Icon} />
-            Delete Group
+            Delete group
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>

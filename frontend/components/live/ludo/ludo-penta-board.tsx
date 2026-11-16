@@ -25,7 +25,8 @@ import {
   type Point,
 } from "@/lib/live/ludo-penta"
 import { cn } from "@/lib/utils"
-import { Piece, PieceDefs, SHADES } from "./ludo-board"
+import { Piece, PieceDefs } from "./ludo-board"
+import { LUDO_THEMES, type LudoLook } from "@/lib/live/themes"
 import { PowerSpawn } from "./power-art"
 import type { Positions } from "./use-ludo-animation"
 
@@ -49,16 +50,16 @@ const START_OF = new Map<number, LudoColour>(PENTA_COLOURS.map((c) => [PENTA_GEO
 const STARS = PENTA_GEO.safe.filter((g) => !START_OF.has(g))
 
 /** The board itself — arms, bases, the centre — drawn once (unturned). */
-const PentaBackground = React.memo(function PentaBackground({ id }: { id: string }) {
+const PentaBackground = React.memo(function PentaBackground({ id, look }: { id: string; look: LudoLook }) {
   const corners = pentagonCorners()
   return (
     <g>
       <defs>
         {PENTA_COLOURS.map((c) => (
           <linearGradient key={c} id={`${id}-pb-${c}`} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor={SHADES[c].light} />
-            <stop offset="0.35" stopColor={SHADES[c].mid} />
-            <stop offset="1" stopColor={SHADES[c].dark} />
+            <stop offset="0" stopColor={look.palette[c].light} />
+            <stop offset="0.35" stopColor={look.palette[c].mid} />
+            <stop offset="1" stopColor={look.palette[c].dark} />
           </linearGradient>
         ))}
       </defs>
@@ -77,7 +78,7 @@ const PentaBackground = React.memo(function PentaBackground({ id }: { id: string
             <polygon points={poly([corner(-h, -h), corner(h, -h), corner(h, h), corner(-h, h)])} fill="#fff" strokeLinejoin="round" />
             {[0, 1, 2, 3].map((t) => {
               const p = baseSlot(c, t)
-              return <circle key={t} cx={p.x} cy={p.y} r={0.42} fill={SHADES[c].mid} stroke="#fff" strokeOpacity={0.6} strokeWidth={0.05} />
+              return <circle key={t} cx={p.x} cy={p.y} r={0.42} fill={look.palette[c].mid} stroke="#fff" strokeOpacity={0.6} strokeWidth={0.05} />
             })}
           </g>
         )
@@ -90,8 +91,8 @@ const PentaBackground = React.memo(function PentaBackground({ id }: { id: string
           <polygon
             key={g}
             points={poly(armSquareCorners(s.arm, s.o, s.j))}
-            fill={start ? SHADES[start].mid : "#fff"}
-            stroke="#c9ced8"
+            fill={start ? look.palette[start].mid : look.track}
+            stroke={look.trackStroke}
             strokeWidth={0.035}
           />
         )
@@ -99,7 +100,7 @@ const PentaBackground = React.memo(function PentaBackground({ id }: { id: string
       {/* Home columns */}
       {PENTA_COLOURS.map((c, k) =>
         [0, 1, 2, 3, 4].map((j) => (
-          <polygon key={`${c}${j}`} points={poly(armSquareCorners(k, 0, j))} fill={SHADES[c].mid} stroke="#fff" strokeOpacity={0.6} strokeWidth={0.035} />
+          <polygon key={`${c}${j}`} points={poly(armSquareCorners(k, 0, j))} fill={look.palette[c].mid} stroke="#fff" strokeOpacity={0.6} strokeWidth={0.035} />
         ))
       )}
       {STARS.map((g) => (
@@ -146,6 +147,7 @@ export function LudoPentaBoard({
   onToken,
   rotation = 0,
   hidden,
+  look = LUDO_THEMES[0].look,
   targets,
   onTarget,
   className,
@@ -158,6 +160,7 @@ export function LudoPentaBoard({
   onToken: (token: number) => void
   rotation?: number
   hidden?: string[]
+  look?: LudoLook
   targets?: string[]
   onTarget?: (uid: string, token: number) => void
   className?: string
@@ -206,9 +209,9 @@ export function LudoPentaBoard({
       aria-label="Ludo board for five"
     >
       <g transform={`rotate(${rotation})`}>
-        <PentaBackground id={id} />
+        <PentaBackground id={id} look={look} />
       </g>
-      <PieceDefs id={id} />
+      <PieceDefs id={id} palette={look.palette} />
       {state.spawns?.map((sp) => {
         const c = rotate(trackPoint(sp.sq), rotation)
         return <PowerSpawn key={`s${sp.sq}`} kind={sp.kind} x={c.x} y={c.y} />
@@ -233,6 +236,7 @@ export function LudoPentaBoard({
             frozen={t.pos >= 0 && isFrozen(state, t.uid, t.index)}
             lock={t.pos >= 0 ? lockOf(state, t.uid, t.index) : 0}
             shielded={t.pos >= 0 && isShielded(state, t.uid, t.index)}
+            shade={look.palette[t.colour]}
           />
         )
       })}

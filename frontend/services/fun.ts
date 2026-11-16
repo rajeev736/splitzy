@@ -13,6 +13,7 @@ import {
 
 import { AppError } from "@/lib/errors"
 import { THROWABLES, type ThrowableId } from "@/lib/live/throwables"
+import { ALL_THEMES } from "@/lib/live/themes"
 import {
   BONDS,
   FRAMES,
@@ -100,6 +101,25 @@ export async function claimWelcomeFrame(uid: string): Promise<void> {
     tx.set(line.ref, line.data)
   })
   await updateDoc(doc(firestore, "users", uid), { frame: WELCOME_FRAME, updatedAt: nowIso() })
+}
+
+/** Buys a game board theme (lib/live/themes). Prices are checked by the rules (`theme:<id>`). */
+export async function buyTheme(uid: string, themeId: string): Promise<void> {
+  const theme = ALL_THEMES.find((t) => t.id === themeId)
+  if (!theme || theme.price === 0) return
+  const firestore = db()
+  const ref = doc(firestore, "wallets", uid)
+  await runTransaction(firestore, async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists()) throw new AppError("Your coins are still loading — try again in a moment")
+    const wallet = snap.data() as Wallet
+    const owned = wallet.themes ?? []
+    if (owned.includes(themeId)) return
+    if (wallet.balance < theme.price) throw new AppError(`You need ${theme.price - wallet.balance} more coins for this board`)
+    tx.update(ref, { balance: wallet.balance - theme.price, themes: [...owned, themeId], lastTx: `theme:${themeId}` })
+    const line = coinTx(uid, "theme", -theme.price, `${theme.name} board`, themeId)
+    tx.set(line.ref, line.data)
+  })
 }
 
 export async function buyFrame(uid: string, frameId: FrameId): Promise<void> {

@@ -3,6 +3,7 @@
 import * as React from "react"
 import { toast } from "sonner"
 
+import { isUploadedGroupIcon } from "@/components/shared/group-icon"
 import { useQueryTab } from "@/hooks/use-query-tab"
 import { calculateEqualSplit, rupeesToPaise, validateManualSplit, type SplitShare } from "@/lib/money"
 import type { Group, UserProfile } from "@/lib/types"
@@ -420,7 +421,8 @@ export function useExpenseDraft({ user, groups, friends, preselectedGroupId, pre
       clientId: draftId,
       groupId: isGroup ? currentGroup.id : undefined,
       groupName: isGroup ? currentGroup?.name : undefined,
-      groupIcon: isGroup ? currentGroup?.icon : undefined,
+      // Uploaded group pictures stay on the group: copying them into every expense would bloat each one
+      groupIcon: isGroup && !isUploadedGroupIcon(currentGroup?.icon) ? currentGroup?.icon : undefined,
       expenseType: isGroup ? "group" : "friend",
       isDirect: expenseMode === "friend",
       isPersonal: false,

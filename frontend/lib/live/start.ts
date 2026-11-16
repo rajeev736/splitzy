@@ -2,6 +2,8 @@ import { initialCheckersState } from "./checkers"
 import { initialChessState } from "./chess"
 import { initialLudoState } from "./ludo"
 import { initialScribbleState } from "./scribble"
+import { initialSnakesState } from "./snakes"
+import { initialSudokuState } from "./sudoku"
 import { initialTicTacToeState } from "./tictactoe"
 import type { LiveGameId, RoomOptions, RoomPlayer } from "./types"
 
@@ -23,5 +25,11 @@ export function initialStateFor(game: LiveGameId, players: RoomPlayer[], options
       return initialCheckersState(players, options, seed)
     case "tictactoe":
       return initialTicTacToeState(players, options, seed)
+    case "snakes":
+      return initialSnakesState(players, options, seed, "flat")
+    case "snakes3d":
+      return initialSnakesState(players, options, seed, "gate")
+    case "sudoku":
+      return initialSudokuState(players, options, seed)
   }
 }

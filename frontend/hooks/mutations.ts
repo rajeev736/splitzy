@@ -8,7 +8,17 @@ import type { GameMove } from "@/lib/games"
 import { isFirebaseConfigured } from "@/lib/firebase/config"
 import { queryKeys } from "@/lib/query/keys"
 import { awaitRealtime } from "@/lib/query/realtime"
-import type { AppNotification, Challenge, Expense, FriendRequest, Group, UserProfile } from "@/lib/types"
+import { groupSettings } from "@/lib/groups"
+import type {
+  AppNotification,
+  Challenge,
+  Expense,
+  FriendRequest,
+  Group,
+  GroupMemberInfo,
+  GroupSettings,
+  UserProfile,
+} from "@/lib/types"
 import * as accountService from "@/services/account"
 import * as authService from "@/services/auth"
 import * as challengeService from "@/services/challenges"
@@ -174,22 +184,72 @@ export const useCreateGroup = createUserMutation({
   apply: ({ cache }, group) => cache.setGroups((list) => [group, ...list.filter((g) => g.id !== group.id)]),
 })
 
-export const useUpdateGroup = createUserMutation({
-  run: async (_ctx, { groupId, updates }: { groupId: string; updates: Partial<Group> }) =>
-    groupService.updateGroup(groupId, updates),
-  apply: ({ cache }, _data, { groupId, updates }) => {
-    cache.setGroups(patchById(groupId, updates))
-    // Also sync groupName/groupIcon in related expenses
-    if (updates.name || updates.icon) {
+/** The group from the live cache, else fetched once. */
+const groupFor = async (cache: Ctx["cache"], groupId: string) =>
+  cache.groups().find((g) => g.id === groupId) ?? (await groupService.fetchGroupById(groupId)) ?? undefined
+
+/** Name / description / icon, checked against the group's "edit info" setting. */
+export const useUpdateGroupInfo = createUserMutation({
+  run: async ({ user, cache }, { groupId, changes }: { groupId: string; changes: groupService.GroupInfoChanges }) =>
+    groupService.updateGroupInfo(user, await groupFor(cache, groupId), changes),
+  apply: ({ cache }, changes, { groupId }) => {
+    cache.setGroups(patchById<Group>(groupId, changes))
+    if (changes.name) {
       cache.setExpenses((list) =>
-        list.map((exp) =>
-          exp.groupId === groupId
-            ? { ...exp, groupName: updates.name || exp.groupName, groupIcon: updates.icon || exp.groupIcon }
-            : exp
-        )
+        list.map((exp) => (exp.groupId === groupId ? { ...exp, groupName: changes.name } : exp))
       )
     }
   },
+})
+
+export const useUpdateGroupSettings = createUserMutation({
+  run: async ({ user, cache }, { groupId, settings }: { groupId: string; settings: Partial<GroupSettings> }) =>
+    groupService.updateGroupSettings(user, await groupFor(cache, groupId), settings),
+  apply: ({ cache }, _data, { groupId, settings }) =>
+    cache.setGroups((list) =>
+      list.map((g) =>
+        g.id === groupId ? { ...g, settings: { ...groupSettings(g), ...settings } } : g
+      )
+    ),
+})
+
+/** Make admin / dismiss as admin. */
+export const useSetGroupMemberRole = createUserMutation({
+  run: async ({ user, cache }, v: { groupId: string; uid: string; role: GroupMemberInfo["role"] }) =>
+    groupService.setGroupMemberRole(user, await groupFor(cache, v.groupId), v.uid, v.role),
+  apply: ({ cache }, _data, { groupId, uid, role }) =>
+    cache.setGroups((list) =>
+      list.map((g) =>
+        g.id === groupId && g.memberDetails?.[uid]
+          ? { ...g, memberDetails: { ...g.memberDetails, [uid]: { ...g.memberDetails[uid], role } } }
+          : g
+      )
+    ),
+  defaults: { successMessage: withMessage },
+})
+
+export const useRemoveGroupMember = createUserMutation({
+  run: async ({ user, cache }, v: { groupId: string; uid: string }) =>
+    groupService.removeGroupMember(user, await groupFor(cache, v.groupId), v.uid),
+  apply: ({ cache }, _data, { groupId, uid }) =>
+    cache.setGroups((list) =>
+      list.map((g) => {
+        if (g.id !== groupId) return g
+        const memberDetails = { ...g.memberDetails }
+        const info = memberDetails[uid]
+        delete memberDetails[uid]
+        return {
+          ...g,
+          members: g.members.filter((m) => m !== uid),
+          formerMembers: Array.from(new Set([...(g.formerMembers || []), uid])),
+          memberDetails,
+          formerMemberDetails: info
+            ? { ...(g.formerMemberDetails || {}), [uid]: { ...info, role: "member" as const } }
+            : g.formerMemberDetails,
+        }
+      })
+    ),
+  defaults: { successMessage: withMessage },
 })
 
 export const useLeaveGroup = createUserMutation({

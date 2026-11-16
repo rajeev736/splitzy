@@ -35,6 +35,8 @@ import { ABANDON_MS } from "@/lib/live/room"
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import { playSound, useOnChange } from "@/lib/live/sound"
+import { useBoardTheme } from "@/lib/live/themes"
+import { useWallet } from "@/hooks/use-fun"
 import { stateTransaction, updateState } from "@/services/live-rooms"
 import {
   ChessBoard,
@@ -68,6 +70,8 @@ export function ChessGame({
   endGame,
 }: LiveGameProps) {
   const { data: state } = useRoomNode<ChessState>(code, "state")
+  const wallet = useWallet()
+  const chessTheme = useBoardTheme("chess", wallet?.themes)
   // Sounds: a wooden knock per move, a sharper one for a capture, a chime for check
   useOnChange(state?.moves?.length ?? 0, (n, was) => {
     if (n <= was) return
@@ -364,6 +368,7 @@ export function ChessGame({
       {chip(topPlayer, topColour)}
 
       <ChessBoard
+        look={chessTheme.look}
         pieces={pieces}
         flipped={flipped}
         myColour={myColour}

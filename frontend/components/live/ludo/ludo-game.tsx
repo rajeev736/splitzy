@@ -58,6 +58,8 @@ import { baseFrame, pentaTurnFor } from "@/lib/live/ludo-penta"
 import { ThrowOverlay, ThrowPicker } from "../throwables"
 import { PowerBadge } from "./power-art"
 import { useStageFit } from "../use-stage-fit"
+import { useWallet } from "@/hooks/use-fun"
+import { useBoardTheme } from "@/lib/live/themes"
 import { LudoDice } from "./ludo-dice"
 import { STEP_MS, useLudoAnimation } from "./use-ludo-animation"
 import { playSound, useOnChange } from "@/lib/live/sound"
@@ -391,6 +393,10 @@ export function LudoGame({
   const [throwAt, setThrowAt] = React.useState<RoomPlayer | null>(null)
   // Phones: fit the table to the screen (see the root below)
   const stageRef = useStageFit()
+  // The board theme this device plays on (bought ones from the wallet)
+  const wallet = useWallet()
+  const theme = useBoardTheme("ludo", wallet?.themes)
+  const look = theme.look
 
   /* ── Render ──────────────────────────────────────────────────────── */
 
@@ -524,7 +530,7 @@ export function LudoGame({
         size={32}
         dim={!isTurn}
         onRoll={canRoll ? roll : undefined}
-        glow={canRoll ? TOKEN_COLOURS[colour] : undefined}
+        glow={canRoll ? look.palette[colour].mid : undefined}
       />
     )
     return (
@@ -537,6 +543,7 @@ export function LudoGame({
         countdown={isTurn ? countdown : null}
         align={align}
         dice={dice}
+        tint={look.palette[colour].mid}
         compact={compact}
         geo={geo}
         onTap={id !== uid && !me.left ? () => setThrowAt(rp) : undefined}
@@ -569,7 +576,7 @@ export function LudoGame({
         className="rounded-2xl p-2 text-white shadow-lg ring-1 ring-black/10 sm:p-3"
         style={{
           background:
-            "radial-gradient(130% 90% at 50% 0%, #2f6be0 0%, #1a46a8 45%, #0d2463 100%)",
+            look.table,
         }}
       >
         <div className={cn("grid gap-2 px-1 pb-2", rowCols(topRow.length))}>
@@ -589,6 +596,7 @@ export function LudoGame({
               onToken={onToken}
               rotation={pentaTurn}
               hidden={offBoard}
+              look={look}
               targets={aiming ? targets : undefined}
               onTarget={(id, token) =>
                 aiming && firePower(aiming, { uid: id, token })
@@ -605,6 +613,7 @@ export function LudoGame({
               onToken={onToken}
               turns={turns}
               hidden={offBoard}
+              look={look}
               targets={aiming ? targets : undefined}
               onTarget={(id, token) =>
                 aiming && firePower(aiming, { uid: id, token })
@@ -723,6 +732,8 @@ export function Seat({
   onTap,
   compact = false,
   geo = SQUARE_GEO,
+  status: statusOverride,
+  tint,
 }: {
   player: RoomPlayer
   ludo: LudoPlayer
@@ -738,8 +749,12 @@ export function Seat({
   /** Three to a row: the dice takes room only while it's showing. */
   compact?: boolean
   geo?: LudoGeo
+  /** The line under the name (other games: e.g. "On 47"); default: Ludo's pieces home. */
+  status?: string
+  /** The colour dot / ring in the board theme's tone (default: classic). */
+  tint?: string
 }) {
-  const colour = TOKEN_COLOURS[ludo.colour]
+  const colour = tint ?? TOKEN_COLOURS[ludo.colour]
   const out = !!ludo.out
   const dim = player.left || out || !player.online
   const missed = ludo.missed ?? 0
@@ -752,7 +767,7 @@ export function Seat({
           ? "Left"
           : !player.online
             ? "Offline"
-            : `${homeCount(ludo, geo)}/4 home`
+            : (statusOverride ?? `${homeCount(ludo, geo)}/4 home`)
   const share = countdown ?? 1
   const name = (
     <div

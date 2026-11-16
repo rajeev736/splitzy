@@ -13,6 +13,9 @@ import { CheckersGame } from "./checkers/checkers-game"
 import { ChessGame } from "./chess/chess-game"
 import { LudoGame } from "./ludo/ludo-game"
 import { ScribbleGame } from "./scribble/scribble-game"
+import { SnakesGame } from "./snakes/snakes-game"
+import { Snakes3DGame } from "./snakes3d/snakes3d-game"
+import { SudokuGame } from "./sudoku/sudoku-game"
 import { TicTacToeGame } from "./tictactoe/tictactoe-game"
 
 const GAME_COMPONENTS: Record<
@@ -24,6 +27,9 @@ const GAME_COMPONENTS: Record<
   chess: ChessGame,
   checkers: CheckersGame,
   tictactoe: TicTacToeGame,
+  snakes: SnakesGame,
+  snakes3d: Snakes3DGame,
+  sudoku: SudokuGame,
 }
 
 /** Renders the room's game and hands it everything it needs from the shell. */

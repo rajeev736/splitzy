@@ -1,9 +1,27 @@
-import { deleteField, doc, getDoc, setDoc, updateDoc, type Firestore } from "firebase/firestore"
+import { arrayRemove, arrayUnion, deleteField, doc, getDoc, setDoc, updateDoc, type Firestore } from "firebase/firestore"
 
 import { AppError } from "@/lib/errors"
 import { sanitizeForFirestore } from "@/lib/expenses/builder"
+import {
+  canAddGroupMembers,
+  canEditGroupInfo,
+  canManageMember,
+  GROUP_DESCRIPTION_MAX,
+  GROUP_NAME_MAX,
+  isGroupAdmin,
+  NEW_GROUP_SETTINGS,
+} from "@/lib/groups"
 import { canDeleteGroup, canUserLeaveGroup } from "@/lib/money"
-import type { Expense, FriendRequest, Group, GroupInviteInfo, GroupMemberInfo, UserProfile } from "@/lib/types"
+import type {
+  Expense,
+  FriendRequest,
+  Group,
+  GroupInviteInfo,
+  GroupMemberInfo,
+  GroupSettings,
+  UserProfile,
+} from "@/lib/types"
+import { postGroupEvent } from "./chat"
 import { sendFriendRequest } from "./friends"
 import {
   activateFriendship,
@@ -96,6 +114,14 @@ async function sendGroupAddedNotification(user: UserProfile, targetUid: string, 
   })
 }
 
+/** A line in the group chat ("Aman added Priya"). Best effort: never blocks or fails the change itself. */
+function groupEvent(groupId: string, actor: Pick<UserProfile, "uid" | "displayName">, text: string) {
+  postGroupEvent(groupId, actor, text).catch((err) => console.warn("Could not post group event:", err))
+}
+
+const memberName = (group: Group, uid: string) =>
+  group.memberDetails?.[uid]?.name || group.formerMemberDetails?.[uid]?.name || "a member"
+
 /** True when a friend request is already pending between the two users (either direction). */
 const hasPendingRequest = (requests: FriendRequest[], a: string, b: string) =>
   requests.some(
@@ -133,6 +159,7 @@ export async function createGroup(
     invitedMembers: [],
     invitedMemberDetails: {},
     memberDetails,
+    settings: NEW_GROUP_SETTINGS,
     status: "ACTIVE",
     createdAt: nowIso(),
   }
@@ -141,6 +168,7 @@ export async function createGroup(
   if (!firestore) return group
 
   await setDoc(doc(firestore, "groups", groupId), sanitizeForFirestore(group))
+  groupEvent(groupId, user, `${user.displayName} created the group "${name}"`)
 
   for (const invite of invites) {
     await sendGroupAddedNotification(user, invite.user.uid, group)
@@ -158,9 +186,153 @@ export function fetchGroupById(groupId: string): Promise<Group | null> {
   return resolveGroup(groupId, [])
 }
 
-export async function updateGroup(groupId: string, updates: Partial<Group>) {
+export type GroupInfoChanges = Partial<Pick<Group, "name" | "description" | "icon">>
+
+/**
+ * Name, description and icon: admins, or everyone when the group allows it.
+ * Returns the fields that actually changed (empty when nothing did).
+ */
+export async function updateGroupInfo(user: UserProfile, group: Group | undefined, input: GroupInfoChanges) {
+  if (!group) throw new AppError("Group not found")
+  if (!canEditGroupInfo(group, user.uid)) throw new AppError("Only admins can edit this group's info")
+
+  const changes: GroupInfoChanges = {}
+  if (input.name !== undefined) {
+    const name = input.name.trim()
+    if (!name) throw new AppError("Group name is required")
+    if (name.length > GROUP_NAME_MAX) throw new AppError(`Group name can be up to ${GROUP_NAME_MAX} characters`)
+    if (name !== group.name) changes.name = name
+  }
+  if (input.description !== undefined) {
+    const description = input.description.trim()
+    if (description.length > GROUP_DESCRIPTION_MAX)
+      throw new AppError(`Description can be up to ${GROUP_DESCRIPTION_MAX} characters`)
+    if (description !== (group.description || "")) changes.description = description
+  }
+  if (input.icon !== undefined && input.icon && input.icon !== group.icon) changes.icon = input.icon
+  if (Object.keys(changes).length === 0) return changes
+
   const firestore = getDb()
-  if (firestore) await updateDoc(doc(firestore, "groups", groupId), updates)
+  if (!firestore) return changes
+  await updateDoc(doc(firestore, "groups", group.id), { ...changes, updatedAt: nowIso() })
+
+  const who = user.displayName
+  if (changes.name) groupEvent(group.id, user, `${who} changed the group name to "${changes.name}"`)
+  if (changes.icon) groupEvent(group.id, user, `${who} changed the group icon`)
+  if (changes.description !== undefined)
+    groupEvent(
+      group.id,
+      user,
+      changes.description ? `${who} changed the group description` : `${who} removed the group description`
+    )
+  return changes
+}
+
+/** Group permissions (admins only). */
+export async function updateGroupSettings(user: UserProfile, group: Group | undefined, patch: Partial<GroupSettings>) {
+  if (!group) throw new AppError("Group not found")
+  if (!isGroupAdmin(group, user.uid)) throw new AppError("Only admins can change group settings")
+
+  const firestore = getDb()
+  const updates: Record<string, string> = { updatedAt: nowIso() }
+  if (patch.editInfo) updates["settings.editInfo"] = patch.editInfo
+  if (patch.addMembers) updates["settings.addMembers"] = patch.addMembers
+  if (firestore) await updateDoc(doc(firestore, "groups", group.id), updates)
+
+  const who = user.displayName
+  if (patch.editInfo)
+    groupEvent(
+      group.id,
+      user,
+      patch.editInfo === "admins"
+        ? `${who} changed this group's settings so only admins can edit the group info`
+        : `${who} changed this group's settings so all members can edit the group info`
+    )
+  if (patch.addMembers)
+    groupEvent(
+      group.id,
+      user,
+      patch.addMembers === "admins"
+        ? `${who} changed this group's settings so only admins can add members`
+        : `${who} changed this group's settings so all members can add members`
+    )
+}
+
+/** Make someone an admin, or dismiss them as one (admins only; never the creator). */
+export async function setGroupMemberRole(
+  user: UserProfile,
+  group: Group | undefined,
+  targetUid: string,
+  role: GroupMemberInfo["role"]
+) {
+  if (!group) throw new AppError("Group not found")
+  if (!group.members.includes(targetUid)) throw new AppError("They're no longer in this group")
+  if (targetUid === group.createdBy) throw new AppError("The group creator is always an admin")
+  if (!canManageMember(group, user.uid, targetUid)) throw new AppError("Only admins can change admins")
+
+  const name = memberName(group, targetUid)
+  const firestore = getDb()
+  if (firestore) {
+    await updateDoc(doc(firestore, "groups", group.id), {
+      [`memberDetails.${targetUid}.role`]: role,
+      updatedAt: nowIso(),
+    })
+  }
+  groupEvent(
+    group.id,
+    user,
+    role === "admin" ? `${user.displayName} made ${name} an admin` : `${user.displayName} dismissed ${name} as admin`
+  )
+  if (role === "admin") {
+    await sendNotification({
+      userId: targetUid,
+      title: "You're now an admin",
+      message: `${user.displayName} made you an admin of "${group.name}"`,
+      type: "GROUP_ROLE",
+      data: { groupId: group.id, groupName: group.name, actorId: user.uid, actorName: user.displayName },
+    }).catch((err) => console.warn("Could not send admin notification:", err))
+  }
+  return { message: role === "admin" ? `${name} is now an admin` : `${name} is no longer an admin` }
+}
+
+/**
+ * Removes someone (admins only; never the creator). Like leaving, they become a
+ * former member: past expenses stay readable to them and the group chat closes
+ * for them on their next visit.
+ */
+export async function removeGroupMember(user: UserProfile, group: Group | undefined, targetUid: string) {
+  if (!group) throw new AppError("Group not found")
+  if (!group.members.includes(targetUid)) throw new AppError("They're no longer in this group")
+  if (targetUid === group.createdBy) throw new AppError("The group creator can't be removed")
+  if (!canManageMember(group, user.uid, targetUid)) throw new AppError("Only admins can remove members")
+
+  const info = group.memberDetails?.[targetUid]
+  const name = memberName(group, targetUid)
+  const firestore = getDb()
+  if (!firestore) return { message: `${name} was removed from the group` }
+
+  await updateDoc(doc(firestore, "groups", group.id), {
+    members: arrayRemove(targetUid),
+    formerMembers: arrayUnion(targetUid),
+    [`memberDetails.${targetUid}`]: deleteField(),
+    [`formerMemberDetails.${targetUid}`]: sanitizeForFirestore({
+      uid: targetUid,
+      name,
+      splitzyId: info?.splitzyId || "",
+      photoURL: info?.photoURL,
+      role: "member",
+    }),
+    updatedAt: nowIso(),
+  })
+  groupEvent(group.id, user, `${user.displayName} removed ${name}`)
+  await sendNotification({
+    userId: targetUid,
+    title: "Removed from group",
+    message: `${user.displayName} removed you from "${group.name}". Your past expenses there are still in your history.`,
+    type: "GROUP_REMOVED",
+    data: { groupId: group.id, groupName: group.name, actorId: user.uid, actorName: user.displayName },
+  }).catch((err) => console.warn("Could not send removal notification:", err))
+  return { message: `${name} was removed from the group` }
 }
 
 export async function leaveGroup(user: UserProfile, group: Group | undefined, expenses: Expense[]) {
@@ -169,26 +341,42 @@ export async function leaveGroup(user: UserProfile, group: Group | undefined, ex
   if (!check.allowed) throw new AppError(check.reason || "You can't leave this group yet")
 
   const remaining = group.members.filter((m) => m !== user.uid)
-  const updatedDetails = { ...group.memberDetails }
-  delete updatedDetails[user.uid]
-  // The creator hands the group over to the next member; the last one out archives it
-  const newOwner = group.createdBy === user.uid ? remaining[0] : undefined
-  if (newOwner && updatedDetails[newOwner]) updatedDetails[newOwner] = { ...updatedDetails[newOwner], role: "admin" }
+  // The creator hands the group over — to another admin when there is one, else
+  // the next member, who becomes an admin. The owner always counts as an admin,
+  // so a group is never left without one. The last one out archives it.
+  const newOwner =
+    group.createdBy === user.uid
+      ? (remaining.find((m) => group.memberDetails?.[m]?.role === "admin") ?? remaining[0])
+      : undefined
 
   const firestore = getDb()
   if (!firestore) return
 
+  // Say goodbye in the chat first, while you're still in it (after leaving, the chat
+  // may already have shut you out). Never waits more than a moment.
+  if (remaining.length > 0)
+    await Promise.race([
+      postGroupEvent(group.id, user, `${user.displayName} left`).catch(() => undefined),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ])
+
+  // Field paths, not whole maps: a stale copy must never undo someone else's change
   await updateDoc(doc(firestore, "groups", group.id), {
-    members: remaining,
-    ...(newOwner ? { createdBy: newOwner } : {}),
+    members: arrayRemove(user.uid),
+    ...(newOwner
+      ? {
+          createdBy: newOwner,
+          ...(group.memberDetails?.[newOwner] ? { [`memberDetails.${newOwner}.role`]: "admin" } : {}),
+        }
+      : {}),
     ...(remaining.length === 0 ? { status: "ARCHIVED", archivedAt: nowIso() } : {}),
-    invitedMembers: (group.invitedMembers || []).filter((id) => id !== user.uid),
-    formerMembers: Array.from(new Set([...(group.formerMembers || []), user.uid])),
-    memberDetails: updatedDetails,
-    formerMemberDetails: {
-      ...(group.formerMemberDetails || {}),
-      [user.uid]: group.memberDetails?.[user.uid] || toMemberInfo(user, "member"),
-    },
+    invitedMembers: arrayRemove(user.uid),
+    formerMembers: arrayUnion(user.uid),
+    [`memberDetails.${user.uid}`]: deleteField(),
+    [`formerMemberDetails.${user.uid}`]: sanitizeForFirestore({
+      ...(group.memberDetails?.[user.uid] || toMemberInfo(user, "member")),
+      role: "member",
+    }),
   })
 
   // Notify ONLY remaining members (excluding the departing user)
@@ -261,6 +449,9 @@ export async function inviteGroupMember(
   if (target.uid === user.uid) throw new AppError("You cannot add yourself")
 
   const isMember = group.members.includes(target.uid)
+  if (option !== "FRIEND_ONLY" && !isMember && !canAddGroupMembers(group, user.uid)) {
+    throw new AppError("Only admins can add members to this group")
+  }
   const isFriend = friends.some((f) => f.uid === target.uid)
   const requestPending = hasPendingRequest(friendRequests, user.uid, target.uid)
 
@@ -279,17 +470,17 @@ export async function inviteGroupMember(
   let friendRequest: FriendRequest | undefined
 
   if (sendGroup) {
-    const updatedMembers = Array.from(new Set([...group.members, target.uid]))
     const newMemberInfo = toMemberInfo(target, "member")
-    const invitedMembers = (group.invitedMembers || []).filter((id) => id !== target.uid)
 
     if (firestore) {
+      // arrayUnion / arrayRemove: a stale copy of the member list must never re-add someone who left
       await updateDoc(doc(firestore, "groups", groupId), {
-        members: updatedMembers,
+        members: arrayUnion(target.uid),
         [`memberDetails.${target.uid}`]: sanitizeForFirestore(newMemberInfo),
-        invitedMembers,
+        invitedMembers: arrayRemove(target.uid),
         [`invitedMemberDetails.${target.uid}`]: deleteField(),
       })
+      groupEvent(groupId, user, `${user.displayName} added ${target.displayName}`)
       await sendGroupAddedNotification(user, target.uid, group)
     }
   }

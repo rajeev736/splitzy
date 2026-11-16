@@ -20,6 +20,7 @@ import {
   type SquareColour,
   type LudoState,
 } from "@/lib/live/ludo"
+import { LUDO_THEMES, type BoardImage, type LudoLook, type Shade } from "@/lib/live/themes"
 import { cn } from "@/lib/utils"
 import { playSound } from "@/lib/live/sound"
 import { PowerSpawn } from "./power-art"
@@ -93,16 +94,126 @@ const START_STAR_PATHS = COLOURS.map((c) => {
   return starPath(cell.col + 0.5, cell.row + 0.5, 0.34, 0.15)
 })
 
-/** The board itself — Ludo King style: bright bases, white track, coloured home runs — drawn once. */
-const BoardBackground = React.memo(function BoardBackground({ id }: { id: string }) {
+/** A motif painted in a base's inner square (centred on cx, cy, about `size` across). */
+function BasePattern({ kind, cx, cy, size, shade }: { kind: NonNullable<LudoLook["pattern"]>; cx: number; cy: number; size: number; shade: Shade }) {
+  const r = size / 2
+  if (kind === "mandala") {
+    // Rings of petals and dots, in the base colour's dark tone on cream
+    return (
+      <g transform={`translate(${cx} ${cy})`} opacity={0.9} pointerEvents="none">
+        <circle r={r * 0.96} fill="none" stroke={shade.dark} strokeWidth={0.05} />
+        <circle r={r * 0.9} fill="none" stroke={shade.dark} strokeWidth={0.025} strokeDasharray="0.05 0.08" />
+        {Array.from({ length: 16 }, (_, k) => (
+          <ellipse key={`p${k}`} cy={-r * 0.68} rx={r * 0.1} ry={r * 0.22} fill={shade.mid} stroke={shade.dark} strokeWidth={0.02} transform={`rotate(${k * 22.5})`} />
+        ))}
+        <circle r={r * 0.48} fill="none" stroke={shade.dark} strokeWidth={0.04} />
+        {Array.from({ length: 12 }, (_, k) => (
+          <ellipse key={`q${k}`} cy={-r * 0.33} rx={r * 0.07} ry={r * 0.15} fill="none" stroke={shade.dark} strokeWidth={0.025} transform={`rotate(${k * 30 + 15})`} />
+        ))}
+        <circle r={r * 0.14} fill={shade.mid} stroke={shade.dark} strokeWidth={0.03} />
+      </g>
+    )
+  }
+  if (kind === "stitch") {
+    // A diamond of little "stitched" squares
+    const step = size / 11
+    const cells: [number, number][] = []
+    for (let i = -5; i <= 5; i++) for (let j = -5; j <= 5; j++) if (Math.abs(i) + Math.abs(j) <= 5 && (Math.abs(i) + Math.abs(j)) % 2 === 0) cells.push([i, j])
+    return (
+      <g pointerEvents="none">
+        {cells.map(([i, j]) => (
+          <rect key={`${i},${j}`} x={cx + i * step - step * 0.4} y={cy + j * step - step * 0.4} width={step * 0.8} height={step * 0.8} fill={shade.mid} opacity={0.75} />
+        ))}
+      </g>
+    )
+  }
+  // Floral: a stem with three blossoms
+  const blossom = (bx: number, by: number, s: number, key: string) => (
+    <g key={key} transform={`translate(${bx} ${by})`}>
+      {Array.from({ length: 5 }, (_, k) => (
+        <ellipse key={k} cy={-s * 0.5} rx={s * 0.32} ry={s * 0.5} fill={shade.light} stroke={shade.dark} strokeWidth={0.02} transform={`rotate(${k * 72})`} />
+      ))}
+      <circle r={s * 0.25} fill={shade.dark} />
+    </g>
+  )
+  return (
+    <g pointerEvents="none" opacity={0.95}>
+      <path d={`M${cx} ${cy + r * 0.95}C${cx - r * 0.2} ${cy + r * 0.3} ${cx + r * 0.25} ${cy - r * 0.1} ${cx} ${cy - r * 0.55}`} fill="none" stroke="#4b5a1e" strokeWidth={0.07} />
+      <ellipse cx={cx - r * 0.28} cy={cy + r * 0.35} rx={r * 0.22} ry={r * 0.09} fill="#6b7f2a" transform={`rotate(-30 ${cx - r * 0.28} ${cy + r * 0.35})`} />
+      <ellipse cx={cx + r * 0.3} cy={cy + r * 0.1} rx={r * 0.22} ry={r * 0.09} fill="#6b7f2a" transform={`rotate(25 ${cx + r * 0.3} ${cy + r * 0.1})`} />
+      {blossom(cx, cy - r * 0.6, r * 0.32, "a")}
+      {blossom(cx - r * 0.45, cy - r * 0.05, r * 0.24, "b")}
+      {blossom(cx + r * 0.45, cy - r * 0.25, r * 0.24, "c")}
+    </g>
+  )
+}
+
+/** At most this much of a picture board's own border (in squares) shows past the grid. */
+const IMAGE_BORDER = 1
+
+/** How far a picture board's border reaches past the grid on its left and right (squares). */
+function imageBorder(image: BoardImage): [number, number] {
+  const [a, b, c, d] = image.breaks
+  return [Math.min(IMAGE_BORDER, a / ((b - a) / 6)), Math.min(IMAGE_BORDER, (1 - d) / ((d - c) / 6))]
+}
+
+/**
+ * A board drawn from a picture, cut 5×5 at its grid lines (border | base |
+ * middle | base | border) and each piece stretched onto the matching part of
+ * the 15×15 grid — so a hand-drawn board with uneven squares still lines up.
+ */
+const ImageBoard = React.memo(function ImageBoard({ id, image }: { id: string; image: BoardImage }) {
+  const [a, b, c, d] = image.breaks
+  const [mL, mR] = imageBorder(image)
+  const src = [a - mL * ((b - a) / 6), a, b, c, d, d + mR * ((d - c) / 6)]
+  const dst = [-mL, 0, 6, 9, 15, 15 + mR]
+  // A hair of overlap so no seam shows between the pieces
+  const EPS = 0.02
+  const slices: React.ReactNode[] = []
+  for (let i = 0; i < 5; i++) {
+    for (let j = 0; j < 5; j++) {
+      const w = dst[i + 1] - dst[i]
+      const h = dst[j + 1] - dst[j]
+      const sw = src[i + 1] - src[i]
+      const sh = src[j + 1] - src[j]
+      slices.push(
+        <svg
+          key={`${i}${j}`}
+          x={dst[i]}
+          y={dst[j]}
+          width={w + EPS}
+          height={h + EPS}
+          viewBox={`${src[i]} ${src[j]} ${sw * (1 + EPS / w)} ${sh * (1 + EPS / h)}`}
+          preserveAspectRatio="none"
+        >
+          <image href={image.src} width={1} height={1} preserveAspectRatio="none" />
+        </svg>
+      )
+    }
+  }
+  const size = 15 + mL + mR
+  return (
+    <g>
+      <clipPath id={`${id}-pic`}>
+        <rect x={-mL} y={-mL} width={size} height={size} rx={0.3} />
+      </clipPath>
+      <g clipPath={`url(#${id}-pic)`}>{slices}</g>
+    </g>
+  )
+})
+
+/** The board itself — bases, track, home columns, centre — in the chosen theme; drawn once per theme. */
+const BoardBackground = React.memo(function BoardBackground({ id, look }: { id: string; look: LudoLook }) {
+  const P = look.palette
+  const baseFill = (c: SquareColour) => (look.gradient ? `url(#${id}-base-${c})` : P[c].mid)
   return (
     <g>
       <defs>
         {COLOURS.map((c) => (
           <linearGradient key={c} id={`${id}-base-${c}`} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor={SHADES[c].light} />
-            <stop offset="0.35" stopColor={SHADES[c].mid} />
-            <stop offset="1" stopColor={SHADES[c].dark} />
+            <stop offset="0" stopColor={P[c].light} />
+            <stop offset="0.35" stopColor={P[c].mid} />
+            <stop offset="1" stopColor={P[c].dark} />
           </linearGradient>
         ))}
         <radialGradient id={`${id}-slot`} cx="0.5" cy="0.35" r="0.6">
@@ -113,29 +224,40 @@ const BoardBackground = React.memo(function BoardBackground({ id }: { id: string
           <feDropShadow dx="0" dy="0.05" stdDeviation="0.08" floodColor="#000" floodOpacity="0.35" />
         </filter>
       </defs>
-      <rect x={0} y={0} width={15} height={15} rx={0.35} fill="#ffffff" />
+      <rect x={0} y={0} width={15} height={15} rx={0.35} fill={look.track} />
       {COLOURS.map((c) => {
         const o = BASE_ORIGIN[c]
         return (
           <g key={c}>
-            <rect x={o.col} y={o.row} width={6} height={6} rx={0.35} fill={`url(#${id}-base-${c})`} />
+            <rect x={o.col} y={o.row} width={6} height={6} rx={0.35} fill={baseFill(c)} />
             <rect
               x={o.col + 0.85}
               y={o.row + 0.85}
               width={4.3}
               height={4.3}
               rx={0.45}
-              fill="#ffffff"
-              filter={`url(#${id}-inset)`}
+              fill={look.inner}
+              filter={look.gradient ? `url(#${id}-inset)` : undefined}
+              stroke={look.gradient ? undefined : P[c].dark}
+              strokeWidth={look.gradient ? undefined : 0.06}
             />
+            {look.pattern && <BasePattern kind={look.pattern} cx={o.col + 3} cy={o.row + 3} size={3.9} shade={P[c]} />}
             {BASE_SLOTS.map(([r, cc]) => (
               <g key={`${r}-${cc}`}>
-                <circle cx={o.col + cc + 0.5} cy={o.row + r + 0.5} r={0.6} fill={SHADES[c].mid} />
-                <circle cx={o.col + cc + 0.5} cy={o.row + r + 0.5} r={0.6} fill={`url(#${id}-slot)`} />
                 <circle
                   cx={o.col + cc + 0.5}
                   cy={o.row + r + 0.5}
-                  r={0.42}
+                  r={look.pattern ? 0.5 : 0.6}
+                  fill={P[c].mid}
+                  fillOpacity={look.pattern ? 0.85 : 1}
+                  stroke={look.pattern ? P[c].dark : undefined}
+                  strokeWidth={look.pattern ? 0.05 : undefined}
+                />
+                {look.gradient && <circle cx={o.col + cc + 0.5} cy={o.row + r + 0.5} r={0.6} fill={`url(#${id}-slot)`} />}
+                <circle
+                  cx={o.col + cc + 0.5}
+                  cy={o.row + r + 0.5}
+                  r={look.pattern ? 0.34 : 0.42}
                   fill="none"
                   stroke="#fff"
                   strokeOpacity={0.55}
@@ -155,8 +277,8 @@ const BoardBackground = React.memo(function BoardBackground({ id }: { id: string
             y={cell.row}
             width={1}
             height={1}
-            fill={start ? SHADES[start].mid : "#ffffff"}
-            stroke="#c9ced8"
+            fill={start ? P[start].mid : look.track}
+            stroke={look.trackStroke}
             strokeWidth={0.035}
           />
         )
@@ -169,36 +291,36 @@ const BoardBackground = React.memo(function BoardBackground({ id }: { id: string
             y={cell.row}
             width={1}
             height={1}
-            fill={SHADES[c].mid}
-            stroke="#ffffff"
-            strokeOpacity={0.6}
+            fill={P[c].mid}
+            stroke={look.gradient ? "#ffffff" : look.trackStroke}
+            strokeOpacity={look.gradient ? 0.6 : 1}
             strokeWidth={0.035}
           />
         ))
       )}
       {STAR_PATHS.map((d, i) => (
-        <path key={i} d={d} fill="#e5e7eb" stroke="#9aa1ad" strokeWidth={0.05} strokeLinejoin="round" />
+        <path key={i} d={d} fill={look.star} stroke="#9aa1ad" strokeWidth={0.05} strokeLinejoin="round" />
       ))}
       {START_STAR_PATHS.map((d, i) => (
         <path key={i} d={d} fill="#fff" fillOpacity={0.9} />
       ))}
       {/* Home: four triangles meeting in the middle */}
-      <polygon points="6,6 6,9 7.5,7.5" fill={`url(#${id}-base-red)`} />
-      <polygon points="6,6 9,6 7.5,7.5" fill={`url(#${id}-base-green)`} />
-      <polygon points="9,6 9,9 7.5,7.5" fill={`url(#${id}-base-yellow)`} />
-      <polygon points="6,9 9,9 7.5,7.5" fill={`url(#${id}-base-blue)`} />
+      <polygon points="6,6 6,9 7.5,7.5" fill={baseFill("red")} />
+      <polygon points="6,6 9,6 7.5,7.5" fill={baseFill("green")} />
+      <polygon points="9,6 9,9 7.5,7.5" fill={baseFill("yellow")} />
+      <polygon points="6,9 9,9 7.5,7.5" fill={baseFill("blue")} />
       <path d="M6 6L9 9M9 6L6 9" stroke="#fff" strokeOpacity={0.7} strokeWidth={0.05} />
       <rect x={6} y={6} width={3} height={3} fill="none" stroke="#fff" strokeOpacity={0.8} strokeWidth={0.06} />
       <rect
-        x={0.03}
-        y={0.03}
-        width={14.94}
-        height={14.94}
+        x={look.frameWidth / 2}
+        y={look.frameWidth / 2}
+        width={15 - look.frameWidth}
+        height={15 - look.frameWidth}
         rx={0.35}
         fill="none"
-        stroke="#0f172a"
-        strokeOpacity={0.35}
-        strokeWidth={0.06}
+        stroke={look.frame}
+        strokeOpacity={look.gradient ? 0.35 : 1}
+        strokeWidth={look.frameWidth}
       />
     </g>
   )
@@ -207,22 +329,22 @@ const BoardBackground = React.memo(function BoardBackground({ id }: { id: string
 /* ── Pieces ──────────────────────────────────────────────────────────── */
 
 /** Gradients for the 3D pins, one set per colour. */
-export function PieceDefs({ id }: { id: string }) {
+export function PieceDefs({ id, palette = SHADES }: { id: string; palette?: Record<LudoColour, Shade> }) {
   return (
     <defs>
       {ALL_COLOURS.map((c) => (
         <React.Fragment key={c}>
           <linearGradient id={`${id}-body-${c}`} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor={SHADES[c].dark} />
-            <stop offset="0.38" stopColor={SHADES[c].light} />
-            <stop offset="0.62" stopColor={SHADES[c].mid} />
-            <stop offset="1" stopColor={SHADES[c].dark} />
+            <stop offset="0" stopColor={palette[c].dark} />
+            <stop offset="0.38" stopColor={palette[c].light} />
+            <stop offset="0.62" stopColor={palette[c].mid} />
+            <stop offset="1" stopColor={palette[c].dark} />
           </linearGradient>
           <radialGradient id={`${id}-head-${c}`} cx="0.36" cy="0.3" r="0.75">
             <stop offset="0" stopColor="#ffffff" stopOpacity="0.95" />
-            <stop offset="0.18" stopColor={SHADES[c].light} />
-            <stop offset="0.6" stopColor={SHADES[c].mid} />
-            <stop offset="1" stopColor={SHADES[c].dark} />
+            <stop offset="0.18" stopColor={palette[c].light} />
+            <stop offset="0.6" stopColor={palette[c].mid} />
+            <stop offset="1" stopColor={palette[c].dark} />
           </radialGradient>
         </React.Fragment>
       ))}
@@ -231,8 +353,8 @@ export function PieceDefs({ id }: { id: string }) {
 }
 
 /** A glossy Ludo pin standing on its square — about one square tall at scale 1. */
-function Pin({ id, colour }: { id: string; colour: LudoColour }) {
-  const s = SHADES[colour]
+function Pin({ id, colour, shade }: { id: string; colour: LudoColour; shade?: Shade }) {
+  const s = shade ?? SHADES[colour]
   return (
     <>
       <ellipse cx={0.05} cy={0.36} rx={0.5} ry={0.16} fill="#000" opacity={0.35} />
@@ -300,6 +422,7 @@ export function Piece({
   frozen = false,
   lock = 0,
   shielded = false,
+  shade,
 }: {
   id: string
   colour: LudoColour
@@ -316,6 +439,8 @@ export function Piece({
   /** The number this piece waits for (0 = not locked). */
   lock?: number
   shielded?: boolean
+  /** The theme's tones for this colour (default: classic). */
+  shade?: Shade
 }) {
   const tappable = movable || targetable
   const outer = React.useRef<SVGGElement>(null)
@@ -414,7 +539,7 @@ export function Piece({
       <g ref={hop}>
         <g ref={bob}>
           <g transform={`scale(${scale})`}>
-            <Pin id={id} colour={colour} />
+            <Pin id={id} colour={colour} shade={shade} />
             {shielded && <ellipse cy={-0.2} rx={0.62} ry={0.78} fill="#fde047" fillOpacity={0.22} stroke="#facc15" strokeWidth={0.06} />}
             {frozen && (
               <>
@@ -452,6 +577,7 @@ export function LudoBoard({
   onToken,
   turns = 0,
   hidden,
+  look = LUDO_THEMES[0].look,
   targets,
   onTarget,
   className,
@@ -468,6 +594,8 @@ export function LudoBoard({
   turns?: number
   /** Players whose pieces are off the board (left, or out for missing turns). */
   hidden?: string[]
+  /** The board theme (lib/live/themes). */
+  look?: LudoLook
   /** Power Ludo: pieces (`uid:token`) you may aim a power at right now. */
   targets?: string[]
   onTarget?: (uid: string, token: number) => void
@@ -510,17 +638,22 @@ export function LudoBoard({
   // Painter's order: lower on the screen is nearer, so it's drawn later; the piece that just moved goes on top
   placed.sort((a, b) => (a.t.key === lastMoved ? 1 : b.t.key === lastMoved ? -1 : a.y - b.y))
 
+  // Room around the grid: a picture's border, and on top a pin on the top row standing up past the edge
+  const pad = Math.max(0.575, ...(look.image ? imageBorder(look.image) : []))
+  const top = Math.max(pad, 0.85)
+  const span = 15 + 2 * pad
+
   return (
     <svg
-      viewBox="-0.15 -0.15 15.3 15.3"
+      viewBox={`${-pad} ${-top} ${span} ${span}`}
       className={cn("block h-auto w-full select-none", className)}
       role="img"
       aria-label="Ludo board"
     >
       <g transform={`rotate(${turns * 90} 7.5 7.5)`}>
-        <BoardBackground id={id} />
+        {look.image ? <ImageBoard id={id} image={look.image} /> : <BoardBackground id={id} look={look} />}
       </g>
-      <PieceDefs id={id} />
+      <PieceDefs id={id} palette={look.palette} />
       {/* Power Ludo: power-ups waiting on the track */}
       {state.spawns?.map((sp) => {
         const cell = trackToCell(sp.sq)
@@ -547,6 +680,7 @@ export function LudoBoard({
             frozen={t.pos >= 0 && isFrozen(state, t.uid, t.index)}
             lock={t.pos >= 0 ? lockOf(state, t.uid, t.index) : 0}
             shielded={t.pos >= 0 && isShielded(state, t.uid, t.index)}
+            shade={look.palette[t.colour]}
           />
         )
       })}

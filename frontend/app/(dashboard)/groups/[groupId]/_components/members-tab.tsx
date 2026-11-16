@@ -1,7 +1,7 @@
 "use client"
 
-import { Fragment } from "react"
-import { Tick02Icon, UserAdd01Icon, UserGroupIcon } from "@hugeicons/core-free-icons"
+import { Fragment, useState } from "react"
+import { MoreVerticalIcon, Tick02Icon, UserAdd01Icon, UserGroupIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { useSession } from "@/components/providers/session-provider"
@@ -13,8 +13,10 @@ import { ItemGroup, ItemSeparator } from "@/components/ui/item"
 import { Spinner } from "@/components/ui/spinner"
 import { useAcceptFriendRequest, useSendFriendRequest } from "@/hooks/mutations"
 import { useFriendRequests, useFriends } from "@/hooks/queries"
+import { canAddGroupMembers, canManageMember, isGroupAdmin, sortGroupMembers } from "@/lib/groups"
 import { calculateMemberGroupBalance } from "@/lib/money"
 import type { Expense, Group } from "@/lib/types"
+import { MemberActionsSheet } from "./member-actions-sheet"
 import { MemberRow } from "./member-row"
 import { PendingInvites } from "./pending-invites"
 
@@ -32,6 +34,8 @@ export function MembersTab({
   const { data: friendRequests } = useFriendRequests()
   const sendFriendRequest = useSendFriendRequest()
   const acceptFriendRequest = useAcceptFriendRequest({ successMessage: "Friend request accepted!" })
+  const [managing, setManaging] = useState<string | null>(null)
+  const canAdd = canAddGroupMembers(group, user?.uid)
 
   // Only show users in formerMembers who are NOT currently active members
   const formerMembers = (group.formerMembers ?? []).filter((id) => !group.members.includes(id))
@@ -41,17 +45,19 @@ export function MembersTab({
       <CardHeader>
         <CardTitle className="text-sm font-semibold">Members</CardTitle>
         <CardDescription className="text-xs">Group membership and balances</CardDescription>
-        <CardAction>
-          <Button size="sm" variant="outline" onClick={onInvite}>
-            <HugeiconsIcon icon={UserAdd01Icon} data-icon="inline-start" />
-            Invite
-          </Button>
-        </CardAction>
+        {canAdd && (
+          <CardAction>
+            <Button size="sm" variant="outline" onClick={onInvite}>
+              <HugeiconsIcon icon={UserAdd01Icon} data-icon="inline-start" />
+              Invite
+            </Button>
+          </CardAction>
+        )}
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
         <ItemGroup className="gap-0">
-          {group.members.map((mId, i) => {
+          {sortGroupMembers(group, user?.uid).map((mId, i) => {
             const info = group.memberDetails?.[mId]
             const fr = friends.find((f) => f.uid === mId)
             const balance = calculateMemberGroupBalance(mId, group.id, expenses)
@@ -76,7 +82,7 @@ export function MembersTab({
                   photoURL={info?.photoURL || fr?.photoURL}
                   splitzyId={memberSplitzyId || mId}
                   isCreator={mId === group.createdBy}
-                  isAdmin={info?.role === "admin"}
+                  isAdmin={isGroupAdmin(group, mId)}
                   footer={
                     <>
                       {isCurrent ? (
@@ -117,11 +123,24 @@ export function MembersTab({
                     </>
                   }
                   actions={
-                    <div className="text-right">
-                      {balance.netPaise !== 0 ? (
-                        <Amount paise={balance.netPaise} signed className="text-sm font-semibold tabular-nums" />
-                      ) : (
-                        <span className="text-xs text-muted-foreground">Settled</span>
+                    <div className="flex items-center gap-1">
+                      <div className="text-right">
+                        {balance.netPaise !== 0 ? (
+                          <Amount paise={balance.netPaise} signed className="text-sm font-semibold tabular-nums" />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Settled</span>
+                        )}
+                      </div>
+                      {canManageMember(group, user?.uid, mId) && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="-mr-2 text-muted-foreground"
+                          aria-label={`Manage ${displayName}`}
+                          onClick={() => setManaging(mId)}
+                        >
+                          <HugeiconsIcon icon={MoreVerticalIcon} className="size-4" />
+                        </Button>
                       )}
                     </div>
                   }
@@ -138,7 +157,7 @@ export function MembersTab({
             icon={UserGroupIcon}
             title="No other members yet"
             description="Invite friends or search by JoySplit ID to split expenses together."
-            action={{ label: "Invite Members", onClick: onInvite }}
+            action={canAdd ? { label: "Invite Members", onClick: onInvite } : undefined}
             className="border-t py-6"
           />
         )}
@@ -166,7 +185,7 @@ export function MembersTab({
                       size="sm"
                       muted
                       actions={
-                        <span className="text-xs text-muted-foreground">Left group</span>
+                        <span className="text-xs text-muted-foreground">Not in group</span>
                       }
                     />
                   </Fragment>
@@ -176,6 +195,13 @@ export function MembersTab({
           </div>
         )}
       </CardContent>
+
+      <MemberActionsSheet
+        group={group}
+        uid={managing}
+        expenses={expenses}
+        onOpenChange={(open) => !open && setManaging(null)}
+      />
     </Card>
   )
 }

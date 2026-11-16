@@ -58,6 +58,11 @@
   --color-info-foreground: var(--info-foreground);
   --color-brand-yellow: var(--brand-yellow);
   --color-brand-yellow-foreground: var(--brand-yellow-foreground);
+  --color-chat-wall: var(--chat-wall);
+  --color-chat-in: var(--chat-in);
+  --color-chat-out: var(--chat-out);
+  --color-chat-meta: var(--chat-meta);
+  --color-chat-tick: var(--chat-tick);
 
   --radius-sm: calc(var(--radius) * 0.5);
   --radius-md: calc(var(--radius) * 0.75);
@@ -137,6 +142,14 @@
   --elevation-64: 0 0 8px rgb(0 0 0 / 0.12), 0 32px 64px rgb(0 0 0 / 0.14);
   /* Resting cards: a touch lighter than elevation-2 so long lists stay calm */
   --elevation-card: 0 0 2px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.1);
+
+  /* Chat: a soft wallpaper, white bubbles in, brand-tinted bubbles out */
+  --chat-wall: #eceff3;
+  --chat-wall-dot: rgb(15 108 189 / 0.07);
+  --chat-in: #ffffff;
+  --chat-out: #d4e6f9;
+  --chat-meta: #66727e;
+  --chat-tick: #0a84ff;
 }
 
 .dark {
@@ -193,6 +206,13 @@
   --elevation-28: 0 0 8px rgb(0 0 0 / 0.24), 0 14px 28px rgb(0 0 0 / 0.28);
   --elevation-64: 0 0 8px rgb(0 0 0 / 0.24), 0 32px 64px rgb(0 0 0 / 0.28);
   --elevation-card: 0 0 2px rgb(0 0 0 / 0.24), 0 1px 2px rgb(0 0 0 / 0.28);
+
+  --chat-wall: #161616;
+  --chat-wall-dot: rgb(255 255 255 / 0.035);
+  --chat-in: #2a2a2a;
+  --chat-out: #163b60;
+  --chat-meta: rgb(255 255 255 / 0.6);
+  --chat-tick: #53bdeb;
 }
 
 @layer base {
@@ -298,6 +318,26 @@ input:autofill {
   .pb-safe {
     padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
   }
+  /* Chat background: a quiet dot grid on the wallpaper colour */
+  .chat-wallpaper {
+    background-color: var(--chat-wall);
+    background-image: radial-gradient(var(--chat-wall-dot) 1.2px, transparent 1.2px);
+    background-size: 18px 18px;
+  }
+}
+
+/* A message you jumped to (from a reply) glows briefly */
+@keyframes chat-flash {
+  0%,
+  35% {
+    background-color: color-mix(in oklab, var(--primary) 18%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.chat-flash {
+  animation: chat-flash 1.6s ease-out;
 }
 
 /* Welcome tour (driver.js): match the app's cards, type and buttons */
@@ -377,4 +417,12 @@ input:autofill {
   --toast-close-button-start: auto;
   --toast-close-button-end: 0;
   --toast-close-button-transform: translate(35%, -35%);
+}
+
+/* A day chip stuck to the top of a chat shows while scrolling, then fades so it never sits on a message */
+.chat-daychip {
+  transition: opacity 0.3s ease;
+}
+:not([data-scrolling]) > * > section > .chat-daychip[data-stuck] {
+  opacity: 0;
 }

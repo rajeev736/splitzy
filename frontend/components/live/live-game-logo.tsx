@@ -198,7 +198,107 @@ function TicTacToe({ id }: ArtProps) {
   )
 }
 
+/** A bright board with a ladder and a winding green snake. */
+function Snakes({ id }: ArtProps) {
+  const cells = ["#ef4444", "#facc15", "#22c55e", "#3b82f6"]
+  return (
+    <>
+      <defs>
+        <clipPath id={`${id}-clip`}>
+          <rect width="48" height="48" rx="11" />
+        </clipPath>
+        <linearGradient id={`${id}-snake`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#86efac" />
+          <stop offset="1" stopColor="#15803d" />
+        </linearGradient>
+      </defs>
+      <g clipPath={`url(#${id}-clip)`}>
+        {Array.from({ length: 16 }, (_, i) => (
+          <rect key={i} x={(i % 4) * 12} y={Math.floor(i / 4) * 12} width="12" height="12" fill={cells[(i + Math.floor(i / 4)) % 4]} />
+        ))}
+        <rect width="48" height="48" fill="#fff" opacity="0.18" />
+      </g>
+      {/* Ladder */}
+      <g stroke="#7c2d12" strokeWidth="2.6" strokeLinecap="round">
+        <path d="M8 40L22 8M15 43L29 11" />
+        <path d="M10.2 35l6.8 3M12.5 29.8l6.8 3M14.8 24.6l6.8 3M17.1 19.4l6.8 3M19.4 14.2l6.8 3" strokeWidth="2" />
+      </g>
+      {/* Snake */}
+      <path d="M37 42c-8 1-11-4-7-8s9-4 9-10-8-6-9-11" fill="none" stroke="#14532d" strokeWidth="6.5" strokeLinecap="round" />
+      <path d="M37 42c-8 1-11-4-7-8s9-4 9-10-8-6-9-11" fill="none" stroke={`url(#${id}-snake)`} strokeWidth="4.5" strokeLinecap="round" />
+      <path d="M37 42c-8 1-11-4-7-8s9-4 9-10-8-6-9-11" fill="none" stroke="#fde047" strokeWidth="1" strokeDasharray="1.5 3" strokeLinecap="round" />
+      <ellipse cx="30" cy="11" rx="4.6" ry="3.6" fill="#16a34a" stroke="#14532d" strokeWidth="1.2" />
+      <circle cx="28.6" cy="10" r="0.9" fill="#fff" />
+      <circle cx="31.4" cy="10" r="0.9" fill="#fff" />
+      <path d="M30 14.5v2.5l-1.2 1.2M30 17l1.2 1.2" stroke="#dc2626" strokeWidth="0.9" strokeLinecap="round" fill="none" />
+      <rect width="48" height="48" rx="11" fill="none" stroke="#000" strokeOpacity="0.1" />
+    </>
+  )
+}
+
+/** Isometric grass-topped blocks climbing up a jungle cliff, with a ladder and a spark of lightning. */
+function Snakes3D({ id }: ArtProps) {
+  // An isometric block: top diamond + two sides, at (x, y) with height h
+  const block = (x: number, y: number, h: number, key: string) => (
+    <g key={key}>
+      <path d={`M${x} ${y}l9 4.5v${h}l-9-4.5z`} fill="#57534e" />
+      <path d={`M${x + 18} ${y}l-9 4.5v${h}l9-4.5z`} fill="#44403c" />
+      <path d={`M${x} ${y}l9-4.5 9 4.5-9 4.5z`} fill="#4ade80" />
+      <path d={`M${x} ${y}l9 4.5 9-4.5`} fill="none" stroke="#166534" strokeWidth="1" />
+    </g>
+  )
+  return (
+    <>
+      <Tile id={id} from="#166534" to="#052e16" />
+      <circle cx="38" cy="10" r="5" fill="#fef9c3" opacity="0.25" />
+      <path d="M40 2v14" stroke="#7dd3fc" strokeWidth="2.5" opacity="0.55" strokeLinecap="round" />
+      {block(4, 34, 9, "a")}
+      {block(14, 26, 14, "b")}
+      {block(24, 18, 19, "c")}
+      {/* Ladder up the steps */}
+      <g stroke="#b45309" strokeWidth="1.6" strokeLinecap="round">
+        <path d="M13 36L21 21M17 38L25 23" />
+        <path d="M14.4 33.4l3.6 1.8M16.4 29.6l3.6 1.8M18.4 25.8l3.6 1.8" strokeWidth="1.3" />
+      </g>
+      {/* A little lightning over the top */}
+      <path d="M34 4l-4 7h3l-2 6 6-8h-3l2-5z" fill="#fde047" stroke="#f59e0b" strokeWidth="0.8" strokeLinejoin="round" />
+      <circle cx="9" cy="40" r="2.2" fill="#ef4444" stroke="#fff" strokeWidth="0.8" />
+    </>
+  )
+}
+
+/** A Sudoku grid with a few numbers. */
+function Sudoku({ id }: ArtProps) {
+  const nums: [number, number, string][] = [
+    [0, 0, "5"], [1, 1, "3"], [2, 0, "7"], [0, 2, "9"], [2, 2, "1"], [1, 2, "8"],
+  ]
+  return (
+    <>
+      <Tile id={id} from="#a78bfa" to="#5b21b6" />
+      <rect x="8" y="8" width="32" height="32" rx="4" fill="#fff" />
+      <g stroke="#ddd6fe" strokeWidth="0.8">
+        {[1, 2, 4, 5, 7, 8].map((k) => (
+          <path key={k} d={`M${8 + (32 / 9) * k} 9v30M9 ${8 + (32 / 9) * k}h30`} />
+        ))}
+      </g>
+      <g stroke="#5b21b6" strokeWidth="1.6">
+        <path d="M18.67 8.5v31M29.33 8.5v31M8.5 18.67h31M8.5 29.33h31" />
+      </g>
+      <rect x="8" y="8" width="32" height="32" rx="4" fill="none" stroke="#5b21b6" strokeWidth="1.6" />
+      {nums.map(([c, r, n]) => (
+        <text key={`${c}${r}`} x={13.3 + c * 10.67} y={16.5 + r * 10.67} textAnchor="middle" fontSize="7.5" fontWeight="800" fill={n === "8" ? "#7c3aed" : "#1e1b4b"} fontFamily="system-ui, sans-serif">
+          {n}
+        </text>
+      ))}
+      <rect x="19.4" y="19.4" width="9.2" height="9.2" rx="1.5" fill="#7c3aed" opacity="0.18" />
+    </>
+  )
+}
+
 const ART: Record<LiveGameId, (props: ArtProps) => React.JSX.Element> = {
+  snakes: Snakes,
+  snakes3d: Snakes3D,
+  sudoku: Sudoku,
   scribble: Scribble,
   ludo: Ludo,
   chess: Chess,

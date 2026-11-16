@@ -148,7 +148,11 @@ export async function deleteAccount(
         continue
       }
 
-      const newOwner = group.createdBy === uid ? remaining[0] : undefined
+      // Hand over to another admin when there is one, else the next member
+      const newOwner =
+        group.createdBy === uid
+          ? (remaining.find((m) => group.memberDetails?.[m]?.role === "admin") ?? remaining[0])
+          : undefined
       await updateDoc(snap.ref, {
         members: remaining,
         formerMembers: Array.from(new Set([...(group.formerMembers || []), uid])),
