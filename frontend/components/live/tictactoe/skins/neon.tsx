@@ -2,7 +2,7 @@
 
 import type * as React from "react"
 
-import { UserAvatar } from "@/components/shared/user-avatar"
+import { PlayerAvatarFill } from "../../player-avatar"
 import { cn } from "@/lib/utils"
 import type { Mark, TttSceneProps, TttSeat } from "./types"
 
@@ -104,7 +104,7 @@ function SeatCard({ seat, on, won }: { seat: TttSeat; on: boolean; won: boolean 
       <span className="ttt-neon-ava">
         {on && <span className="ttt-neon-ring" />}
         <span className="ttt-neon-photo">
-          <UserAvatar src={seat.photo} name={seat.name} size="xl" className="size-full text-[length:max(14px,5cqw)]" />
+          <PlayerAvatarFill player={seat} frame={false} className="size-full" />
         </span>
         {seat.away && <span className="ttt-neon-awaytag">Away</span>}
       </span>

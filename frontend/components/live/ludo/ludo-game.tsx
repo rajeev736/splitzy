@@ -4,7 +4,6 @@ import * as React from "react"
 import { serverTimestamp } from "firebase/database"
 import { toast } from "sonner"
 
-import { UserAvatar } from "@/components/shared/user-avatar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
 import { useRoomNode } from "@/hooks/use-live-room"
@@ -26,9 +25,18 @@ import {
   passTurn,
   resultOf,
   applyPower,
+  applyExpiry,
+  applySignature,
+  heldPowers,
+  isExpired,
+  nextExpiry,
   HOME_COLUMN_START,
+  isRival,
   isShielded,
   JUMP_BY,
+  teamName,
+  teamOf,
+  winningTeam,
   pieceKey,
   POWER_INFO,
   rollFor,
@@ -55,8 +63,10 @@ import {
 } from "./ludo-board"
 import { LudoPentaBoard } from "./ludo-penta-board"
 import { baseFrame, pentaTurnFor } from "@/lib/live/ludo-penta"
+import { PlayerAvatar } from "../player-avatar"
 import { ThrowOverlay, ThrowPicker } from "../throwables"
-import { PowerBadge } from "./power-art"
+import { PowerTray } from "./power-tray"
+import { characterById } from "@/components/game-avatar/registry"
 import { useStageFit } from "../use-stage-fit"
 import { useWallet } from "@/hooks/use-fun"
 import { useBoardTheme } from "@/lib/live/themes"
@@ -85,12 +95,23 @@ const END_DELAY_MS = 1200
 
 const ts = () => serverTimestamp() as unknown as number
 
-/** The engine fills `turnAt` / `dice.at` with a local guess; the server's clock goes in the database. */
+/**
+ * The engine fills `turnAt` / `dice.at` with a local guess; the server's clock
+ * goes in the database. A step that leaves `turnAt` alone (powers fizzling out
+ * mid-turn) keeps the turn's clock running as it was.
+ */
 function stamp(next: LudoState, prev: LudoState): LudoState {
-  const out: LudoState = { ...next, turnAt: ts() }
+  const out: LudoState = { ...next, turnAt: next.turnAt === prev.turnAt ? prev.turnAt : ts() }
   if (out.dice && out.dice !== prev.dice) out.dice = { ...out.dice, at: ts() }
   return out
 }
+
+/**
+ * Still the state `at` was read from — or just one step on, where all that
+ * happened is someone's power fizzling out (that mustn't eat a tap on the dice).
+ */
+const isCurrent = (s: LudoState, at: number) =>
+  s.seq === at || (s.seq === at + 1 && s.last?.type === "expired")
 
 /** Why the referee should pass this player's turn right now, if at all. */
 function skipReason(
@@ -156,9 +177,17 @@ export function LudoGame({
   const anim = useLudoAnimation(state)
 
   // Sounds for what just happened (the step taps come from the pieces as they hop)
-  useOnChange(state?.seq ?? -1, () => {
+  useOnChange(state?.seq ?? -1, (_, prevSeq) => {
     const last = state?.last
     if (!state || !last) return
+    // Power Ludo: your power-up ran out of time (not on first load — that's old news)
+    const lost = last.expired?.filter((l) => l.uid === uid) ?? []
+    if (lost.length && prevSeq >= 0)
+      toast(`Your ${lost.map((l) => POWER_INFO[l.kind].name).join(" and ")} fizzled out`, {
+        description: "Power-ups last 2 minutes — use them on your turn, before you roll",
+      })
+    // Only powers fizzled out: nothing else happened
+    if (last.type === "expired") return
     if (last.type === "roll" || last.type === "no_move") {
       playSound("dice")
       if (last.value === 6) window.setTimeout(() => playSound("six"), 650)
@@ -237,7 +266,7 @@ export function LudoGame({
     const at = state.seq
     setRollLock(at)
     void commit((s) => {
-      if (s.seq !== at) throw new Error("stale")
+      if (!isCurrent(s, at)) throw new Error("stale")
       return applyRoll(s, uid, value, {
         now: serverNow(),
         gone,
@@ -251,7 +280,7 @@ export function LudoGame({
   const move = React.useCallback(
     (token: number, expectSeq: number, value: number) =>
       commit((s) => {
-        if (s.seq !== expectSeq) throw new Error("stale")
+        if (!isCurrent(s, expectSeq)) throw new Error("stale")
         return applyMove(s, uid, token, value, {
           now: serverNow(),
           gone,
@@ -267,20 +296,23 @@ export function LudoGame({
 
   /* ── Power Ludo ──────────────────────────────────────────────────── */
 
-  // The power you're aiming (waiting for you to tap a piece)
+  // The power you're aiming (waiting for you to tap a piece); `sig` = your character's own
   const [aimingAt, setAiming] = React.useState<{
     kind: PowerKind
+    sig: boolean
     seq: number
   } | null>(null)
   const canUsePower =
     !!state && myTurn && state.phase === "roll" && rollLock !== state.seq
   // Aiming lasts only while it's still your turn to roll, in the same state
-  const aiming =
+  const aimed =
     aimingAt && canUsePower && state && aimingAt.seq === state.seq
-      ? aimingAt.kind
+      ? aimingAt
       : null
+  const aiming = aimed?.kind ?? null
   const firePower = (
     kind: PowerKind,
+    sig: boolean,
     target: { uid: string; token: number } | null
   ) => {
     if (!state || !canUsePower) return
@@ -288,20 +320,30 @@ export function LudoGame({
     setAiming(null)
     void commit((s) => {
       if (s.seq !== at) throw new Error("stale")
-      return applyPower(s, uid, kind, target, {
-        now: serverNow(),
-        gone,
-        rand: Math.random,
-      })
+      const ctx = { now: serverNow(), gone, rand: Math.random }
+      return sig
+        ? applySignature(s, uid, target, ctx)
+        : applyPower(s, uid, kind, target, ctx)
     })
   }
-  const pickPower = (kind: PowerKind) => {
+  const pickPower = (kind: PowerKind, sig: boolean) => {
     if (!canUsePower || !state) {
       toast("Use a power on your turn, before you roll")
       return
     }
-    if (POWER_INFO[kind].target === "none") firePower(kind, null)
-    else setAiming(aiming === kind ? null : { kind, seq: state.seq })
+    const p = state.players[uid]
+    if (sig && p?.signature?.used) return
+    if (!sig && heldPowers(p).every((h) => h.kind !== kind || isExpired(h, now))) {
+      toast(`Your ${POWER_INFO[kind].name} fizzled out`)
+      return
+    }
+    if (POWER_INFO[kind].target === "none") firePower(kind, sig, null)
+    else
+      setAiming(
+        aimed && aimed.kind === kind && aimed.sig === sig
+          ? null
+          : { kind, sig, seq: state.seq }
+      )
   }
   // Pieces the aimed power can hit: rivals' pieces out on the track (not shielded), or your own
   const targets = React.useMemo(() => {
@@ -310,7 +352,8 @@ export function LudoGame({
     const out: string[] = []
     for (const id of state.order) {
       const p = state.players[id]
-      if (!p || (own ? id !== uid : id === uid || isGone(state, id, gone)))
+      // Rival powers never hit your partner (teams)
+      if (!p || (own ? id !== uid : !isRival(state, uid, id) || isGone(state, id, gone)))
         continue
       p.tokens.forEach((pos, t) => {
         if (pos < 0 || pos >= HOME_COLUMN_START) return
@@ -321,6 +364,18 @@ export function LudoGame({
     }
     return out
   }, [aiming, state, uid, gone])
+
+  // Power Ludo: the referee drops power-ups the moment they run out of time
+  const expiresAt = state ? nextExpiry(state) : null
+  React.useEffect(() => {
+    if (!isReferee || !state || state.phase === "over" || expiresAt === null || now < expiresAt)
+      return
+    const at = state.seq
+    void commit((s) => {
+      if (s.seq !== at) throw new Error("stale")
+      return applyExpiry(s, { now: serverNow(), gone })
+    }, true)
+  }, [isReferee, state, expiresAt, now, gone, commit, serverNow])
 
   // Ludo King style: a roll with only one possible move plays itself after a beat
   React.useEffect(() => {
@@ -470,10 +525,13 @@ export function LudoGame({
   const bonus =
     state.last?.type === "move" && state.last.bonus && state.last.by === uid
 
+  // Teams: which side you're on, and how the other pair is doing
+  const myTeam = mine ? teamOf(state, uid) : undefined
+  const won = winningTeam(state, gone)
   let headline: string
   let caption: string | null = null
   if (state.phase === "over") {
-    headline = "Game over"
+    headline = won !== null ? `${teamName(won)} wins!` : "Game over"
   } else if (mine?.out) {
     headline = "You're out"
     caption = `You missed ${LUDO_MAX_MISSED} turns in a row`
@@ -481,10 +539,10 @@ export function LudoGame({
     headline = "You left the game"
     caption = "Watching how it ends"
   } else if (mine && mine.place > 0) {
-    headline = `You finished ${ordinal(mine.place)}!`
-    caption = "Waiting for the others to get home…"
+    headline = state.teams ? "All four home!" : `You finished ${ordinal(mine.place)}!`
+    caption = state.teams ? "Cheer on your partner…" : "Waiting for the others to get home…"
   } else if (myTurn && state.phase === "roll") {
-    headline = "Your turn — tap your dice"
+    headline = myTeam !== undefined ? `Your turn (${teamName(myTeam)}) — tap your dice` : "Your turn — tap your dice"
     caption = bonus
       ? state.last?.type === "move" && state.last.value === 6
         ? "You rolled a 6 — roll again"
@@ -544,6 +602,8 @@ export function LudoGame({
         align={align}
         dice={dice}
         tint={look.palette[colour].mid}
+        team={lp.team !== undefined && state.teams ? (lp.team === 0 ? "A" : "B") : undefined}
+        partner={myTeam !== undefined && id !== uid && lp.team === myTeam}
         compact={compact}
         geo={geo}
         onTap={id !== uid && !me.left ? () => setThrowAt(rp) : undefined}
@@ -599,7 +659,7 @@ export function LudoGame({
               look={look}
               targets={aiming ? targets : undefined}
               onTarget={(id, token) =>
-                aiming && firePower(aiming, { uid: id, token })
+                aimed && firePower(aimed.kind, aimed.sig, { uid: id, token })
               }
               className="rounded-lg"
             />
@@ -616,7 +676,7 @@ export function LudoGame({
               look={look}
               targets={aiming ? targets : undefined}
               onTarget={(id, token) =>
-                aiming && firePower(aiming, { uid: id, token })
+                aimed && firePower(aimed.kind, aimed.sig, { uid: id, token })
               }
               className="rounded-lg"
             />
@@ -628,41 +688,25 @@ export function LudoGame({
           )}
         </div>
         <div className="mt-2 flex min-h-12 flex-col justify-center rounded-xl bg-black/25 px-3 py-1.5 text-center">
-          {state.mode === "powers" && (
-            <div
-              className="mb-1 flex items-center justify-center gap-1.5"
-              role="group"
-              aria-label="Your powers"
-            >
-              {(mine?.powers ?? []).length === 0 ? (
-                <span className="text-[11px] text-white/60">
-                  Land on a glowing square to grab a power
-                </span>
-              ) : (
-                mine!.powers!.map((k, i) => (
-                  <button
-                    key={`${k}${i}`}
-                    type="button"
-                    onClick={() => pickPower(k)}
-                    title={POWER_INFO[k].blurb}
-                    className={cn(
-                      "flex h-7 items-center gap-1 rounded-full bg-white/12 pr-2.5 pl-0.5 text-[11px] font-semibold transition-[background-color,transform] active:scale-95",
-                      aiming === k && "bg-white/30 ring-2 ring-white",
-                      !canUsePower && "opacity-60"
-                    )}
-                  >
-                    <PowerBadge kind={k} className="size-6" />
-                    {POWER_INFO[k].name}
-                  </button>
-                ))
-              )}
-            </div>
+          {state.mode === "powers" && mine && (
+            <PowerTray
+              me={me}
+              characterName={characterById(me.avatar)?.name}
+              signature={mine.signature}
+              held={heldPowers(mine)}
+              now={now}
+              aiming={aimed}
+              canUse={canUsePower}
+              onPick={pickPower}
+            />
           )}
           <p className="truncate text-sm font-semibold">
-            {aiming
-              ? POWER_INFO[aiming].target === "own"
-                ? `${POWER_INFO[aiming].name}: tap one of your pieces`
-                : `${POWER_INFO[aiming].name}: tap a rival's piece`
+            {aimed
+              ? `${aimed.sig ? "★ " : ""}${POWER_INFO[aimed.kind].name}: ${
+                  POWER_INFO[aimed.kind].target === "own"
+                    ? "tap one of your pieces"
+                    : "tap a rival's piece"
+                }`
               : headline}
           </p>
           {options.length > 1 && diceValue !== null && mine ? (
@@ -734,6 +778,8 @@ export function Seat({
   geo = SQUARE_GEO,
   status: statusOverride,
   tint,
+  team,
+  partner = false,
 }: {
   player: RoomPlayer
   ludo: LudoPlayer
@@ -753,6 +799,10 @@ export function Seat({
   status?: string
   /** The colour dot / ring in the board theme's tone (default: classic). */
   tint?: string
+  /** Teams 2v2: "A" / "B", shown as a badge by the name. */
+  team?: "A" | "B"
+  /** Teams: this is your partner. */
+  partner?: boolean
 }) {
   const colour = tint ?? TOKEN_COLOURS[ludo.colour]
   const out = !!ludo.out
@@ -776,8 +826,26 @@ export function Seat({
         align === "right" && "text-right"
       )}
     >
-      <p className="truncate text-xs font-semibold">
-        {isMe ? "You" : player.name.split(" ")[0]}
+      <p
+        className={cn(
+          "flex items-center gap-1 text-xs font-semibold",
+          align === "right" && "flex-row-reverse"
+        )}
+      >
+        <span className="truncate">{isMe ? "You" : player.name.split(" ")[0]}</span>
+        {team && (
+          <span
+            className={cn(
+              "flex h-3.5 min-w-3.5 shrink-0 items-center justify-center rounded px-0.5 text-[9px] font-extrabold text-white",
+              team === "A" ? "bg-[#e0453a]" : "bg-[#22a06b]",
+              partner && "ring-1 ring-white"
+            )}
+            title={partner ? `Your partner (Team ${team})` : `Team ${team}`}
+            aria-label={partner ? `Your partner, Team ${team}` : `Team ${team}`}
+          >
+            {team}
+          </span>
+        )}
       </p>
       <p
         className="flex items-center gap-1 text-[10px] text-white/70"
@@ -849,11 +917,12 @@ export function Seat({
             }}
           />
         </svg>
-        <UserAvatar
-          src={player.photo}
-          name={player.name}
-          size="md"
-          className="absolute inset-[7px] size-[42px]"
+        {/* The game character; no frame here — the timer ring is the seat's frame */}
+        <PlayerAvatar
+          player={player}
+          size={42}
+          frame={false}
+          className="absolute inset-[7px]"
         />
         <span
           className="absolute -right-0.5 -bottom-0.5 size-4 rounded-full ring-2 ring-[#0d2463]"

@@ -67,7 +67,9 @@ service cloud.firestore {
         'rose_vine': 700, 'love_wings': 900,
         'silver_wings': 450, 'gem_wings': 650, 'inferno': 1100, 'fox': 400, 'headphones': 450,
         'rainbow': 500, 'horns': 550, 'unicorn': 600, 'butterfly': 650, 'witch': 700,
-        'neon_heart': 350, 'sweet_candy': 450, 'love_letter': 550, 'party': 600
+        'neon_heart': 350, 'sweet_candy': 450, 'love_letter': 550, 'party': 600,
+        'deep_blue': 1800, 'diwali': 2000, 'wildfire': 2200, 'thunder': 2400, 'neon_beats': 2600,
+        'neon_hazard': 2800, 'frost_wings': 3000, 'spellbound': 3200, 'cosmic_cat': 3500
       }.get(id, 0);
     }
 
@@ -116,11 +118,138 @@ service cloud.firestore {
              request.resource.data.themes == had.concat([id]);
     }
 
-    /** Frame (free or owned), mood and birthday on a profile. */
+    // ── Game profile: characters (components/game-avatar registry) and live-game rewards ──
+
+    /** Coin price of a game character; 0 for basic ones, earn-only legends and unknown ids. Mirrors the registry. */
+    function characterPrice(id) {
+      return {
+        'fuzzby': 3000, 'zenko': 4500, 'fizzwick': 4000, 'cinder': 5000, 'bijou': 6000,
+        'buck': 3000, 'mimi': 2500, 'pip': 2800, 'brick': 3000, 'skye': 3500,
+        'nova': 4000, 'bramble': 6500, 'riff': 7500, 'pemberton': 8500, 'flora': 9000
+      }.get(id, 0);
+    }
+
+    /** The achievement (or level, 'lv<n>') that unlocks a character as a reward ('' = none). Mirrors `earn` in the registry. */
+    function characterEarn(id) {
+      return {
+        'bramble': 'wins_25', 'riff': 'win_streak_3',
+        'mimi': 'lv7', 'pip': 'lv12', 'skye': 'lv17', 'pemberton': 'lv22', 'flora': 'lv30'
+      }.get(id, '');
+    }
+
+    /** Free to wear: not sold and not a reward (basic characters). */
+    function isFreeCharacter(id) {
+      return id is string && id.matches('^[a-z0-9_-]{1,40}$') &&
+             characterPrice(id) == 0 && characterEarn(id) == '';
+    }
+
+    /** Live-game achievements (lib/live/achievements): the wallet counter and its goal. */
+    function achievementGoal(id) {
+      return {
+        'first_win': ['liveWins', 1], 'win_streak_3': ['bestStreak', 3],
+        'win_streak_5': ['bestStreak', 5], 'wins_25': ['liveWins', 25]
+      }.get(id, null);
+    }
+
+    /** The frame an achievement gives ('' = none). */
+    function achievementFrame(id) {
+      return {
+        'first_win': 'laurel', 'win_streak_3': 'flame', 'win_streak_5': 'inferno', 'wins_25': 'royal_crown'
+      }.get(id, '');
+    }
+
+    /** The frame a level gives (lib/live/levels LEVEL_REWARDS; '' = none). Characters name their level in characterEarn. */
+    function levelFrame(id) {
+      return {
+        'lv3': 'silver_wings', 'lv5': 'star_3', 'lv10': 'deep_blue', 'lv15': 'gold_wings', 'lv20': 'thunder',
+        'lv25': 'frost_wings', 'lv28': 'cosmic_cat'
+      }.get(id, '');
+    }
+
+    /** The coins a level gives, once (0 = none). */
+    function levelBonus(id) {
+      return {
+        'lv2': 100, 'lv4': 150, 'lv5': 250, 'lv8': 300, 'lv10': 500, 'lv14': 600, 'lv18': 800,
+        'lv20': 1000, 'lv24': 1200, 'lv27': 1500, 'lv30': 2000
+      }.get(id, 0);
+    }
+
+    function characterBuyOk(id, delta) {
+      let had = resource.data.get('avatars', []);
+      return characterPrice(id) > 0 && delta == -characterPrice(id) && !(id in had) &&
+             request.resource.data.avatars == had.concat([id]) &&
+             request.resource.data.frames == resource.data.frames;
+    }
+
+    /** A character naming achievement / level `a`, or its `frame`: free, one at a time. */
+    function rewardItemOk(a, item, frame) {
+      let had = resource.data.get('avatars', []);
+      return item != '' &&
+             ((characterEarn(item) == a && !(item in had) &&
+               request.resource.data.avatars == had.concat([item]) &&
+               request.resource.data.frames == resource.data.frames) ||
+              (frame == item && !(item in resource.data.frames) &&
+               request.resource.data.frames == resource.data.frames.concat([item]) &&
+               request.resource.data.get('avatars', []) == had));
+    }
+
+    /** An achievement's reward (a character naming it, or its frame), once it's reached on the wallet's counters. */
+    function rewardOk(a, item) {
+      let g = achievementGoal(a);
+      return g != null && resource.data.get(g[0], 0) >= g[1] && rewardItemOk(a, item, achievementFrame(a));
+    }
+
+    /**
+     * A level's reward (lib/live/levels), once your XP (10 a game played, 30
+     * more a win) reaches the level's: a character naming it, its frame, or its
+     * coins, once (listed in levelCoins; the update rule lets a coin claim
+     * change nothing else).
+     */
+    function levelRewardOk(a, item, delta) {
+      let w = resource.data;
+      let n = int(a.replace('lv', ''));
+      let paid = w.get('levelCoins', []);
+      return w.get('livePlayed', 0) * 10 + w.get('liveWins', 0) * 30 >= 40 * (n - 1) + 15 * (n - 1) * (n - 2) &&
+             (item == 'coins'
+               ? levelBonus(a) > 0 && delta == levelBonus(a) && !(a in paid) &&
+                 request.resource.data.levelCoins == paid.concat([a])
+               : delta == 0 && rewardItemOk(a, item, levelFrame(a)));
+    }
+
+    /**
+     * A finished live game on your wallet. Rooms live in the Realtime Database,
+     * out of these rules' reach, so this checks the shape: once per game (its
+     * record users/{uid}/live/{code}_{startedAt} written in the same batch), at
+     * most one every 20 seconds, no coins, and the counters stepping by one — a
+     * win adds to the streak, anything else ends it.
+     */
+    function liveResultOk(tx, delta) {
+      let w = resource.data;
+      let n = request.resource.data;
+      let won = tx[2] == 'win';
+      let streak = won ? w.get('streak', 0) + 1 : 0;
+      let best = w.get('bestStreak', 0);
+      let p = /databases/$(database)/documents/users/$(uid())/live/$(tx[1]);
+      return tx.size() == 3 && tx[1].matches('^[A-HJ-NP-Z2-9]{6}_[0-9]{10,16}$') &&
+             tx[2] in ['win', 'lose', 'draw'] && delta == 0 &&
+             n.frames == w.frames && n.get('avatars', []) == w.get('avatars', []) &&
+             existsAfter(p) && !exists(p) && getAfter(p).data.result == tx[2] &&
+             n.get('livePlayed', 0) == w.get('livePlayed', 0) + 1 &&
+             n.get('liveWins', 0) == w.get('liveWins', 0) + (won ? 1 : 0) &&
+             n.get('streak', 0) == streak &&
+             n.get('bestStreak', 0) == (streak > best ? streak : best) &&
+             n.get('liveAt', null) == request.time &&
+             (w.get('liveAt', null) == null || request.time > w.liveAt + duration.value(20, 's'));
+    }
+
+    /** Frame (free or owned), game character (free or owned), mood and birthday on a profile. */
     function profileExtrasOk(userId) {
       let d = request.resource.data;
       return (!changes('frame') || d.get('frame', '') == '' || isFreeFrame(d.frame) ||
               d.frame in get(/databases/$(database)/documents/wallets/$(userId)).data.frames) &&
+             (!changes('gameAvatar') || d.get('gameAvatar', '') == '' || isFreeCharacter(d.gameAvatar) ||
+              (d.gameAvatar is string &&
+               d.gameAvatar in get(/databases/$(database)/documents/wallets/$(userId)).data.get('avatars', []))) &&
              (!changes('mood') || d.get('mood', null) == null ||
               (d.mood.keys().hasOnly(['id', 'at']) && d.mood.id is string && d.mood.id.size() <= 20 &&
                d.mood.at is string)) &&
@@ -192,7 +321,11 @@ service cloud.firestore {
     function statsOk(tx) {
       return (tx[0] == 'win' ? statUp('wins') : statSame('wins')) &&
              (tx[0] == 'played' ? statUp('played') : statSame('played')) &&
-             (tx[0] == 'payout' || statSame('coinsWon'));
+             (tx[0] == 'payout' || statSame('coinsWon')) &&
+             // Live-game counters move only with a live result (liveResultOk checks each step)
+             (tx[0] == 'live' ||
+              (statSame('livePlayed') && statSame('liveWins') && statSame('streak') && statSame('bestStreak') &&
+               request.resource.data.get('liveAt', null) == resource.data.get('liveAt', null)));
     }
 
     function winRecorded(cid) {
@@ -228,6 +361,8 @@ service cloud.firestore {
     function walletTxOk(tx, delta) {
       // Board themes change only when one is bought
       return (tx[0] == 'theme' || request.resource.data.get('themes', []) == resource.data.get('themes', [])) &&
+             // Game characters change only when one is bought or earned
+             (tx[0] in ['avatar', 'earn'] || request.resource.data.get('avatars', []) == resource.data.get('avatars', [])) &&
              statsOk(tx) &&
              (welcomeOk(tx, delta) ||
               (request.resource.data.get('welcomed', false) == resource.data.get('welcomed', false) &&
@@ -240,6 +375,10 @@ service cloud.firestore {
              (tx[0] == 'theme' && tx.size() == 2 && request.resource.data.frames == resource.data.frames &&
               themeBuyOk(tx[1], delta)) ||
              (tx[0] == 'milestone' && tx.size() == 2 && delta == 0 && milestoneOk(tx[1])) ||
+             (tx[0] == 'avatar' && tx.size() == 2 && characterBuyOk(tx[1], delta)) ||
+             (tx[0] == 'earn' && tx.size() == 3 &&
+              (tx[1].matches('lv[0-9]{1,2}') ? levelRewardOk(tx[1], tx[2], delta) : delta == 0 && rewardOk(tx[1], tx[2]))) ||
+             (tx[0] == 'live' && liveResultOk(tx, delta)) ||
              (request.resource.data.frames == resource.data.frames &&
               delta == 0 && tx.size() == 2 &&
               ((tx[0] == 'win' && winRecorded(tx[1])) || (tx[0] == 'played' && playedRecorded(tx[1])))) ||
@@ -263,7 +402,11 @@ service cloud.firestore {
                     request.resource.data.lastTx == 'start' &&
                     exists(/databases/$(database)/documents/users/$(userId));
       allow update: if signedIn() && uid() == userId &&
-                    onlyChanges(['balance', 'frames', 'themes', 'lastTx', 'welcomed', 'welcomeFrame', 'wins', 'played', 'coinsWon']) &&
+                    (onlyChanges(['balance', 'frames', 'themes', 'avatars', 'lastTx', 'welcomed', 'welcomeFrame', 'wins', 'played', 'coinsWon',
+                                  'livePlayed', 'liveWins', 'streak', 'bestStreak', 'liveAt']) ||
+                     // A level's coins: the coins and the level listed as paid, nothing else (levelRewardOk)
+                     (request.resource.data.lastTx.matches('earn:lv[0-9]{1,2}:coins') &&
+                      onlyChanges(['balance', 'levelCoins', 'lastTx']))) &&
                     request.resource.data.balance is int &&
                     request.resource.data.balance >= 0 &&
                     request.resource.data.lastTx is string &&
@@ -369,6 +512,22 @@ service cloud.firestore {
                     request.resource.data.keys().hasOnly(['at']) &&
                     playedIn(challengeId) &&
                     getAfter(/databases/$(database)/documents/wallets/$(uid())).data.lastTx == 'played:' + challengeId;
+      allow update: if false;
+      allow delete: if signedIn() && uid() == userId &&
+                    !exists(/databases/$(database)/documents/users/$(userId));
+    }
+
+    // One record per live game you finished or forfeited (id {roomCode}_{startedAt}): counted
+    // once on your wallet's live counters, in the same batch (liveResultOk).
+    match /users/{userId}/live/{gameId} {
+      allow read: if signedIn() && uid() == userId;
+      allow create: if signedIn() && uid() == userId &&
+                    request.resource.data.keys().hasOnly(['game', 'result', 'at']) &&
+                    request.resource.data.game is string && request.resource.data.game.size() <= 20 &&
+                    request.resource.data.result in ['win', 'lose', 'draw'] &&
+                    request.resource.data.at is string &&
+                    getAfter(/databases/$(database)/documents/wallets/$(uid())).data.lastTx ==
+                      'live:' + gameId + ':' + request.resource.data.result;
       allow update: if false;
       allow delete: if signedIn() && uid() == userId &&
                     !exists(/databases/$(database)/documents/users/$(userId));

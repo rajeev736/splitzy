@@ -1,4 +1,6 @@
 import type { SeatColour } from "./room"
+import { characterPower } from "./character-powers"
+import { TEAM_NAMES, type TeamIndex } from "./seats"
 import type { LiveResult, RoomOptions, RoomPlayer } from "./types"
 
 /**
@@ -88,7 +90,10 @@ export const LUDO_MAX_MISSED = 3
  * Power Ludo (room option "mode": "powers"): power-ups appear on squares of
  * the track; the first piece to land on one picks it up. The first player to
  * bring a piece out and the first to get one home also get a power. You use
- * a power on your turn, before rolling — it doesn't use up the turn.
+ * a power on your turn, before rolling — it doesn't use up the turn. A power
+ * from the track fizzles out POWER_TTL_MS after you get it. Your game
+ * character also brings one signature power of its own (lib/live/character-powers):
+ * once per game, and it never fizzles out.
  */
 export const POWER_KINDS = ["freeze", "lock", "push", "jump", "shield", "double"] as const
 export type PowerKind = (typeof POWER_KINDS)[number]
@@ -113,6 +118,33 @@ export const JUMP_BY = 4
 /** A new power-up appears every this many turns (while fewer than MAX_SPAWNS are on the board). */
 export const SPAWN_EVERY = 3
 export const MAX_SPAWNS = 3
+/**
+ * A power picked up (or earned) on the track fizzles out this long after —
+ * use it or lose it. A character's signature power never does.
+ */
+export const POWER_TTL_MS = 120_000
+
+/** A random power a player holds, with its deadline. */
+export interface HeldPower {
+  kind: PowerKind
+  /** Server ms it fizzles out; 0 = never (games started before the timer). */
+  until: number
+}
+
+/** A power that fizzled out, and whose it was. */
+export interface LudoLost {
+  uid: string
+  kind: PowerKind
+}
+
+/**
+ * The power a player's game character brings (lib/live/character-powers):
+ * theirs once per game, on their turn before rolling, and it never fizzles out.
+ */
+export interface LudoSignature {
+  kind: PowerKind
+  used: boolean
+}
 
 export interface LudoSpawn {
   /** Absolute track square. */
@@ -139,8 +171,17 @@ export interface LudoPlayer {
   noSix?: number
   /** Power Ludo: powers held, oldest first. */
   powers?: PowerKind[]
+  /**
+   * Power Ludo: when each held power fizzles out (server ms), index for index
+   * with `powers`; 0 = never. Absent = none of them do (older games).
+   */
+  until?: number[]
+  /** Power Ludo: the character's own power (absent = no character). */
+  signature?: LudoSignature
   /** Power Ludo: the next roll counts twice. */
   double?: true
+  /** Teams 2v2: 0 = Team A, 1 = Team B (teammates sit opposite). */
+  team?: TeamIndex
 }
 
 export interface LudoDice {
@@ -190,16 +231,24 @@ export interface LudoPowerUse {
   from?: number
   to?: number
   captured?: LudoCapture[]
+  /** The character's signature power (not a held one). */
+  signature?: true
 }
 
-/** The latest thing that happened: the log line and the token animation come from it. */
-export type LudoLast =
+/**
+ * The latest thing that happened: the log line and the token animation come
+ * from it. Any of them may also carry the powers that fizzled out on the way
+ * (`expired`); "expired" alone is the referee dropping them between moves.
+ */
+export type LudoLast = (
   | { type: "roll"; by: string; value: number; x2?: true }
   | LudoMove
   | { type: "no_move"; by: string; value: number; x2?: true }
   | { type: "three_sixes"; by: string }
   | { type: "skip"; by: string; reason: LudoSkipReason; out?: true }
   | LudoPowerUse
+  | { type: "expired"; by: string }
+) & { expired?: LudoLost[] }
 
 export interface LudoState {
   /** roll: waiting for `turn` to roll · move: they rolled, waiting for a token · over: someone won. */
@@ -235,6 +284,8 @@ export interface LudoState {
   /** Who brought the first piece out / got the first piece home (each earns a power). */
   firstOut?: string
   firstHome?: string
+  /** Teams 2v2 (room option "teams"): every player has a `team`. */
+  teams?: true
 }
 
 export interface LudoContext {
@@ -251,6 +302,101 @@ export const pieceKey = (uid: string, token: number) => `${uid}:${token}`
 export const isFrozen = (s: LudoState, uid: string, token: number) => (s.frozen?.[pieceKey(uid, token)] ?? 0) > 0
 export const lockOf = (s: LudoState, uid: string, token: number) => s.locked?.[pieceKey(uid, token)] ?? 0
 export const isShielded = (s: LudoState, uid: string, token: number) => (s.shield?.[pieceKey(uid, token)] ?? 0) > 0
+
+/** A player's random powers with their deadlines, oldest first. */
+export const heldPowers = (p: LudoPlayer | undefined): HeldPower[] =>
+  (p?.powers ?? []).map((kind, i) => ({ kind, until: p?.until?.[i] ?? 0 }))
+
+/** Past its deadline (signature powers and older games' powers have none). */
+export const isExpired = (h: HeldPower, now: number) => h.until > 0 && now >= h.until
+
+/** `p` holding `held` (both arrays dropped when there's nothing to keep — the database drops empty ones). */
+function withHeld(p: LudoPlayer, held: HeldPower[]): LudoPlayer {
+  const out = { ...p }
+  delete out.powers
+  delete out.until
+  if (held.length) out.powers = held.map((h) => h.kind)
+  if (held.some((h) => h.until > 0)) out.until = held.map((h) => h.until)
+  return out
+}
+
+/** The soonest deadline of any held power (server ms), or null when none is ticking. */
+export function nextExpiry(state: LudoState): number | null {
+  let min = Infinity
+  for (const id of state.order)
+    for (const t of state.players[id]?.until ?? []) if (t > 0 && t < min) min = t
+  return min === Infinity ? null : min
+}
+
+/** Drops every held power that's past its deadline at `now`. */
+export function dropExpired(state: LudoState, now: number): { state: LudoState; lost: LudoLost[] } {
+  const lost: LudoLost[] = []
+  let players: Record<string, LudoPlayer> | null = null
+  for (const id of state.order) {
+    const p = state.players[id]
+    if (!p?.until) continue
+    const held = heldPowers(p)
+    const keep = held.filter((h) => !isExpired(h, now))
+    if (keep.length === held.length) continue
+    for (const h of held) if (isExpired(h, now)) lost.push({ uid: id, kind: h.kind })
+    players = players ?? { ...state.players }
+    players[id] = withHeld(p, keep)
+  }
+  return players ? { state: { ...state, players }, lost } : { state, lost }
+}
+
+/** Runs a step on the state with fizzled powers dropped first; its `last` says which went. */
+function expiring(state: LudoState, ctx: LudoContext, step: (s: LudoState) => LudoState): LudoState {
+  const { state: s, lost } = dropExpired(state, ctx.now)
+  const next = step(s)
+  if (lost.length && next.last) next.last = { ...next.last, expired: lost }
+  return next
+}
+
+/* ── Teams 2v2 ───────────────────────────────────────────────────────── */
+
+/**
+ * Teams (room option "teams": "2v2", exactly 4 players): seats 0 + 2 (red +
+ * yellow) against 1 + 3 (green + blue), so partners sit opposite and turns
+ * alternate between the teams. Partners never cut each other, and rival
+ * powers can't target a partner. A partner who gets all four home sits out
+ * while the other plays on; the team wins once both have all four home.
+ * A team that loses a player still racing (left, or out for missed turns)
+ * forfeits; a partner who already finished may leave without harm.
+ * Works together with Power Ludo.
+ */
+export const teamOf = (s: LudoState, uid: string): TeamIndex | undefined =>
+  s.teams ? s.players[uid]?.team : undefined
+
+/** Two different players on the same team. */
+export const areTeammates = (s: LudoState, a: string, b: string) =>
+  a !== b && !!s.teams && teamOf(s, a) !== undefined && teamOf(s, a) === teamOf(s, b)
+
+/** Someone `uid` may cut or aim a rival power at: not themselves, not their partner. */
+export const isRival = (s: LudoState, uid: string, other: string) =>
+  other !== uid && !areTeammates(s, uid, other)
+
+export const teamMembers = (s: LudoState, team: TeamIndex) =>
+  s.order.filter((id) => s.players[id]?.team === team)
+
+/** "Team A" / "Team B". */
+export const teamName = (team: TeamIndex) => TEAM_NAMES[team]
+
+/**
+ * The team that won: both partners home, or the only team still complete
+ * (the other lost a player). Null while it's open, or when nobody's left.
+ */
+export function winningTeam(s: LudoState, gone: string[] = []): TeamIndex | null {
+  if (!s.teams) return null
+  const teams: TeamIndex[] = [0, 1]
+  const home = teams.find((t) => teamMembers(s, t).every((id) => s.players[id].place > 0))
+  if (home !== undefined) return home
+  // A partner who finished and then left still counts: their four are home
+  const standing = teams.filter((t) =>
+    teamMembers(s, t).every((id) => s.players[id].place > 0 || !isGone(s, id, gone))
+  )
+  return standing.length === 1 ? standing[0] : null
+}
 
 /* ── Setup ───────────────────────────────────────────────────────────── */
 
@@ -278,6 +424,9 @@ export function initialLudoState(
       tokens: [-1, -1, -1, -1],
       place: 0,
     }
+    // Power Ludo: the equipped character's own power, once per game
+    const kind = powers ? characterPower(players[i].avatar) : null
+    if (kind) entries[uid].signature = { kind, used: false }
   })
   const state: LudoState = {
     phase: "roll",
@@ -291,6 +440,11 @@ export function initialLudoState(
   }
   // Five players play on the 5-armed board
   if (order.length === 5) state.board = "penta"
+  // Teams 2v2: seats 0 + 2 against 1 + 3, so partners' colours face each other across the board
+  if (options.teams === "2v2" && order.length === 4) {
+    state.teams = true
+    order.forEach((uid, i) => (entries[uid].team = (i % 2) as TeamIndex))
+  }
   if (!powers) return state
   // Power Ludo: two power-ups on the board from the start
   const rand = seededRandom(seed)
@@ -413,9 +567,14 @@ function playedNow(state: LudoState, uid: string): Record<string, LudoPlayer> {
 export const racing = (state: LudoState, gone: string[] = []) =>
   state.order.filter((uid) => isRacing(state, uid, gone))
 
-/** The game ends when at most one contender is still racing (so a 2-player game ends with the first finisher). */
+/**
+ * The game ends when at most one contender is still racing (so a 2-player
+ * game ends with the first finisher) — in teams, once a team has won.
+ */
 export const isOver = (state: LudoState, gone: string[] = []) =>
-  racing(state, gone).length <= 1
+  state.teams
+    ? winningTeam(state, gone) !== null || racing(state, gone).length === 0
+    : racing(state, gone).length <= 1
 
 /**
  * Who plays after `from`: the next racing player in seat order, wrapping
@@ -491,6 +650,15 @@ export function applyRoll(
   value: number,
   ctx: LudoContext
 ): LudoState {
+  return expiring(state, ctx, (s) => rollStep(s, uid, value, ctx))
+}
+
+function rollStep(
+  state: LudoState,
+  uid: string,
+  value: number,
+  ctx: LudoContext
+): LudoState {
   if (state.phase !== "roll" || state.turn !== uid)
     throw new Error("Not your roll")
   if (!Number.isInteger(value) || value < 1 || value > 6)
@@ -551,8 +719,8 @@ function landOn(
   const square = trackIndex(players[uid].colour, to, g)
   if (square < 0 || isSafe(square, g)) return captured
   for (const id of state.order) {
-    // Tokens of players who left or are out are off the board
-    if (id === uid || isGone(state, id, ctx.gone)) continue
+    // Tokens of players who left or are out are off the board; partners never cut each other
+    if (!isRival(state, uid, id) || isGone(state, id, ctx.gone)) continue
     const rival = players[id]
     rival.tokens.forEach((pos, j) => {
       if (trackIndex(rival.colour, pos, g) === square && !isShielded(state, id, j)) {
@@ -580,8 +748,14 @@ function clearEffects(state: LudoState, pieces: LudoCapture[]) {
   }
 }
 
-/** Power Ludo: picks up a power-up on `uid`'s landing square, if any. */
-function pickUp(state: LudoState, players: Record<string, LudoPlayer>, uid: string, to: number): PowerKind | undefined {
+/** Power Ludo: picks up a power-up on `uid`'s landing square, if any (it fizzles out POWER_TTL_MS after `now`). */
+function pickUp(
+  state: LudoState,
+  players: Record<string, LudoPlayer>,
+  uid: string,
+  to: number,
+  now: number
+): PowerKind | undefined {
   if (state.mode !== "powers" || !state.spawns?.length) return undefined
   const square = trackIndex(players[uid].colour, to, geoOf(state))
   const i = state.spawns.findIndex((s) => s.sq === square)
@@ -590,14 +764,15 @@ function pickUp(state: LudoState, players: Record<string, LudoPlayer>, uid: stri
   const spawns = state.spawns.filter((_, j) => j !== i)
   if (spawns.length) state.spawns = spawns
   else delete state.spawns
-  give(players, uid, kind)
+  give(players, uid, kind, now)
   return kind
 }
 
-function give(players: Record<string, LudoPlayer>, uid: string, kind: PowerKind) {
-  const held = players[uid].powers ?? []
+/** Hands `uid` a power (unless their hands are full), ticking from `now`. Mutates `players`. */
+function give(players: Record<string, LudoPlayer>, uid: string, kind: PowerKind, now: number) {
+  const held = heldPowers(players[uid])
   if (held.length >= MAX_POWERS) return
-  players[uid] = { ...players[uid], powers: [...held, kind] }
+  players[uid] = withHeld(players[uid], [...held, { kind, until: now + POWER_TTL_MS }])
 }
 
 /**
@@ -605,6 +780,16 @@ function give(players: Record<string, LudoPlayer>, uid: string, kind: PowerKind)
  * finishing, the bonus roll (6 / capture / home) and whose turn is next.
  */
 export function applyMove(
+  state: LudoState,
+  uid: string,
+  token: number,
+  value: number,
+  ctx: LudoContext
+): LudoState {
+  return expiring(state, ctx, (s) => moveStep(s, uid, token, value, ctx))
+}
+
+function moveStep(
   state: LudoState,
   uid: string,
   token: number,
@@ -627,7 +812,7 @@ export function applyMove(
   const work: LudoState = { ...state }
   const captured = landOn(state, players, uid, to, ctx)
   clearEffects(work, captured)
-  const picked = pickUp(work, players, uid, to)
+  const picked = pickUp(work, players, uid, to, ctx.now)
 
   // Power Ludo: the first piece out and the first piece home each earn a power
   let earned: PowerKind | undefined
@@ -636,11 +821,11 @@ export function applyMove(
     if (from < 0 && !work.firstOut) {
       work.firstOut = uid
       earned = randomPower(rand)
-      give(players, uid, earned)
+      give(players, uid, earned, ctx.now)
     } else if (to === geoOf(state).home && !work.firstHome) {
       work.firstHome = uid
       earned = randomPower(rand)
-      give(players, uid, earned)
+      give(players, uid, earned, ctx.now)
     }
   }
 
@@ -685,7 +870,8 @@ export function applyMove(
 /**
  * Power Ludo: `uid` uses one of their powers, on their turn before rolling
  * (it doesn't use up the turn). `target` is the piece it's used on — a
- * rival's for freeze / lock / push, your own for jump / shield.
+ * rival's for freeze / lock / push, your own for jump / shield. Holding two
+ * of a kind, the one closer to fizzling out goes first.
  */
 export function applyPower(
   state: LudoState,
@@ -695,22 +881,63 @@ export function applyPower(
   ctx: LudoContext
 ): LudoState {
   if (state.phase !== "roll" || state.turn !== uid) throw new Error("Use powers before you roll")
-  const held = state.players[uid]?.powers ?? []
-  const at = held.indexOf(kind)
-  if (at < 0) throw new Error("You don't have that power")
+  const held = heldPowers(state.players[uid]).filter((h) => h.kind === kind)
+  if (!held.length) throw new Error("You don't have that power")
+  if (held.every((h) => isExpired(h, ctx.now))) throw new Error("That power fizzled out")
+  return expiring(state, ctx, (s) => {
+    const mine = heldPowers(s.players[uid])
+    const deadline = (h: HeldPower) => (h.until > 0 ? h.until : Infinity)
+    let at = -1
+    mine.forEach((h, i) => {
+      if (h.kind === kind && (at < 0 || deadline(h) < deadline(mine[at]))) at = i
+    })
+    const players = { ...s.players, [uid]: withHeld(s.players[uid], mine.filter((_, i) => i !== at)) }
+    return powerEffect({ ...s, players }, uid, kind, target, ctx, false)
+  })
+}
+
+/**
+ * Power Ludo: `uid` uses their character's signature power — once per game,
+ * when a held power could be used (their turn, before rolling); same targets
+ * and effects as the power-up of that kind, and it never fizzles out.
+ */
+export function applySignature(
+  state: LudoState,
+  uid: string,
+  target: LudoCapture | null,
+  ctx: LudoContext
+): LudoState {
+  if (state.phase !== "roll" || state.turn !== uid) throw new Error("Use powers before you roll")
+  const sig = state.players[uid]?.signature
+  if (!sig || state.mode !== "powers") throw new Error("Your character has no power here")
+  if (sig.used) throw new Error("Already used — it's once per game")
+  return expiring(state, ctx, (s) => {
+    const players = { ...s.players, [uid]: { ...s.players[uid], signature: { kind: sig.kind, used: true } } }
+    return powerEffect({ ...s, players }, uid, sig.kind, target, ctx, true)
+  })
+}
+
+/** What a power does (the power itself is already spent in `state`). */
+function powerEffect(
+  state: LudoState,
+  uid: string,
+  kind: PowerKind,
+  target: LudoCapture | null,
+  ctx: LudoContext,
+  signature: boolean
+): LudoState {
   const info = POWER_INFO[kind]
   const players = copyPlayers(state)
-  players[uid] = { ...players[uid], powers: held.filter((_, i) => i !== at) }
-  if (!players[uid].powers?.length) delete players[uid].powers
   const next: LudoState = { ...state, players, seq: state.seq + 1, turnAt: ctx.now }
   const last: LudoPowerUse = { type: "power", by: uid, kind }
+  if (signature) last.signature = true
 
   if (info.target !== "none") {
     if (!target) throw new Error("Pick a piece")
     const owner = state.players[target.uid]
     const pos = owner?.tokens[target.token]
     if (pos === undefined) throw new Error("No such piece")
-    if (info.target === "rival" && (target.uid === uid || isGone(state, target.uid, ctx.gone)))
+    if (info.target === "rival" && (!isRival(state, uid, target.uid) || isGone(state, target.uid, ctx.gone)))
       throw new Error("Pick a rival's piece")
     if (info.target === "own" && target.uid !== uid) throw new Error("Pick one of your pieces")
     // Only pieces out on the shared track (not in base, not in the home column)
@@ -736,7 +963,7 @@ export function applyPower(
       players[uid].tokens[target.token] = to
       const captured = landOn(next, players, uid, to, ctx)
       clearEffects(next, captured)
-      pickUp(next, players, uid, to)
+      pickUp(next, players, uid, to, ctx.now)
       last.from = pos
       last.to = to
       if (captured.length) last.captured = captured
@@ -781,7 +1008,7 @@ export function rollFor(state: LudoState, uid: string, rand: () => number): numb
         if (sq < 0 || isSafe(sq, g) || bumped.has(d)) continue
         const prey = state.order.some(
           (id) =>
-            id !== uid &&
+            isRival(state, uid, id) &&
             state.players[id] &&
             !state.players[id].out &&
             state.players[id].tokens.some((p, j) => trackIndex(state.players[id].colour, p, g) === sq && !isShielded(state, id, j))
@@ -822,6 +1049,15 @@ export function passTurn(
   reason: LudoSkipReason,
   ctx: LudoContext
 ): LudoState {
+  return expiring(state, ctx, (s) => passStep(s, from, reason, ctx))
+}
+
+function passStep(
+  state: LudoState,
+  from: string,
+  reason: LudoSkipReason,
+  ctx: LudoContext
+): LudoState {
   if (state.phase === "over" || state.turn !== from)
     throw new Error("Not their turn")
   if (reason === "left") return pass(state, from, { type: "skip", by: from, reason }, ctx)
@@ -838,6 +1074,18 @@ export function passTurn(
   const next = pass({ ...state, players }, from, last, ctx)
   if (isOver(next, ctx.gone)) next.phase = "over"
   return next
+}
+
+/**
+ * Power Ludo: the referee drops held powers that ran out of time, as soon as
+ * they do, so everyone sees them go. The turn, its phase, the pending roll and
+ * the turn clock (`turnAt`) stay as they are. Throws when nothing ran out.
+ */
+export function applyExpiry(state: LudoState, ctx: LudoContext): LudoState {
+  if (state.phase === "over") throw new Error("Game over")
+  const { state: next, lost } = dropExpired(state, ctx.now)
+  if (!lost.length) throw new Error("Nothing ran out")
+  return { ...next, seq: state.seq + 1, last: { type: "expired", by: lost[0].uid, expired: lost } }
 }
 
 /* ── Standings ───────────────────────────────────────────────────────── */
@@ -869,7 +1117,14 @@ export function rankingOf(state: LudoState, gone: string[] = []): string[] {
   const left = state.order
     .filter((id) => state.players[id].place === 0 && isGone(state, id, gone))
     .sort(byRace)
-  return [...finished, ...stillRacing, ...left]
+  const all = [...finished, ...stillRacing, ...left]
+  // Teams: the winning pair takes the top two places
+  const won = winningTeam(state, gone)
+  if (won === null) return all
+  return [
+    ...all.filter((id) => state.players[id].team === won),
+    ...all.filter((id) => state.players[id].team !== won),
+  ]
 }
 
 /** What to hand to endGame. Without a reason: "all_home" once anyone finished, else "abandoned". */
@@ -885,6 +1140,18 @@ export function resultOf(
   for (const id of state.order) {
     const p = state.players[id]
     stats[id] = { kills: p?.kills ?? 0, deaths: p?.deaths ?? 0 }
+  }
+  if (state.teams) {
+    // Partners win together; nobody when no team is left standing
+    const won = winningTeam(state, gone)
+    const bothHome =
+      won !== null && teamMembers(state, won).every((id) => state.players[id].place > 0)
+    return {
+      winnerIds: won === null ? [] : teamMembers(state, won),
+      ranking,
+      reason: reason ?? (bothHome ? "all_home" : "abandoned"),
+      stats,
+    }
   }
   return {
     winnerIds: ranking.slice(0, 1),
@@ -922,6 +1189,12 @@ export function describeLast(
           ? `${who} is offline — turn skipped`
           : `${who} left the game`
     case "move": {
+      if (last.finished && state.teams) {
+        const team = teamOf(state, last.by)
+        return state.phase === "over" && team !== undefined
+          ? `${who} got all four home — ${teamName(team)} wins!`
+          : `${who} got all four home — over to their partner`
+      }
       if (last.finished)
         return `${who} got all four home — finished ${ordinal(state.players[last.by]?.place ?? 0)}!`
       if (last.captured?.length) {
@@ -941,22 +1214,34 @@ export function describeLast(
     case "power": {
       const p = POWER_INFO[last.kind].name
       const whose = last.target ? `${nameOf(last.target.uid)}'s piece` : ""
+      // A character's own power gets a star
+      const star = last.signature ? "★ " : ""
       switch (last.kind) {
         case "freeze":
-          return `${who} froze ${whose} for ${FREEZE_TURNS} turns`
+          return `${star}${who} froze ${whose} for ${FREEZE_TURNS} turns`
         case "lock":
-          return `${who} locked ${whose} — it needs a ${last.value} to move`
+          return `${star}${who} locked ${whose} — it needs a ${last.value} to move`
         case "push":
-          return `${who} pushed ${whose} back ${PUSH_BACK} squares`
+          return `${star}${who} pushed ${whose} back ${PUSH_BACK} squares`
         case "jump":
-          return `${who} jumped a piece ${JUMP_BY} squares${last.captured?.length ? " and cut a rival!" : ""}`
+          return `${star}${who} jumped a piece ${JUMP_BY} squares${last.captured?.length ? " and cut a rival!" : ""}`
         case "shield":
-          return `${who} shielded a piece for ${SHIELD_TURNS} turns`
+          return `${star}${who} shielded a piece for ${SHIELD_TURNS} turns`
         default:
-          return `${who} used ${p} — next roll counts twice`
+          return `${star}${who} used ${p} — next roll counts twice`
       }
     }
+    case "expired":
+      return describeExpired(last.expired ?? [], nameOf)
   }
+}
+
+/** "Asha's Freeze fizzled out" (several: "Asha's Freeze and Ravi's Jump fizzled out"). */
+export function describeExpired(lost: LudoLost[], nameOf: (uid: string) => string): string {
+  const parts = lost.map((l) => `${nameOf(l.uid)}'s ${POWER_INFO[l.kind].name}`)
+  if (parts.length === 0) return "A power fizzled out"
+  const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`
+  return `${list} fizzled out`
 }
 
 /* ── Dice ────────────────────────────────────────────────────────────── */

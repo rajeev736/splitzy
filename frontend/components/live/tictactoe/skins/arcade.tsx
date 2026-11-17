@@ -2,7 +2,7 @@
 
 import type * as React from "react"
 
-import { UserAvatar } from "@/components/shared/user-avatar"
+import { PlayerAvatarFill } from "../../player-avatar"
 import { cn } from "@/lib/utils"
 import type { Mark, TttSceneProps, TttSeat } from "./types"
 
@@ -345,7 +345,7 @@ function Seat({ seat, tag, right }: { seat: TttSeat; tag: string; right?: boolea
       style={{ "--mc": colour } as React.CSSProperties}
     >
       <span className="ttt-arcade-tag">{seat.away ? "Offline" : tag}</span>
-      <UserAvatar src={seat.photo} name={seat.name} size="md" className="ttt-arcade-avatar" />
+      <PlayerAvatarFill player={seat} frame={false} className="ttt-arcade-avatar" />
       <div className="ttt-arcade-info">
         <p className="ttt-arcade-name">{seat.name}</p>
         <p className="ttt-arcade-score">

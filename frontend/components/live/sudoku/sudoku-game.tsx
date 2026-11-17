@@ -5,7 +5,6 @@ import { serverTimestamp } from "firebase/database"
 import { Delete02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
-import { UserAvatar } from "@/components/shared/user-avatar"
 import { Spinner } from "@/components/ui/spinner"
 import { useRoomNode } from "@/hooks/use-live-room"
 import { playSound } from "@/lib/live/sound"
@@ -13,6 +12,7 @@ import { allDone, blanksOf, conflicts, filledCount, isSolved, PEERS, rankingOf, 
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import { updateState } from "@/services/live-rooms"
+import { PlayerAvatar } from "../player-avatar"
 import { useStageFit } from "../use-stage-fit"
 
 const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`)
@@ -70,7 +70,9 @@ export function SudokuView({ code, meta, players, uid, me, isReferee, now, endGa
   const endsAt = (meta.startedAt ?? 0) + (state?.minutes ?? 20) * 60_000
   const secondsLeft = meta.startedAt ? Math.max(0, Math.ceil((endsAt - now) / 1000)) : null
 
-  // Referee: everyone here has finished, or time's up → the end
+  // Referee: everyone here has finished, or time's up → the end. The short pause
+  // lets the last "Solved!" show; it must not be cancelled by the clock ticking on
+  // (this effect re-runs every second), or the game would never end.
   const ended = React.useRef(false)
   React.useEffect(() => {
     if (!isReferee || !state || ended.current || !meta.startedAt) return
@@ -78,12 +80,11 @@ export function SudokuView({ code, meta, players, uid, me, isReferee, now, endGa
     const timeUp = now >= endsAt
     if (!over && !timeUp) return
     ended.current = true
-    const id = window.setTimeout(() => {
+    window.setTimeout(() => {
       endGame(resultOf(state, gone, over ? "all_solved" : "time_up")).catch(() => {
         ended.current = false
       })
     }, 1500)
-    return () => window.clearTimeout(id)
   }, [isReferee, state, gone, now, endsAt, meta.startedAt, endGame])
 
   const canEdit = !!state && !!puzzle && !!grid && !done && !me.left && (secondsLeft ?? 1) > 0
@@ -174,7 +175,7 @@ export function SudokuView({ code, meta, players, uid, me, isReferee, now, endGa
             return (
               <div key={id} className={cn("flex max-w-14 min-w-10 flex-1 basis-0 flex-col items-center gap-1", p?.left && "opacity-50")}>
                 <span className="relative">
-                  <UserAvatar src={p?.photo} name={p?.name ?? "?"} size="sm" className="size-9" />
+                  <PlayerAvatar player={p} size={36} />
                   {place > 0 && (
                     <span className="absolute -right-1.5 -bottom-1 rounded-full bg-success px-1 text-[9px] font-bold text-success-foreground ring-2 ring-background">
                       {ordinal(place)}

@@ -49,6 +49,7 @@ import { BadgeGrid } from "@/components/fun/badge-grid"
 import { Coins } from "@/components/fun/coin"
 import { FramedAvatar } from "@/components/fun/framed-avatar"
 import { useBadges, useFriendships, useWallet } from "@/hooks/use-fun"
+import { GameProfileCard } from "./_components/game-profile"
 import { BirthdayDialog, MoodPicker } from "./_components/profile-fun"
 import { PartyPopperIcon } from "@/components/fun/party-popper"
 import { useMyBirthdayCheers } from "@/hooks/use-fun"
@@ -176,6 +177,9 @@ export default function ProfilePage() {
         {/* How you're feeling: friends see it on your profile */}
         <MoodPicker mood={user.mood?.id} />
 
+        {/* Who you are in live games (your photo stays for everything else) */}
+        <GameProfileCard user={user} wallet={wallet} />
+
         {/* Your JoySplit ID and QR: tap the code to show it big */}
         <IdCard
           user={user}
@@ -206,7 +210,7 @@ export default function ProfilePage() {
             <MenuRow
               icon={Backpack01Icon}
               label="Inventory"
-              hint="Frames, boards, badges"
+              hint="Characters, frames, boards"
               render={<Link href="/profile/inventory" />}
             />
             <MenuRow

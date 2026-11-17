@@ -18,10 +18,11 @@ export const MAX_STAKE = 5000
 
 /* ── Frames ───────────────────────────────────────────────────────────── */
 
-export type FrameCategory = "classic" | "games" | "cute" | "love" | "milestone"
+export type FrameCategory = "classic" | "live" | "games" | "cute" | "love" | "milestone"
 
 export const FRAME_CATEGORIES: { id: FrameCategory; label: string }[] = [
   { id: "classic", label: "Classic" },
+  { id: "live", label: "Live" },
   { id: "games", label: "Games" },
   { id: "cute", label: "Cute" },
   { id: "love", label: "Love" },
@@ -72,6 +73,16 @@ export const FRAME_IDS = [
   "sweet_candy",
   "love_letter",
   "party",
+  // Live (animated)
+  "deep_blue",
+  "diwali",
+  "wildfire",
+  "thunder",
+  "neon_beats",
+  "neon_hazard",
+  "frost_wings",
+  "spellbound",
+  "cosmic_cat",
   // Milestones (earned, never sold)
   "victor",
   "conqueror",
@@ -146,6 +157,16 @@ export const FRAMES: Record<FrameId, FrameInfo> = {
   sweet_candy: { name: "Sweet Candy", category: "love", price: 450 },
   love_letter: { name: "Love Letter", category: "love", price: 550 },
   party: { name: "Party Time", category: "love", price: 600 },
+
+  deep_blue: { name: "Deep Blue", category: "live", price: 1800 },
+  diwali: { name: "Diwali Lights", category: "live", price: 2000 },
+  wildfire: { name: "Wildfire", category: "live", price: 2200 },
+  thunder: { name: "Thunderstorm", category: "live", price: 2400 },
+  neon_beats: { name: "Neon Beats", category: "live", price: 2600 },
+  neon_hazard: { name: "Neon Hazard", category: "live", price: 2800 },
+  frost_wings: { name: "Frost Wings", category: "live", price: 3000 },
+  spellbound: { name: "Spellbound", category: "live", price: 3200 },
+  cosmic_cat: { name: "Cosmic Kitty", category: "live", price: 3500 },
 
   victor: { name: "Victor", category: "milestone", price: 0, milestone: { stat: "wins", goal: 10 } },
   conqueror: { name: "Conqueror", category: "milestone", price: 0, milestone: { stat: "wins", goal: 50 } },

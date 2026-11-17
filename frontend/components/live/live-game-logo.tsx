@@ -11,11 +11,24 @@ import { cn } from "@/lib/utils"
 export function LiveGameLogo({ game, className }: { game: LiveGameId; className?: string }) {
   const uid = React.useId().replace(/:/g, "")
   const Art = ART[game]
+  const picture = PICTURE_LOGOS[game]
+  if (picture)
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- a small static icon; no optimising needed
+      <img src={picture} alt="" aria-hidden draggable={false} className={cn("size-12 shrink-0 object-contain", className)} />
+    )
   return (
     <svg viewBox="0 0 48 48" role="img" aria-hidden className={cn("size-12 shrink-0", className)}>
       <Art id={uid} />
     </svg>
   )
+}
+
+/** Games whose logo is a painted picture (public/game-logos) rather than drawn art. */
+const PICTURE_LOGOS: Partial<Record<LiveGameId, string>> = {
+  tictactoe: "/game-logos/tictactoe.webp",
+  snakes: "/game-logos/snakes.webp",
+  snakes3d: "/game-logos/snakes3d.webp",
 }
 
 type ArtProps = { id: string }

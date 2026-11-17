@@ -12,6 +12,8 @@ export interface UserProfile {
   friendActivityAt?: string;
   /** Equipped profile frame (lib/fun/catalog FrameId); free or bought with coins. */
   frame?: string;
+  /** Game profile character (components/game-avatar), shown in live games instead of the photo. */
+  gameAvatar?: string;
   /** What they're up to, set by them. */
   mood?: { id: string; at: string };
   /** Shown only when they choose to share it (the year stays private). */
@@ -26,6 +28,8 @@ export interface Wallet {
   frames: string[];
   /** Game board themes bought (lib/live/themes). */
   themes?: string[];
+  /** Premium game characters bought or earned (components/game-avatar). */
+  avatars?: string[];
   /** Reason for the last change, e.g. "frame:laurel", "gift:{friendshipId}:{momentId}". */
   lastTx: string;
   /** Claimed the 10,000-coin welcome bonus. */
@@ -37,13 +41,27 @@ export interface Wallet {
   played?: number;
   /** Coins won from other players in staked games (net). */
   coinsWon?: number;
+  /**
+   * Live games (Realtime Database rooms), each counted once when it ends:
+   * finished, won, the current win streak and the best one. Achievement
+   * rewards (lib/live/achievements) are measured on these; the rules check
+   * every step.
+   */
+  livePlayed?: number;
+  liveWins?: number;
+  streak?: number;
+  bestStreak?: number;
+  /** When the last live game was counted (a Firestore Timestamp; the rules space them out). */
+  liveAt?: { toMillis(): number };
+  /** Levels whose coins were taken (`lv<n>`, lib/live/levels): each level pays once. */
+  levelCoins?: string[];
   createdAt: string;
 }
 
 /** One line of coin history (wallets/{uid}/txs/{id}). */
 export interface CoinTx {
   id: string;
-  kind: "welcome" | "frame" | "gift" | "stake" | "win" | "refund" | "throw" | "theme";
+  kind: "welcome" | "frame" | "gift" | "stake" | "win" | "refund" | "throw" | "theme" | "avatar" | "level";
   /** Coins in (+) or out (−). */
   amount: number;
   label: string;

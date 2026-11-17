@@ -1,6 +1,6 @@
 "use client"
 
-import { UserAvatar } from "@/components/shared/user-avatar"
+import { PlayerAvatar } from "../../player-avatar"
 import { cn } from "@/lib/utils"
 import type { TttSceneProps, TttSeat } from "./types"
 
@@ -68,7 +68,7 @@ function Chip({ seat, you }: { seat: TttSeat; you?: boolean }) {
         seat.away && "opacity-60"
       )}
     >
-      <UserAvatar src={seat.photo} name={seat.name} size="sm" className="shrink-0" />
+      <PlayerAvatar player={seat} size={32} className="shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs font-medium">
           {seat.name}{" "}

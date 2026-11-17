@@ -19,6 +19,9 @@ export type Mark = "x" | "o"
 export interface TttSeat {
   name: string
   photo?: string
+  /** Game profile: character and frame ids (components/game-avatar). */
+  avatar?: string
+  frame?: string
   /** The seat's mark this round (null before the game knows). */
   mark: Mark | null
   wins: number

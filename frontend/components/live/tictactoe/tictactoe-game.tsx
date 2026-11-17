@@ -157,6 +157,8 @@ export function TicTacToeGame({
     return {
       name: you ? "You" : first(p),
       photo: p?.photo,
+      avatar: p?.avatar,
+      frame: p?.frame,
       mark: id ? markOf(s, id) : null,
       wins: id ? (s.wins[id] ?? 0) : 0,
       active: !s.roundOver && !!id && turnUid === id,

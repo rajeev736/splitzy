@@ -11,6 +11,7 @@ import { BottomSheet } from "@/components/shared/bottom-sheet"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { useFriends } from "@/hooks/queries"
+import { useWallet } from "@/hooks/use-fun"
 import { getErrorMessage } from "@/lib/errors"
 import {
   defaultOptions,
@@ -20,6 +21,8 @@ import {
 } from "@/lib/live/games"
 import type { LiveGameId, RoomOptions } from "@/lib/live/types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { levelOf, liveXp } from "@/lib/live/levels"
+import { isTeamOptions, seatsFor } from "@/lib/live/seats"
 import { createRoom, registerGroupRoom } from "@/services/live-rooms"
 import type { UserProfile } from "@/lib/types"
 import { FriendPicker, sendRoomInvites } from "./invite-friends-sheet"
@@ -50,6 +53,7 @@ export function CreateRoomSheet({
 }) {
   const router = useRouter()
   const { user } = useSession()
+  const wallet = useWallet()
   const { data: friends } = useFriends()
   const info = LIVE_GAMES[game]
   const [picks, setPicks] = React.useState<RoomOptions>(() =>
@@ -57,12 +61,15 @@ export function CreateRoomSheet({
   )
   const [selected, setSelected] = React.useState<string[]>([])
   const [pending, setPending] = React.useState(false)
+  // Teams 2v2 makes a Ludo room four seats
+  const seats = seatsFor(game, picks)
+  const teams = isTeamOptions(game, picks)
 
   const create = async () => {
     if (!user) return
     setPending(true)
     try {
-      const code = await createRoom(user, game, picks)
+      const code = await createRoom(user, game, picks, wallet ? levelOf(liveXp(wallet)) : undefined)
       if (group) {
         // The room is open either way; listing it and the invites are best effort
         await registerGroupRoom(group.id, code, game, user).catch(
@@ -125,9 +132,11 @@ export function CreateRoomSheet({
             Create room
           </Button>
           <p className="text-center text-[11px] text-muted-foreground">
-            {info.minPlayers === info.maxPlayers
-              ? `Starts by itself once both seats are taken.`
-              : `Starts by itself once all ${info.maxPlayers} seats are taken — or you start with ${info.minPlayers} or more.`}
+            {teams
+              ? "Two teams of two, partners sit opposite. Starts by itself once all 4 seats are taken."
+              : seats.minPlayers === seats.maxPlayers
+                ? `Starts by itself once both seats are taken.`
+                : `Starts by itself once all ${seats.maxPlayers} seats are taken — or you start with ${seats.minPlayers} or more.`}
           </p>
         </div>
       }
@@ -138,7 +147,7 @@ export function CreateRoomSheet({
           <div className="min-w-0">
             <p className="text-base font-semibold">{info.name}</p>
             <p className="text-xs text-muted-foreground">
-              {playersLabel(info)} · {info.duration}
+              {teams ? "4 players, 2 v 2" : playersLabel(info)} · {info.duration}
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {info.tagline}

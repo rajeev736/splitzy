@@ -3,7 +3,7 @@
 import type * as React from "react"
 import { Nunito } from "next/font/google"
 
-import { UserAvatar } from "@/components/shared/user-avatar"
+import { PlayerAvatarFill } from "../../player-avatar"
 import { cn } from "@/lib/utils"
 import type { Mark, TttSceneProps, TttSeat } from "./types"
 
@@ -133,7 +133,7 @@ function SignText({ me, opponent, status, tone, won }: Pick<TttSceneProps, "me" 
 function Chip({ seat, flip }: { seat: TttSeat; flip?: boolean }) {
   return (
     <div className={cn("ttt-pastel-chip", flip && "is-flip", seat.mark && `is-${seat.mark}`, seat.active && "is-active", seat.away && "is-away")}>
-      <UserAvatar src={seat.photo} name={seat.name} size="sm" className="ttt-pastel-avatar shrink-0" />
+      <PlayerAvatarFill player={seat} className="ttt-pastel-avatar size-8 shrink-0 rounded-full" />
       <span className="ttt-pastel-id">
         <span className="ttt-pastel-name">{seat.name}</span>
         <span className="ttt-pastel-tag">

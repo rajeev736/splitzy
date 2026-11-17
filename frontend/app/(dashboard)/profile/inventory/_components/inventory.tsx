@@ -7,18 +7,22 @@ import { HugeiconsIcon } from "@hugeicons/react"
 
 import { Coins } from "@/components/fun/coin"
 import { FramedAvatar } from "@/components/fun/framed-avatar"
+import { ownsCharacter } from "@/components/game-avatar/ownership"
+import { CHARACTERS } from "@/components/game-avatar/registry"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { BadgeSummary } from "@/hooks/use-fun"
 import { FRAME_IDS, ownsFrame } from "@/lib/fun/catalog"
 import { ALL_THEMES, ownsTheme } from "@/lib/live/themes"
 import type { Wallet } from "@/lib/types"
 import { BadgesTab } from "./badges-tab"
+import { CharactersTab, type CharacterFilter } from "./characters-tab"
 import { FramesTab, type FrameFilter, type InventoryUser } from "./frames-tab"
 import { MoreTab } from "./more-tab"
 import { ThemesTab, type BoardFilter } from "./themes-tab"
 
 const TABS = [
   { id: "frames", label: "Frames" },
+  { id: "characters", label: "Characters" },
   { id: "boards", label: "Boards" },
   { id: "badges", label: "Badges" },
   { id: "more", label: "More" },
@@ -33,11 +37,12 @@ const isTab = (v: string): v is Tab => TABS.some((t) => t.id === v)
 
 /**
  * Everything in the app you can own, buy or earn, in one place: frames,
- * board themes, badges and the pay-per-use extras. Ownership is read from
+ * game characters, board themes, badges and the pay-per-use extras. Ownership is read from
  * the live wallet, the same one the games read, so a thing bought here or
  * in a game shows as yours in both straight away.
  *
- * Deep links: #frames, #milestones (the frames you earn), #boards, #badges, #more.
+ * Deep links: #frames, #milestones (the frames you earn), #characters,
+ * #rewards (the characters and frames you win), #boards, #badges, #more.
  */
 export function Inventory({
   user,
@@ -54,7 +59,10 @@ export function Inventory({
   const [pickedTab, setPickedTab] = React.useState<Tab | null>(null)
   const [pickedFrames, setPickedFrames] = React.useState<FrameFilter | null>(null)
   const [boards, setBoards] = React.useState<BoardFilter>("all")
-  const tab: Tab = pickedTab ?? (hash === "milestones" ? "frames" : isTab(hash) ? hash : "frames")
+  const [pickedCharacters, setPickedCharacters] = React.useState<CharacterFilter | null>(null)
+  const tab: Tab =
+    pickedTab ?? (hash === "milestones" ? "frames" : hash === "rewards" ? "characters" : isTab(hash) ? hash : "frames")
+  const characters: CharacterFilter = pickedCharacters ?? (hash === "rewards" ? "earn" : "all")
   const frames: FrameFilter = pickedFrames ?? (hash === "milestones" ? "earn" : "all")
 
   const goTo = (next: Tab) => {
@@ -65,6 +73,7 @@ export function Inventory({
 
   const counts = {
     frames: FRAME_IDS.filter((id) => ownsFrame(id, wallet?.frames)).length,
+    characters: CHARACTERS.filter((c) => ownsCharacter(c, wallet?.avatars)).length,
     boards: ALL_THEMES.filter((t) => ownsTheme(t, wallet?.themes)).length,
     badges: badges?.filter((b) => b.tier > 0).length,
   }
@@ -76,23 +85,27 @@ export function Inventory({
         <span className="shrink-0 p-2.5">
           <FramedAvatar src={user.photoURL} name={user.displayName} frame={user.frame} size={44} />
         </span>
-        <div className="grid min-w-0 flex-1 grid-cols-3 divide-x">
+        <div className="grid min-w-0 flex-1 grid-cols-4 divide-x">
           <Stat value={counts.frames} total={FRAME_IDS.length} label="Frames" />
+          <Stat value={counts.characters} total={CHARACTERS.length} label="Characters" />
           <Stat value={counts.boards} total={ALL_THEMES.length} label="Boards" />
           <Stat value={counts.badges} total={badges?.length} label="Badges" />
         </div>
       </section>
 
       <Tabs value={tab} onValueChange={(v) => goTo(v as Tab)} className="gap-4">
-        <TabsList className="sticky top-[3.75rem] z-10 grid w-full grid-cols-4 bg-background/90 backdrop-blur">
+        <TabsList className="sticky top-[3.75rem] z-10 grid w-full grid-cols-5 bg-background/90 backdrop-blur">
           {TABS.map((t) => (
-            <TabsTrigger key={t.id} value={t.id} className="px-1">
+            <TabsTrigger key={t.id} value={t.id} className="px-0.5 max-[359px]:text-[11px]">
               {t.label}
             </TabsTrigger>
           ))}
         </TabsList>
         <TabsContent value="frames">
           <FramesTab user={user} wallet={wallet} filter={frames} onFilter={setPickedFrames} />
+        </TabsContent>
+        <TabsContent value="characters">
+          <CharactersTab user={user} wallet={wallet} filter={characters} onFilter={setPickedCharacters} />
         </TabsContent>
         <TabsContent value="boards">
           <ThemesTab wallet={wallet} filter={boards} onFilter={setBoards} />
@@ -125,7 +138,7 @@ function Stat({ value, total, label }: { value: number | undefined; total: numbe
         {value ?? "–"}
         {total !== undefined && <span className="text-xs font-normal text-muted-foreground">/{total}</span>}
       </span>
-      <span className="truncate text-[11px] text-muted-foreground">{label}</span>
+      <span className="max-w-full truncate text-[11px] text-muted-foreground">{label}</span>
     </div>
   )
 }

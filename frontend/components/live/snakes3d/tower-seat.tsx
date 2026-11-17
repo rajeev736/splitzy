@@ -2,11 +2,11 @@
 
 import * as React from "react"
 
-import { UserAvatar } from "@/components/shared/user-avatar"
 import { ordinal, SNAKES_MAX_MISSED, type SnakesPlayer } from "@/lib/live/snakes"
 import type { RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import { TOKEN_COLOURS } from "../ludo/ludo-board"
+import { PlayerAvatarFill } from "../player-avatar"
 
 /** Ring colour for the share of time left: green → amber → red. */
 const timeColour = (share: number) => `hsl(${Math.round(120 * share)} 85% 48%)`
@@ -105,10 +105,10 @@ export function TowerSeat({
           style={{ transition: "stroke-dashoffset 1s linear, stroke 1s linear" }}
         />
       </svg>
-      <UserAvatar
-        src={player.photo}
-        name={player.name}
-        size="md"
+      {/* The timer ring is this seat's frame: the character alone inside it */}
+      <PlayerAvatarFill
+        player={player}
+        frame={false}
         className={cn("absolute", compact ? "inset-[5.5px] size-[33px]" : "inset-[7px] size-[42px] @max-[10rem]:inset-[5.5px] @max-[10rem]:size-[33px]")}
       />
       <span

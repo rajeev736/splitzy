@@ -59,13 +59,24 @@ export interface RoomPlayer {
   uid: string
   name: string
   photo?: string
-  /** 0-based, fixed when joining; colours / turn order follow it. */
+  /**
+   * 0-based; colours / turn order follow it. Taken when joining; in a team
+   * room (lib/live/seats) players may move seats in the lobby, and
+   * seat === maxPlayers is the bench.
+   */
   seat: number
+  /** Server ms the current seat was claimed (moved into); absent = since joining. */
+  seatAt?: number
   joinedAt: number
   online: boolean
   lastSeen: number
   /** Left for good (forfeit). Their entry stays so the game keeps their seat. */
   left?: boolean
+  /** Game profile: character id (components/game-avatar) and frame id, shown instead of the photo. */
+  avatar?: string
+  frame?: string
+  /** Game level (lib/live/levels), shown as a badge. Self-reported: a look, never a reward. */
+  level?: number
 }
 
 export interface ChatMessage {

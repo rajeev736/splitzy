@@ -2,6 +2,8 @@
 
 import type * as React from "react"
 
+import { CharacterFill } from "@/components/game-avatar/character-tile"
+import { characterById } from "@/components/game-avatar/registry"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import type { Mark, TttSceneProps, TttSeat } from "./types"
@@ -157,6 +159,8 @@ export default function FlatScene({
 }
 
 function Badge({ seat, you }: { seat: TttSeat; you?: boolean }) {
+  // Their game character fills the square face (flat look: no frame)
+  const character = characterById(seat.avatar)
   return (
     <>
       <div
@@ -167,19 +171,25 @@ function Badge({ seat, you }: { seat: TttSeat; you?: boolean }) {
           seat.away && "ttt-flat-away"
         )}
       >
-        <Avatar className="ttt-flat-face size-auto rounded-none after:hidden">
-          {seat.photo && (
-            <AvatarImage
-              src={seat.photo}
-              alt=""
-              className="rounded-none"
-              referrerPolicy="no-referrer"
-            />
-          )}
-          <AvatarFallback className="rounded-none bg-transparent">
-            {you ? <PersonSolid /> : <Robot />}
-          </AvatarFallback>
-        </Avatar>
+        {character ? (
+          <span className="ttt-flat-face">
+            <CharacterFill def={character} shape="square" />
+          </span>
+        ) : (
+          <Avatar className="ttt-flat-face size-auto rounded-none after:hidden">
+            {seat.photo && (
+              <AvatarImage
+                src={seat.photo}
+                alt=""
+                className="rounded-none"
+                referrerPolicy="no-referrer"
+              />
+            )}
+            <AvatarFallback className="rounded-none bg-transparent">
+              {you ? <PersonSolid /> : <Robot />}
+            </AvatarFallback>
+          </Avatar>
+        )}
       </div>
       <p
         className={cn(

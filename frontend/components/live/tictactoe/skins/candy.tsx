@@ -2,7 +2,7 @@
 
 import { useId, type CSSProperties, type ReactNode } from "react"
 
-import { UserAvatar } from "@/components/shared/user-avatar"
+import { PlayerAvatarFill } from "../../player-avatar"
 import { cn } from "@/lib/utils"
 import type { Mark, TttSceneProps, TttSeat } from "./types"
 
@@ -105,7 +105,7 @@ function Seat({ seat, you, toWin }: { seat: TttSeat; you?: boolean; toWin: numbe
       </p>
       <div className="ttt-candy-card">
         <span className="ttt-candy-avatar">
-          <UserAvatar src={seat.photo} name={seat.name} size="lg" className="size-full text-[length:inherit]" />
+          <PlayerAvatarFill player={seat} className="size-full" />
         </span>
         <p className="ttt-candy-label">{label}</p>
         <p className="ttt-candy-name" title={seat.name}>

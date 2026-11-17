@@ -74,7 +74,7 @@ export const LIVE_GAMES: Record<LiveGameId, LiveGameInfo> = {
     name: "Ludo",
     tagline: "Roll a six, race home, send friends back",
     howTo:
-      "Each player has 4 tokens. Roll a 6 to bring a token out; a 6 (or a capture, or getting a token home) gives you another roll — three 6s in a row and you lose the turn. Landing on a rival's token sends it back, except on the safe (star) squares. First to get all 4 tokens home wins. With 5 players the game moves to a five-armed board. Power Ludo adds power-ups on the track — freeze, number-lock or push back a rival's piece; jump, shield or double your own roll. Land on one to grab it (the first piece out and the first piece home earn one too), and use it on your turn before you roll.",
+      "Each player has 4 tokens. Roll a 6 to bring a token out; a 6 (or a capture, or getting a token home) gives you another roll — three 6s in a row and you lose the turn. Landing on a rival's token sends it back, except on the safe (star) squares. First to get all 4 tokens home wins. With 5 players the game moves to a five-armed board. Power Ludo adds power-ups on the track — freeze, number-lock or push back a rival's piece; jump, shield or double your own roll. Land on one to grab it (the first piece out and the first piece home earn one too), and use it on your turn before you roll — within 2 minutes, or it fizzles out. Your game character brings one power of its own too: use it once per game, it never runs out. Teams 2v2: four players, partners sit opposite and can't cut each other; your team wins once both of you have all four tokens home.",
     emoji: "🎲",
     minPlayers: 2,
     // 2–4 play on the square board; 5 get the pentagon board
@@ -89,6 +89,16 @@ export const LIVE_GAMES: Record<LiveGameId, LiveGameInfo> = {
           { value: "powers", label: "Power Ludo" },
         ],
         default: "classic",
+      },
+      {
+        // Teams 2v2 makes it a 4-seat room (lib/live/seats); works with either mode
+        key: "teams",
+        label: "Play",
+        choices: [
+          { value: "solo", label: "Every player alone" },
+          { value: "2v2", label: "Teams 2v2" },
+        ],
+        default: "solo",
       },
     ],
     tone: "bg-red-500/12",

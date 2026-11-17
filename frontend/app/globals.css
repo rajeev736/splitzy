@@ -247,6 +247,12 @@
     touch-action: pan-x pan-y;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    /* An app, not a web page: pulling down at the top never reloads it
+       (pull-to-refresh) and scrolling past an end doesn't bounce the page */
+    overscroll-behavior-y: none;
+  }
+  body {
+    overscroll-behavior-y: none;
   }
 
   /* Prevent automatic iOS Safari / mobile WebView zoom on input focus.

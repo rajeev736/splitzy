@@ -5,11 +5,13 @@ import gsap from "gsap"
 import { toast } from "sonner"
 
 import { Coins } from "@/components/fun/coin"
+import { CharStickerFlight } from "@/components/game-avatar/stickers/flight"
+import { CHAR_STICKER_GAP_MS, charStickerId, charStickerOf, paced } from "@/components/game-avatar/stickers/registry"
+import { SignaturePicker } from "@/components/game-avatar/stickers/ui"
 import { useSession } from "@/components/providers/session-provider"
 import { BottomSheet } from "@/components/shared/bottom-sheet"
-import { UserAvatar } from "@/components/shared/user-avatar"
 import { Spinner } from "@/components/ui/spinner"
-import { serverNow, useRoomChildren } from "@/hooks/use-live-room"
+import { serverNow, useRoomChildren, useRoomNode } from "@/hooks/use-live-room"
 import { useWallet } from "@/hooks/use-fun"
 import { getErrorMessage } from "@/lib/errors"
 import { THROW_PREFIX, THROWABLE_IDS, THROWABLES, throwableOf, type ThrowableId } from "@/lib/live/throwables"
@@ -18,6 +20,7 @@ import { cn } from "@/lib/utils"
 import { playSound, type SoundEvent } from "@/lib/live/sound"
 import { payForThrow } from "@/services/fun"
 import { sendReaction } from "@/services/live-rooms"
+import { PlayerAvatar } from "./player-avatar"
 
 /**
  * Ludo King style throwables. Mark each player's photo with
@@ -194,6 +197,10 @@ export function ThrowPicker({
   const wallet = useWallet()
   const [busy, setBusy] = React.useState<ThrowableId | null>(null)
   const last = React.useRef(0)
+  // The character you wear in this room brings its signature stickers: free, a short gap between sends
+  const mine = useRoomNode<string>(user ? code : null, `players/${user?.uid}/avatar`).data
+  const [sending, setSending] = React.useState<number | null>(null)
+  const [readyAt, setReadyAt] = React.useState(0)
   // Keep showing who it was for while the sheet slides away
   const [shown, setShown] = React.useState(target)
   if (target && target !== shown) setShown(target)
@@ -213,6 +220,23 @@ export function ThrowPicker({
     }
   }
 
+  const sendSignature = async (n: number) => {
+    if (!user || !target || !mine || sending !== null || busy) return
+    const now = Date.now()
+    if (now < readyAt) return
+    setReadyAt(now + CHAR_STICKER_GAP_MS)
+    setSending(n)
+    try {
+      await sendReaction(code, user, charStickerId(mine, n), target.uid)
+      onOpenChange(false)
+    } catch (e) {
+      setReadyAt(0)
+      toast.error(getErrorMessage(e, "Couldn't send that"))
+    } finally {
+      setSending(null)
+    }
+  }
+
   const first = shown?.name.split(" ")[0] ?? ""
   return (
     <BottomSheet
@@ -227,13 +251,14 @@ export function ThrowPicker({
     >
       {shown && (
         <div className="mb-3 flex items-center gap-2.5">
-          <UserAvatar uid={shown.uid} src={shown.photo} name={shown.name} size="sm" />
+          <PlayerAvatar player={shown} size={32} />
           <p className="text-sm text-muted-foreground">
             Everyone in the room sees it fly from you to {first}.
           </p>
         </div>
       )}
       <div className="flex flex-col gap-3 pb-2">
+        {mine && <SignaturePicker character={mine} readyAt={readyAt} busy={sending} onSend={(n) => void sendSignature(n)} />}
         <div className="grid grid-cols-4 gap-2">
           {THROWABLE_IDS.filter((id) => !THROWABLES[id].vip).map((id) => {
             const item = THROWABLES[id]
@@ -329,11 +354,17 @@ export function ThrowOverlay({ code }: { code: string }) {
     const id = window.setTimeout(() => setSince(serverNow() - 1500), 0)
     return () => window.clearTimeout(id)
   }, [])
+  // Character stickers: at most one per player per gap, the same on every device
+  const signatures = paced(items)
   const flights =
     since === null
       ? []
       : items.filter(
-          (r) => r.value.at >= since && !!r.value.to && !!throwableOf(r.value.sticker) && !done.includes(r.key)
+          (r) =>
+            r.value.at >= since &&
+            !!r.value.to &&
+            (!!throwableOf(r.value.sticker) || signatures.has(r.key)) &&
+            !done.includes(r.key)
         )
   const finish = React.useCallback((key: string) => setDone((d) => [...d.slice(-40), key]), [])
 
@@ -341,16 +372,29 @@ export function ThrowOverlay({ code }: { code: string }) {
   return (
     <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden" aria-live="polite">
       <style>{`.throw-fuse{animation:throw-fuse .18s steps(2) infinite;transform-origin:55px 10px}@keyframes throw-fuse{50%{transform:scale(1.35) rotate(25deg)}}`}</style>
-      {flights.map((r) => (
-        <Flight
-          key={r.key}
-          id={r.key}
-          item={throwableOf(r.value.sticker)!}
-          from={r.value.uid}
-          to={r.value.to!}
-          onDone={finish}
-        />
-      ))}
+      {flights.map((r) => {
+        const signature = charStickerOf(r.value.sticker)
+        return signature ? (
+          <CharStickerFlight
+            key={r.key}
+            id={r.key}
+            character={signature.character}
+            sticker={signature.sticker}
+            from={r.value.uid}
+            to={r.value.to!}
+            onDone={finish}
+          />
+        ) : (
+          <Flight
+            key={r.key}
+            id={r.key}
+            item={throwableOf(r.value.sticker)!}
+            from={r.value.uid}
+            to={r.value.to!}
+            onDone={finish}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -466,7 +510,7 @@ function Flight({
       gsap.fromTo(
         target.el,
         { x: -strength },
-        { x: strength, duration: 0.05, repeat: times, yoyo: true, ease: "none", clearProps: "x" }
+        { x: strength, duration: 0.05, repeat: times, yoyo: true, ease: "none", onComplete: () => void gsap.set(target.el, { clearProps: "x" }) }
       )
     const particles = (count: number, colours: string[], reach: number, size = 8) => {
       const made: HTMLElement[] = []

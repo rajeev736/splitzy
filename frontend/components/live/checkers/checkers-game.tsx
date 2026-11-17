@@ -7,7 +7,6 @@ import { serverTimestamp } from "firebase/database"
 import { toast } from "sonner"
 
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
-import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
@@ -38,6 +37,7 @@ import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import { playSound, useOnChange } from "@/lib/live/sound"
 import { stateTransaction, updateState } from "@/services/live-rooms"
+import { PlayerAvatar } from "../player-avatar"
 import {
   CheckersBoard,
   CheckersStyles,
@@ -490,13 +490,7 @@ function PlayerChip({
         toMove && "border-primary/40 ring-1 ring-primary/20"
       )}
     >
-      <UserAvatar
-        src={player?.photo}
-        name={player?.name ?? "?"}
-        size="sm"
-        uid={player?.uid}
-        className="size-9"
-      />
+      <PlayerAvatar player={player} size={36} className="shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-1.5 text-sm font-semibold">
           <Disc cell={side} className="text-[11px]" />

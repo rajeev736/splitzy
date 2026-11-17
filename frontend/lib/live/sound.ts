@@ -71,6 +71,20 @@ export type SoundEvent =
   | "hit_meteor"
   | "hit_vajra"
   | "chakra"
+  // Character signature stickers (components/game-avatar/stickers), on impact
+  | "hit_sparkle"
+  | "hit_boing"
+  | "hit_ice"
+  | "hit_roar"
+  | "hit_laser"
+  | "hit_ufo"
+  | "hit_poof"
+  | "hit_zap"
+  | "hit_fire"
+  | "hit_whip"
+  | "hit_whoosh"
+  | "hit_bubbles"
+  | "hit_music"
 
 /* ── Settings (per device) ──────────────────────────────────────────── */
 
@@ -330,6 +344,69 @@ const FX: Record<SoundEvent, (a: AudioContext) => void> = {
     tone(a, { f: 200, to: 1200, d: 1.2, type: "sawtooth", v: 0.05 })
     noise(a, { d: 1.2, f: 800, to: 4000, q: 3, v: 0.25 })
   },
+  hit_sparkle: (a) => {
+    // A glittery run of high chimes
+    ;[1568, 2093, 2637, 3136, 2637, 3520].forEach((f, i) => tone(a, { t: i * 0.05, f, d: 0.35, v: 0.06 }))
+    noise(a, { d: 0.4, f: 7000, q: 2, type: "highpass", v: 0.08 })
+  },
+  hit_boing: (a) => {
+    // A springy "boi-oing" with a soft thump
+    wobble(a, { f: 180, to: 520, d: 0.38, rate: 14, depth: 40, type: "triangle", v: 0.16 })
+    tone(a, { f: 120, to: 70, d: 0.12, v: 0.3 })
+  },
+  hit_ice: (a) => {
+    // Crunch, then a frosty shimmer
+    noise(a, { d: 0.12, f: 3500, q: 1.5, v: 0.45 })
+    ;[2349, 2793, 3322].forEach((f, i) => tone(a, { t: 0.08 + i * 0.07, f, d: 0.5, type: "triangle", v: 0.05 }))
+  },
+  hit_roar: (a) => {
+    // A growl swelling into a roar
+    wobble(a, { f: 90, to: 160, d: 0.7, rate: 28, depth: 22, type: "sawtooth", v: 0.12 })
+    noise(a, { d: 0.75, f: 600, to: 250, q: 0.8, type: "lowpass", v: 0.45 })
+  },
+  hit_laser: (a) => {
+    // "Pew" down, then a hissing burn
+    tone(a, { f: 1800, to: 220, d: 0.22, type: "square", v: 0.07 })
+    noise(a, { t: 0.15, d: 0.3, f: 5000, to: 1500, q: 1, type: "highpass", v: 0.18 })
+  },
+  hit_ufo: (a) => {
+    // The saucer's warble and the beam humming on
+    wobble(a, { f: 600, to: 900, d: 0.9, rate: 7, depth: 120, type: "sine", v: 0.09 })
+    tone(a, { t: 0.1, f: 110, d: 0.8, type: "sawtooth", v: 0.04 })
+  },
+  hit_poof: (a) => {
+    noise(a, { d: 0.5, f: 1200, to: 200, q: 0.6, type: "lowpass", v: 0.6 })
+    tone(a, { t: 0.05, f: 300, to: 900, d: 0.18, v: 0.06 })
+  },
+  hit_zap: (a) => {
+    // Crackling electricity
+    for (let i = 0; i < 6; i++) noise(a, { t: i * 0.05 + Math.random() * 0.02, d: 0.05, f: 3000 + Math.random() * 3000, q: 3, v: 0.35 })
+    tone(a, { f: 120, d: 0.35, type: "sawtooth", v: 0.08 })
+  },
+  hit_fire: (a) => {
+    // A whoomph and the roar of flames
+    tone(a, { f: 160, to: 40, d: 0.6, v: 0.5 })
+    noise(a, { d: 0.9, f: 900, to: 200, q: 0.5, type: "lowpass", v: 0.7 })
+    noise(a, { t: 0.1, d: 0.7, f: 2500, to: 900, q: 0.8, v: 0.18 })
+  },
+  hit_whip: (a) => {
+    // Swish, crack
+    noise(a, { d: 0.18, f: 800, to: 4000, q: 2, v: 0.2 })
+    noise(a, { t: 0.17, d: 0.05, f: 4500, q: 0.7, type: "highpass", v: 0.7 })
+  },
+  hit_whoosh: (a) => {
+    noise(a, { d: 0.55, f: 500, to: 3000, q: 1.5, v: 0.35 })
+    ;[1319, 1760].forEach((f, i) => tone(a, { t: 0.4 + i * 0.07, f, d: 0.25, v: 0.07 }))
+  },
+  hit_bubbles: (a) => {
+    // Bloop-bloop-bloop, rising
+    for (let i = 0; i < 6; i++) tone(a, { t: i * 0.07, f: 300 + i * 90, to: 900 + i * 150, d: 0.08, v: 0.12 })
+  },
+  hit_music: (a) => {
+    // A bass drop and a quick riff on top
+    tone(a, { f: 110, to: 45, d: 0.5, v: 0.55 })
+    ;[523, 659, 784, 988, 784, 1047].forEach((f, i) => tone(a, { t: 0.08 + i * 0.07, f, d: 0.16, type: "square", v: 0.04 }))
+  },
 }
 
 /**
@@ -395,6 +472,10 @@ const DESI_LINES: Partial<Record<SoundEvent, Line[]>> = {
   chakra: [{ clip: "angenghatram", say: "Angenghatram nayen waktram!" }],
   hit_meteor: [{ clip: "dharti-hila-di", say: "Dharti hila di!" }],
   hit_vajra: [{ clip: "bijli", say: "Bijli gir gayi!" }],
+  hit_zap: [{ clip: "bijli", say: "Bijli gir gayi!" }],
+  hit_fire: [{ clip: "dhamaaka", say: "Dhamaaka!" }],
+  hit_roar: [{ clip: "dhishoom", say: "Dhishoom!" }],
+  hit_whip: [{ clip: "dhishoom", say: "Dhishoom!" }],
 }
 
 const missingClips = new Set<string>()

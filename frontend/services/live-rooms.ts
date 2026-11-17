@@ -15,8 +15,9 @@ import {
 
 import { AppError } from "@/lib/errors"
 import { rtdb } from "@/lib/firebase/config"
-import { defaultOptions, LIVE_GAMES, seatOrder } from "@/lib/live/games"
+import { defaultOptions, seatOrder } from "@/lib/live/games"
 import { AUTO_START_SECONDS, isJoinable, randomRoomCode } from "@/lib/live/room"
+import { canMoveTo, canStart, isTeamRoom, resolveClash, seatsFor } from "@/lib/live/seats"
 import { initialStateFor } from "@/lib/live/start"
 import type {
   ChatMessage,
@@ -29,6 +30,7 @@ import type {
   VoiceState,
 } from "@/lib/live/types"
 import type { UserProfile } from "@/lib/types"
+import { countLiveResult } from "./game-profile"
 
 /**
  * Everything the app writes to a live room. Reads happen through the hooks in
@@ -52,7 +54,7 @@ const userRoomsRef = (uid: string) => ref(liveDb(), `userRooms/${uid}`)
 /** The server's idea of "now", as a write-time placeholder. */
 const ts = () => serverTimestamp() as unknown as number
 
-function playerEntry(user: UserProfile, seat: number): RoomPlayer {
+function playerEntry(user: UserProfile, seat: number, level?: number): RoomPlayer {
   const entry: RoomPlayer = {
     uid: user.uid,
     name: user.displayName,
@@ -63,8 +65,24 @@ function playerEntry(user: UserProfile, seat: number): RoomPlayer {
   }
   // The database rejects `undefined` values: only send the photo when there is one
   if (user.photoURL) entry.photo = user.photoURL
+  // The game profile: character and frame, drawn on every device without lookups
+  if (user.gameAvatar) entry.avatar = user.gameAvatar
+  if (user.frame) entry.frame = user.frame
+  // …and the level (lib/live/levels) when the wallet it comes from has loaded
+  if (level) entry.level = level
   return entry
 }
+
+/** Your game profile as it stands, for a seat you're coming back to (`null` clears a removed one). */
+const gameProfilePatch = (user: UserProfile, level?: number) => ({
+  avatar: user.gameAvatar || null,
+  frame: user.frame || null,
+  ...(level ? { level } : {}),
+})
+
+/** Your level on your seat, when it changed (a level-up, or the wallet loading after you joined). */
+export const setPlayerLevel = (code: string, uid: string, level: number) =>
+  update(roomRef(code, `players/${uid}`), { level })
 
 /* ── Rooms ───────────────────────────────────────────────────────────── */
 
@@ -72,9 +90,13 @@ function playerEntry(user: UserProfile, seat: number): RoomPlayer {
 export async function createRoom(
   user: UserProfile,
   game: LiveGameId,
-  picked: RoomOptions = {}
+  picked: RoomOptions = {},
+  /** Your game level, for your seat (lib/live/levels). */
+  level?: number
 ): Promise<string> {
-  const info = LIVE_GAMES[game]
+  const options = defaultOptions(game, picked)
+  // Team Ludo is always four seats (lib/live/seats)
+  const { minPlayers, maxPlayers } = seatsFor(game, options)
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = randomRoomCode()
     const meta: RoomMeta = {
@@ -83,17 +105,17 @@ export async function createRoom(
       hostId: user.uid,
       hostName: user.displayName,
       createdAt: ts(),
-      minPlayers: info.minPlayers,
-      maxPlayers: info.maxPlayers,
+      minPlayers,
+      maxPlayers,
       status: "lobby",
-      options: defaultOptions(game, picked),
+      options,
     }
     // Only claim a code nobody else has
     const res = await runTransaction(roomRef(code, "meta"), (current) =>
       current === null ? meta : undefined
     )
     if (!res.committed) continue
-    await set(roomRef(code, `players/${user.uid}`), playerEntry(user, 0))
+    await set(roomRef(code, `players/${user.uid}`), playerEntry(user, 0, level))
     await set(ref(liveDb(), `userRooms/${user.uid}/${code}`), ts()).catch(
       () => undefined
     )
@@ -111,7 +133,8 @@ export type JoinOutcome = "joined" | "not_found" | "full" | "started" | "ended"
  */
 export async function joinRoom(
   user: UserProfile,
-  code: string
+  code: string,
+  level?: number
 ): Promise<JoinOutcome> {
   const [metaSnap, playersSnap] = await Promise.all([
     get(roomRef(code, "meta")),
@@ -129,6 +152,7 @@ export async function joinRoom(
       online: true,
       lastSeen: ts(),
       name: user.displayName,
+      ...gameProfilePatch(user, level),
     }
     if (user.photoURL) patch.photo = user.photoURL
     if (isJoinable(meta) && me.left) patch.left = null
@@ -147,7 +171,7 @@ export async function joinRoom(
   while (taken.has(seat)) seat++
 
   try {
-    await set(playerRef, playerEntry(user, seat))
+    await set(playerRef, playerEntry(user, seat, level))
   } catch {
     // The rules refused: the room filled up or started between the read and the write
     const again = await get(roomRef(code, "meta"))
@@ -174,6 +198,8 @@ export async function joinRoom(
     await remove(playerRef)
     return "full"
   }
+  // …and two who picked the same free seat: the later one moves on to another
+  await settleSeat(code, user.uid, meta).catch(() => undefined)
   void set(ref(liveDb(), `userRooms/${user.uid}/${code}`), ts()).catch(
     () => undefined
   )
@@ -185,6 +211,20 @@ export async function joinRoom(
  * the room closes if you were alone). During the game: you forfeit — your
  * entry stays flagged `left` so the game can skip / award accordingly.
  */
+/** Has `uid` already finished this game while others play on (a place in Ludo / Snakes, solved in Sudoku)? */
+async function finishedIn(code: string, game: RoomMeta["game"], uid: string): Promise<boolean> {
+  const path =
+    game === "ludo" || game === "snakes" || game === "snakes3d"
+      ? `state/players/${uid}/place`
+      : game === "sudoku"
+        ? `state/finished/${uid}`
+        : null
+  if (!path) return false
+  const snap = await get(roomRef(code, path)).catch(() => null)
+  const v = snap?.val() as unknown
+  return game === "sudoku" ? v != null : typeof v === "number" && v > 0
+}
+
 export async function leaveRoom(uid: string, code: string): Promise<void> {
   const [metaSnap, playersSnap] = await Promise.all([
     get(roomRef(code, "meta")),
@@ -196,11 +236,21 @@ export async function leaveRoom(uid: string, code: string): Promise<void> {
   if (!players[uid]) return
 
   if (meta.status === "playing") {
+    // Already home (Ludo, Snakes) or solved (Sudoku)? Then this isn't giving up:
+    // your place is kept for the final ranking, and you can come back to watch
+    // the rest and see the result (counted then, like everyone else's).
+    const finished = await finishedIn(code, meta.game, uid)
     await update(roomRef(code, `players/${uid}`), {
       left: true,
       online: false,
       lastSeen: ts(),
     })
+    if (finished) return
+    // Giving up counts as a loss on your live record (and ends a win streak)
+    if (meta.startedAt)
+      void countLiveResult(uid, { code, startedAt: meta.startedAt, game: meta.game, outcome: "lose" })
+    // You're out of it for good: it isn't "your game in progress" any more
+    await remove(ref(liveDb(), `userRooms/${uid}/${code}`)).catch(() => undefined)
     return
   }
   if (meta.status === "ended") {
@@ -229,6 +279,33 @@ export async function leaveRoom(uid: string, code: string): Promise<void> {
   await remove(ref(liveDb(), `userRooms/${uid}/${code}`)).catch(() => undefined)
 }
 
+/**
+ * Team rooms: moves you to another seat in the lobby — a free one, or the
+ * bench when every seat is taken (see lib/live/seats). If someone grabbed the
+ * same seat at the same moment, the earlier claim keeps it and you go back.
+ */
+export async function moveSeat(code: string, uid: string, seat: number): Promise<boolean> {
+  const [metaSnap, playersSnap] = await Promise.all([
+    get(roomRef(code, "meta")),
+    get(roomRef(code, "players")),
+  ])
+  const meta = metaSnap.val() as RoomMeta | null
+  const players = seatOrder((playersSnap.val() ?? {}) as Record<string, RoomPlayer>)
+  const from = players.find((p) => p.uid === uid)?.seat
+  if (!meta || from === undefined || !canMoveTo(meta, players, uid, seat)) return false
+  await update(roomRef(code, `players/${uid}`), { seat, seatAt: ts() })
+  return (await settleSeat(code, uid, meta, from)) === null
+}
+
+/** Settles a seat clash for `uid` (see resolveClash); returns the seat they moved to, or null if they kept theirs. */
+async function settleSeat(code: string, uid: string, meta: RoomMeta, from?: number): Promise<number | null> {
+  const players = seatOrder(((await get(roomRef(code, "players"))).val() ?? {}) as Record<string, RoomPlayer>)
+  const to = resolveClash(meta, players, uid, from)
+  if (to === null) return null
+  await update(roomRef(code, `players/${uid}`), { seat: to, seatAt: ts() })
+  return to
+}
+
 /** Host removes someone from the lobby. */
 export async function kickPlayer(code: string, uid: string): Promise<void> {
   await remove(roomRef(code, `players/${uid}`))
@@ -251,8 +328,14 @@ export async function startGame(
   players: RoomPlayer[]
 ): Promise<void> {
   const active = players.filter((p) => !p.left)
-  if (active.length < meta.minPlayers)
-    throw new AppError(`Need at least ${meta.minPlayers} players`)
+  if (!canStart(meta, players))
+    throw new AppError(
+      active.some((p) => p.seat >= meta.maxPlayers)
+        ? "Someone is still on the bench"
+        : isTeamRoom(meta)
+          ? "Teams need all four players"
+          : `Need at least ${meta.minPlayers} players`
+    )
   await update(roomRef(code), {
     "meta/status": "playing",
     "meta/startedAt": ts(),
@@ -293,9 +376,10 @@ export const deleteRoom = (code: string) => remove(roomRef(code))
 /** Opens a fresh room with the same game and settings, and points this room at it. */
 export async function rematch(
   user: UserProfile,
-  meta: RoomMeta
+  meta: RoomMeta,
+  level?: number
 ): Promise<string> {
-  const code = await createRoom(user, meta.game, meta.options)
+  const code = await createRoom(user, meta.game, meta.options, level)
   await update(roomRef(meta.code, "meta"), { rematchCode: code }).catch(
     () => undefined
   )

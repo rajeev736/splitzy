@@ -31,7 +31,7 @@ import { claimMilestoneFrame, milestoneProgress } from "@/services/fun"
 
 export type FrameFilter = "all" | "owned" | "store" | "earn"
 
-export type InventoryUser = Pick<UserProfile, "uid" | "displayName" | "photoURL" | "frame">
+export type InventoryUser = Pick<UserProfile, "uid" | "displayName" | "photoURL" | "frame" | "gameAvatar">
 
 const fmt = new Intl.NumberFormat("en-IN")
 
@@ -104,6 +104,7 @@ export function FramesTab({
           <div className="flex items-baseline justify-between gap-2 px-1">
             <h3 className="text-sm font-semibold">{s.label}</h3>
             {s.id === "milestone" && <span className="text-xs text-muted-foreground">Earned by playing, never sold</span>}
+            {s.id === "live" && <span className="text-xs text-muted-foreground">Animated frames that move</span>}
           </div>
           <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
             {s.ids.map((id) => (

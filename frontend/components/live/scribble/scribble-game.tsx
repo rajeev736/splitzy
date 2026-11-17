@@ -10,7 +10,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
 
-import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
@@ -40,6 +39,7 @@ import type { ChatMessage, LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import { roomRef, sendChat, updateState } from "@/services/live-rooms"
 import { DefaultMessage, RoomChat } from "../room-chat"
+import { PlayerAvatar } from "../player-avatar"
 import { useStageFit } from "../use-stage-fit"
 import { playSound, useOnChange } from "@/lib/live/sound"
 import { hashWord } from "./hash"
@@ -726,12 +726,7 @@ function TurnSummary({
           const p = byId[id]
           return (
             <li key={id} className="flex items-center gap-2 px-3 py-1.5">
-              <UserAvatar
-                src={p?.photo}
-                name={p?.name ?? "?"}
-                size="xs"
-                uid={id}
-              />
+              <PlayerAvatar player={p} size={24} frame={false} />
               <span className="min-w-0 flex-1 truncate text-left font-medium">
                 {(p?.name ?? "Someone").split(" ")[0]}
                 {id === drawerId && (
@@ -808,13 +803,10 @@ function Scoreboard({
               id === uid && !row && "bg-primary/5"
             )}
           >
-            <UserAvatar
-              src={p?.photo}
-              name={p?.name ?? "?"}
-              size={row ? "xs" : "sm"}
-              uid={id}
-              badge={badge}
-            />
+            <span className="relative shrink-0">
+              <PlayerAvatar player={p} size={row ? 24 : 32} frame={!row} />
+              {badge && <span className="absolute -right-1 -bottom-1 z-10">{badge}</span>}
+            </span>
             <span
               className={cn(
                 "truncate text-xs font-medium",

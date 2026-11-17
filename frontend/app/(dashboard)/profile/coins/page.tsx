@@ -31,6 +31,8 @@ const KIND: Record<CoinTx["kind"], { icon: typeof GiftIcon; tone: string }> = {
   refund: { icon: RotateLeft01Icon, tone: "bg-muted text-muted-foreground" },
   theme: { icon: GameController03Icon, tone: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300" },
   throw: { icon: GameController03Icon, tone: "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300" },
+  avatar: { icon: SparklesIcon, tone: "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300" },
+  level: { icon: Award01Icon, tone: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" },
 }
 
 function day(iso: string, now: number) {

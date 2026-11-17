@@ -8,6 +8,7 @@ import type { BondId, FrameId, MoodId } from "@/lib/fun/catalog"
 import { chooseTheme, type BoardTheme } from "@/lib/live/themes"
 import type { Friendship, Moment } from "@/lib/types"
 import * as fun from "@/services/fun"
+import * as gameProfile from "@/services/game-profile"
 
 function useUser() {
   const { user } = useSession()
@@ -89,5 +90,46 @@ export function useSaveBirthday() {
   return useMutation({
     mutationFn: (v: { dob: string | null; show: boolean }) => fun.saveBirthday(me().uid, v.dob, v.show),
     meta: { successMessage: "Birthday saved" },
+  })
+}
+
+/* ── Game profile ─────────────────────────────────────────────────────── */
+
+/**
+ * Buys a game character. The profile's picker, the inventory and the result
+ * screen all buy through this, reading ownership from the live wallet, so a
+ * character is never sold twice.
+ */
+export function useBuyCharacter() {
+  const me = useUser()
+  return useMutation({ mutationFn: (id: string) => gameProfile.buyCharacter(me().uid, id) })
+}
+
+/** Plays as a character in games (`null`: your photo). */
+export function useSetGameAvatar() {
+  const me = useUser()
+  return useMutation({
+    mutationFn: (v: { id: string | null; owned: string[] | undefined }) =>
+      gameProfile.setGameAvatar(me().uid, v.id, v.owned),
+  })
+}
+
+/** Takes an achievement's or a level's reward, and optionally puts it on straight away. */
+export function useClaimReward() {
+  const me = useUser()
+  return useMutation({
+    mutationFn: async (v: {
+      achievement: string
+      kind: "character" | "frame" | "coins"
+      id: string
+      equip?: boolean
+      owned?: string[]
+    }) => {
+      const uid = me().uid
+      await gameProfile.claimReward(uid, v.achievement, { kind: v.kind, id: v.id })
+      if (!v.equip || v.kind === "coins") return
+      if (v.kind === "character") await gameProfile.setGameAvatar(uid, v.id, [...(v.owned ?? []), v.id])
+      else await fun.equipFrame(uid, v.id as FrameId, [...(v.owned ?? []), v.id])
+    },
   })
 }

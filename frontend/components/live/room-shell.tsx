@@ -1,19 +1,11 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import { useRouter } from "nextjs-toploader/app"
 import {
-  Cancel01Icon,
   ChatIcon,
-  Copy01Icon,
-  CrownIcon,
   Logout01Icon,
-  PlayIcon,
-  Share08Icon,
   StickerIcon,
-  Tick02Icon,
-  UserAdd01Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
@@ -22,7 +14,6 @@ import { AppHeader } from "@/components/layout/app-header"
 import { FullScreenLoader, PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
-import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -31,36 +22,38 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { Spinner } from "@/components/ui/spinner"
-import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
 import { onValue, ref } from "firebase/database"
 
-import { useLiveRoom, useRoomChildren, type LiveRoom } from "@/hooks/use-live-room"
+import { useWallet } from "@/hooks/use-fun"
+import { useLiveRoom, useRoomChildren, useRoomNode, type LiveRoom } from "@/hooks/use-live-room"
 import { getErrorMessage } from "@/lib/errors"
 import { useGameExit } from "@/lib/games-nav"
-import { LiveGameLogo } from "@/components/live/live-game-logo"
 import { LIVE_GAMES } from "@/lib/live/games"
-import { isJoinable, roomLink } from "@/lib/live/room"
-import type { ChatMessage, RoomMeta, RoomPlayer } from "@/lib/live/types"
+import { levelOf, liveXp } from "@/lib/live/levels"
+import { isJoinable } from "@/lib/live/room"
+import { isFull } from "@/lib/live/seats"
+import { ordinal } from "@/lib/live/ludo"
+import type { ChatMessage, LiveGameId, RoomMeta, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import {
   cancelCountdown,
   cleanupRoom,
   joinRoom,
   liveDb,
-  kickPlayer,
   leaveRoom,
   rematch,
+  setPlayerLevel,
   startCountdown,
   startGame,
   type JoinOutcome,
 } from "@/services/live-rooms"
 import { GameView } from "./game-view"
-import { InviteFriendsSheet } from "./invite-friends-sheet"
+import { LobbyView } from "./lobby/lobby-view"
 import { playSound } from "@/lib/live/sound"
 import { RoomChat } from "./room-chat"
 import { SoundMenu } from "./sound-settings"
 import { BoardThemePicker } from "./board-theme-picker"
+import { ResultScreen, type ResultRow, type ResultTone } from "./result-screen"
 import { ReactionsOverlay, StickerBar } from "./stickers"
 import { VoiceBar } from "./voice-bar"
 
@@ -103,6 +96,9 @@ export function RoomShell({ code }: { code: string }) {
   const room = useLiveRoom(code)
   const { meta, players, me, isReferee, loaded, notFound, now, serverNow } =
     room
+  // Your level (from your wallet) rides on your seat, for everyone's badges
+  const wallet = useWallet()
+  const level = wallet ? levelOf(liveXp(wallet)) : undefined
 
   // Take a seat (or come back to yours) as soon as the room is known — unless the host removed you
   const [join, setJoin] = React.useState<"idle" | JoinOutcome>("idle")
@@ -121,13 +117,21 @@ export function RoomShell({ code }: { code: string }) {
     )
       return
     joining.current = true
-    joinRoom(user, code)
+    joinRoom(user, code, level)
       .then(setJoin)
       .catch((e) => {
         toast.error(getErrorMessage(e, "Couldn't join the room"))
         setJoin("not_found")
       })
+    // The level is read when joining; a late one is caught up below
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, notFound, user, meta, me, kicked, join, code])
+
+  // Your seat's level when it changes: the wallet loading late, or a level-up at the end
+  React.useEffect(() => {
+    if (!me || me.left || !level || me.level === level) return
+    void setPlayerLevel(code, me.uid, level).catch(() => undefined)
+  }, [me, level, code])
 
   // The host removed you from the lobby: out you go, and you stay out until you choose to join again
   const seatedHere = React.useRef(false)
@@ -147,10 +151,11 @@ export function RoomShell({ code }: { code: string }) {
   const starting = React.useRef(false)
   React.useEffect(() => {
     if (!isReferee || !meta || !me || me.left) return
-    const active = players.filter((p) => !p.left).length
-    if (meta.status === "lobby" && active >= meta.maxPlayers) {
+    // Every seat taken (team rooms: nobody waiting on the bench)
+    const full = isFull(meta, players)
+    if (meta.status === "lobby" && full) {
       void startCountdown(code, serverNow()).catch(() => undefined)
-    } else if (meta.status === "countdown" && active < meta.maxPlayers) {
+    } else if (meta.status === "countdown" && !full) {
       void cancelCountdown(code).catch(() => undefined)
     } else if (
       meta.status === "countdown" &&
@@ -241,330 +246,8 @@ export function RoomShell({ code }: { code: string }) {
       meta={meta}
       me={me}
       onLeft={exitGame}
+      onLeaving={() => leavingRooms.add(code)}
     />
-  )
-}
-
-/* ── Lobby ───────────────────────────────────────────────────────────── */
-
-function LobbyView({
-  room,
-  meta,
-  me,
-  onLeft,
-}: {
-  room: LiveRoom
-  meta: RoomMeta
-  me: RoomPlayer
-  onLeft: () => void
-}) {
-  const { code, players, uid, isHost, now } = room
-  const game = LIVE_GAMES[meta.game]
-  const { copied, copy } = useCopyToClipboard()
-  const [invite, setInvite] = React.useState(false)
-  const [leaving, setLeaving] = React.useState(false)
-  const [confirmLeave, setConfirmLeave] = React.useState(false)
-  const [startPending, setStartPending] = React.useState(false)
-  const active = players.filter((p) => !p.left)
-  const canStart = isHost && active.length >= meta.minPlayers
-  const countdown =
-    meta.status === "countdown" && meta.startsAt
-      ? Math.max(0, Math.ceil((meta.startsAt - now) / 1000))
-      : null
-
-  const leave = async () => {
-    setLeaving(true)
-    leavingRooms.add(code)
-    try {
-      await leaveRoom(uid, code)
-      onLeft()
-    } catch (e) {
-      toast.error(getErrorMessage(e, "Couldn't leave"))
-      setLeaving(false)
-    }
-  }
-  const start = async () => {
-    setStartPending(true)
-    try {
-      await startGame(code, meta, players)
-    } catch (e) {
-      toast.error(getErrorMessage(e, "Couldn't start"))
-      setStartPending(false)
-    }
-  }
-  const share = () => {
-    const link = roomLink(code)
-    if (typeof navigator.share === "function") {
-      navigator
-        .share({
-          title: `Play ${game.name} on JoySplit`,
-          text: `Join my ${game.name} room — code ${code}`,
-          url: link,
-        })
-        .catch(() => undefined)
-    } else void copy(link, "Link copied!")
-  }
-
-  return (
-    <>
-      <AppHeader
-        title={game.name}
-        subtitle={`Room ${code}`}
-        showBack
-        onBack={() => setConfirmLeave(true)}
-        rightAction={
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Leave room"
-            onClick={() => setConfirmLeave(true)}
-          >
-            <HugeiconsIcon icon={Logout01Icon} className="size-5" />
-          </Button>
-        }
-      />
-      <ReactionsOverlay code={code} />
-      <PageContainer className="max-w-xl gap-4 pb-32">
-        {/* Code + share: the way friends get in */}
-        <Card className="gap-0 py-0">
-          <div className="flex flex-col items-center gap-3 p-5 text-center">
-            <LiveGameLogo game={game.id} className="size-14 rounded-xl" />
-            <div>
-              <p className="text-xs text-muted-foreground">Room code</p>
-              <button
-                type="button"
-                onClick={() => copy(code, "Code copied!")}
-                className="font-mono text-3xl font-bold tracking-[0.3em] transition-colors hover:text-primary"
-                aria-label="Copy room code"
-              >
-                {code}
-              </button>
-            </div>
-            <div className="grid w-full grid-cols-3 gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => copy(roomLink(code), "Link copied!")}
-              >
-                <HugeiconsIcon
-                  icon={copied ? Tick02Icon : Copy01Icon}
-                  data-icon="inline-start"
-                />
-                Link
-              </Button>
-              <Button variant="outline" size="sm" onClick={share}>
-                <HugeiconsIcon icon={Share08Icon} data-icon="inline-start" />
-                Share
-              </Button>
-              <Button size="sm" onClick={() => setInvite(true)}>
-                <HugeiconsIcon icon={UserAdd01Icon} data-icon="inline-start" />
-                Invite
-              </Button>
-            </div>
-          </div>
-        </Card>
-
-        {/* Seats */}
-        <section className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold">
-              Players{" "}
-              <span className="font-normal text-muted-foreground">
-                {active.length}/{meta.maxPlayers}
-              </span>
-            </h2>
-            {meta.minPlayers > active.length && (
-              <span className="text-xs text-muted-foreground">
-                Need {meta.minPlayers - active.length} more
-              </span>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {Array.from({ length: meta.maxPlayers }, (_, seat) => {
-              const p = players.find((x) => x.seat === seat && !x.left)
-              return p ? (
-                <Seat
-                  key={seat}
-                  player={p}
-                  isYou={p.uid === uid}
-                  isHost={p.uid === meta.hostId}
-                  canKick={isHost && p.uid !== uid}
-                  code={code}
-                />
-              ) : (
-                <div
-                  key={seat}
-                  className="flex min-h-20 flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-xs text-muted-foreground"
-                >
-                  <span className="size-9 rounded-full border border-dashed" />
-                  Waiting…
-                </div>
-              )
-            })}
-          </div>
-        </section>
-
-        {/* Settings + how to play */}
-        {game.options.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {game.options.map((o) => {
-              const v = meta.options[o.key]
-              const label =
-                o.choices.find((c) => c.value === v)?.label ?? String(v)
-              return (
-                <span
-                  key={o.key}
-                  className="rounded-md border bg-card px-2 py-1 text-xs"
-                >
-                  <span className="text-muted-foreground">{o.label}: </span>
-                  <span className="font-medium">{label}</span>
-                </span>
-              )
-            })}
-          </div>
-        )}
-        <details className="rounded-lg border bg-card px-4 py-3 text-sm">
-          <summary className="cursor-pointer font-medium">How to play</summary>
-          <p className="mt-2 text-sm text-muted-foreground">{game.howTo}</p>
-        </details>
-      </PageContainer>
-
-      {/* Start */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 p-4 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-xl flex-col gap-2">
-          {countdown !== null ? (
-            <>
-              <p className="text-center text-sm font-medium">
-                Everyone&apos;s here — starting in{" "}
-                <span className="text-primary tabular-nums">{countdown}s</span>
-              </p>
-              {isHost && (
-                <Button
-                  size="lg"
-                  className="h-11 w-full"
-                  onClick={start}
-                  disabled={startPending}
-                >
-                  {startPending ? (
-                    <Spinner />
-                  ) : (
-                    <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />
-                  )}
-                  Start now
-                </Button>
-              )}
-            </>
-          ) : isHost ? (
-            <>
-              <Button
-                size="lg"
-                className="h-11 w-full"
-                onClick={start}
-                disabled={!canStart || startPending}
-              >
-                {startPending ? (
-                  <Spinner />
-                ) : (
-                  <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />
-                )}
-                {canStart
-                  ? active.length < meta.maxPlayers
-                    ? `Start with ${active.length} players`
-                    : "Start game"
-                  : `Waiting for ${meta.minPlayers - active.length} more`}
-              </Button>
-              {canStart && active.length < meta.maxPlayers && (
-                <p className="text-center text-[11px] text-muted-foreground">
-                  Starts by itself once all {meta.maxPlayers} seats are taken.
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Spinner className="size-4" />
-              Waiting for {meta.hostName.split(" ")[0]} to start…
-            </p>
-          )}
-        </div>
-      </div>
-
-      <InviteFriendsSheet open={invite} onOpenChange={setInvite} meta={meta} />
-      <ConfirmDialog
-        open={confirmLeave}
-        onOpenChange={setConfirmLeave}
-        title="Leave the room?"
-        description={
-          isHost && active.length > 1
-            ? "The next player becomes the host."
-            : undefined
-        }
-        confirmLabel="Leave"
-        isPending={leaving}
-        onConfirm={leave}
-      />
-      {/* Keep the user's own seat state fresh for the referee rule above */}
-      <span hidden>{me.seat}</span>
-    </>
-  )
-}
-
-function Seat({
-  player,
-  isYou,
-  isHost,
-  canKick,
-  code,
-}: {
-  player: RoomPlayer
-  isYou: boolean
-  isHost: boolean
-  canKick: boolean
-  code: string
-}) {
-  return (
-    <div className="relative flex min-h-20 flex-col items-center justify-center gap-1 rounded-lg border bg-card px-2 py-3">
-      <span className="relative">
-        <UserAvatar
-          src={player.photo}
-          name={player.name}
-          size="sm"
-          className="size-9"
-        />
-        <span
-          className={cn(
-            "absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-card",
-            player.online ? "bg-success" : "bg-muted-foreground/50"
-          )}
-          aria-label={player.online ? "Online" : "Offline"}
-        />
-      </span>
-      <span className="flex max-w-full items-center gap-1 text-xs font-medium">
-        {isHost && (
-          <HugeiconsIcon
-            icon={CrownIcon}
-            className="size-3.5 shrink-0 text-warning"
-            aria-label="Host"
-          />
-        )}
-        <span className="truncate">
-          {isYou ? "You" : player.name.split(" ")[0]}
-        </span>
-      </span>
-      {canKick && (
-        <button
-          type="button"
-          aria-label={`Remove ${player.name}`}
-          onClick={() =>
-            void kickPlayer(code, player.uid).catch(() =>
-              toast.error("Couldn't remove them")
-            )
-          }
-          className="absolute top-1 right-1 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-        >
-          <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
-        </button>
-      )}
-    </div>
   )
 }
 
@@ -581,6 +264,9 @@ function PlayingView({
 }) {
   const exitGame = useGameExit(GAMES_TAB)
   const { code, players, uid, isReferee, now, serverNow, voice } = room
+  // Already finished (a race game)? Then leaving keeps your place instead of giving up
+  const { data: gameState } = useRoomNode<RaceState>(code, "state")
+  const donePlace = me.left ? null : finishedPlace(meta.game, gameState, uid)
   const game = LIVE_GAMES[meta.game]
   const [stickers, setStickers] = React.useState(false)
   // While someone types (chat / guesses) the phone keyboard is up: the dock steps aside
@@ -784,9 +470,11 @@ function PlayingView({
         description={
           me.left
             ? undefined
-            : "Leaving now counts as giving up — the others play on without you."
+            : donePlace !== null
+              ? `You've finished ${ordinal(donePlace)} — your place is kept. You can come back to watch the rest.`
+              : "Leaving now counts as giving up — the others play on without you."
         }
-        destructive={!me.left}
+        destructive={!me.left && donePlace === null}
         confirmLabel="Leave"
         isPending={leaving}
         onConfirm={leave}
@@ -801,38 +489,82 @@ function EndedView({ room, meta }: { room: LiveRoom; meta: RoomMeta }) {
   const router = useRouter()
   const exitGame = useGameExit(GAMES_TAB)
   const { user } = useSession()
+  const wallet = useWallet()
   const { code, players, playersById, uid, isHost } = room
   const game = LIVE_GAMES[meta.game]
   const result = meta.result
   const winners = result?.winnerIds ?? []
   const iWon = winners.includes(uid)
   const [pending, setPending] = React.useState(false)
-  // A fanfare (or a sad tune) once, for the players, right as it ends — not when opening an old result
+  // Just ended (not an old result opened later): the full entrance, confetti and a sound
+  const [fresh] = React.useState(
+    () => !!meta.endedAt && room.serverNow() - meta.endedAt <= 15_000
+  )
+  // A fanfare (or a sad tune) once, for the players, right as it ends
   const played = !!playersById[uid]
   React.useEffect(() => {
-    if (!played || !meta.endedAt || room.serverNow() - meta.endedAt > 15_000) return
+    if (!played || !fresh) return
     playSound(iWon ? "win" : winners.length ? "lose" : "home")
     // Once, when this screen opens
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const nameOf = (id: string) => playersById[id]?.name ?? "Someone"
-  const headline =
-    winners.length === 0
-      ? "It's a draw"
+  const firstNames = (ids: string[]) =>
+    ids.map((w) => nameOf(w).split(" ")[0]).join(" & ")
+  const tone: ResultTone = !winners.length
+    ? "draw"
+    : !played
+      ? "watch"
       : iWon
-        ? winners.length > 1
-          ? "You share the win!"
-          : "You won!"
-        : `${winners.map((w) => nameOf(w).split(" ")[0]).join(" & ")} ${winners.length > 1 ? "win" : "wins"}`
+        ? "win"
+        : "lose"
+  // Under the ribbon: who won when it isn't (only) you, then why it ended
+  const others = winners.filter((w) => w !== uid)
+  const note = [
+    tone === "win"
+      ? others.length
+        ? `Shared with ${firstNames(others)}`
+        : undefined
+      : winners.length
+        ? `${firstNames(winners)} ${winners.length > 1 ? "win" : "wins"}`
+        : undefined,
+    result?.reason ? reasonText(result.reason) : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ")
   const ranking =
     result?.ranking ?? players.filter((p) => !p.left).map((p) => p.uid)
+  // Winners share first place; the rest keep their spot in the ranking
+  const rows: ResultRow[] = ranking.map((id, i) => {
+    const s = result?.stats?.[id]
+    return {
+      id,
+      name: nameOf(id),
+      photo: playersById[id]?.photo,
+      avatar: playersById[id]?.avatar,
+      frame: playersById[id]?.frame,
+      level: playersById[id]?.level,
+      place: winners.includes(id) ? 1 : i + 1,
+      winner: winners.includes(id),
+      you: id === uid,
+      score: result?.scores?.[id],
+      // Ludo: pieces cut, and times cut · Snakes & Ladders: ladders climbed, snakes that bit
+      stats: !s
+        ? undefined
+        : "kills" in s
+          ? [`Cut ${s.kills ?? 0}`, `Got cut ${s.deaths ?? 0}`]
+          : "ladders" in s
+            ? [`Ladders ${s.ladders ?? 0}`, `Snakes ${s.snakes ?? 0}`]
+            : undefined,
+    }
+  })
 
   const startRematch = async () => {
     if (!user) return
     setPending(true)
     try {
-      const next = await rematch(user, meta)
+      const next = await rematch(user, meta, wallet ? levelOf(liveXp(wallet)) : undefined)
       // Replace, not push: Back from the rematch goes to Games, not through old results
       router.replace(`/play/${next}`)
     } catch (e) {
@@ -843,130 +575,49 @@ function EndedView({ room, meta }: { room: LiveRoom; meta: RoomMeta }) {
 
   return (
     <>
-      <AppHeader
-        title={game.name}
-        subtitle={`Room ${code}`}
-        showBack
-        onBack={exitGame}
-      />
       <ReactionsOverlay code={code} />
-      <PageContainer className="max-w-xl gap-4">
-        <Card className="gap-0 py-0">
-          <div className="flex flex-col items-center gap-3 p-6 text-center">
-            <div className="flex -space-x-3">
-              {(winners.length ? winners : ranking.slice(0, 1)).map((w) => (
-                <UserAvatar
-                  key={w}
-                  src={playersById[w]?.photo}
-                  name={nameOf(w)}
-                  size="lg"
-                  className="size-16 ring-4 ring-card"
-                />
-              ))}
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{headline}</p>
-              {result?.reason && (
-                <p className="text-xs text-muted-foreground">
-                  {reasonText(result.reason)}
-                </p>
-              )}
-            </div>
-          </div>
-          <ol className="divide-y border-t">
-            {ranking.map((id, i) => {
-              const p = playersById[id]
-              const score = result?.scores?.[id]
-              return (
-                <li
-                  key={id}
-                  className={cn(
-                    "flex items-center gap-3 px-4 py-2.5",
-                    id === uid && "bg-primary/5"
-                  )}
-                >
-                  <span className="w-5 text-center text-sm font-semibold text-muted-foreground tabular-nums">
-                    {i + 1}
-                  </span>
-                  <UserAvatar src={p?.photo} name={p?.name ?? "?"} size="sm" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">
-                      {p?.name ?? "Someone"}
-                      {id === uid && (
-                        <span className="text-muted-foreground"> (you)</span>
-                      )}
-                    </span>
-                    {/* Ludo: pieces cut, and times cut */}
-                    {result?.stats?.[id] && "kills" in result.stats[id] && (
-                      <span className="block text-[11px] text-muted-foreground tabular-nums">
-                        Cut {result.stats[id].kills ?? 0} · Got cut {result.stats[id].deaths ?? 0}
-                      </span>
-                    )}
-                    {/* Snakes & Ladders: ladders climbed, snakes that bit */}
-                    {result?.stats?.[id] && "ladders" in result.stats[id] && (
-                      <span className="block text-[11px] text-muted-foreground tabular-nums">
-                        Ladders {result.stats[id].ladders ?? 0} · Snakes {result.stats[id].snakes ?? 0}
-                      </span>
-                    )}
-                  </span>
-                  {score !== undefined && (
-                    <span className="text-sm font-semibold tabular-nums">
-                      {score}
-                    </span>
-                  )}
-                  {winners.includes(id) && (
-                    <HugeiconsIcon
-                      icon={CrownIcon}
-                      className="size-4 text-warning"
-                    />
-                  )}
-                </li>
-              )
-            })}
-          </ol>
-        </Card>
-
-        <div className="flex flex-col gap-2">
-          {meta.rematchCode ? (
-            <Button
-              size="lg"
-              className="h-11 w-full"
-              nativeButton={false}
-              render={<Link href={`/play/${meta.rematchCode}`} replace />}
-            >
-              <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />
-              Join the rematch
-            </Button>
-          ) : isHost ? (
-            <Button
-              size="lg"
-              className="h-11 w-full"
-              onClick={startRematch}
-              disabled={pending}
-            >
-              {pending ? (
-                <Spinner />
-              ) : (
-                <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />
-              )}
-              Rematch
-            </Button>
-          ) : (
-            <p className="text-center text-xs text-muted-foreground">
-              {meta.hostName.split(" ")[0]} can start a rematch — you&apos;ll
-              see it here.
-            </p>
-          )}
-          <Button variant="outline" size="lg" className="h-11 w-full" onClick={exitGame}>
-            Back to games
-          </Button>
-        </div>
-        <div className="border-t pt-3">
-          <StickerBar code={code} />
-        </div>
-      </PageContainer>
+      <ResultScreen
+        game={meta.game}
+        gameName={game.name}
+        code={code}
+        tone={tone}
+        note={note || undefined}
+        rows={rows}
+        fresh={fresh}
+        playAgain={
+          meta.rematchCode
+            ? { kind: "join", href: `/play/${meta.rematchCode}` }
+            : isHost
+              ? { kind: "rematch", onClick: startRematch, pending }
+              : { kind: "wait", hostName: meta.hostName.split(" ")[0] }
+        }
+        onBack={exitGame}
+        stickers={<StickerBar code={code} />}
+      />
     </>
   )
+}
+
+/** The bits of a race game's state that say who finished (Ludo, Snakes: `place`; Sudoku: `finished` times). */
+type RaceState = {
+  players?: Record<string, { place?: number }>
+  finished?: Record<string, number>
+}
+
+/** Your finishing place in a race game you've already finished, else null. */
+function finishedPlace(game: LiveGameId, state: RaceState | null | undefined, uid: string): number | null {
+  if (!state) return null
+  if (game === "ludo" || game === "snakes" || game === "snakes3d") {
+    const place = state.players?.[uid]?.place ?? 0
+    return place > 0 ? place : null
+  }
+  if (game === "sudoku") {
+    const done = state.finished ?? {}
+    const mine = done[uid]
+    if (mine === undefined) return null
+    return 1 + Object.values(done).filter((at) => at < mine).length
+  }
+  return null
 }
 
 function reasonText(reason: string) {
