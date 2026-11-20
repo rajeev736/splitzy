@@ -69,7 +69,7 @@ import { PowerTray } from "./power-tray"
 import { characterById } from "@/components/game-avatar/registry"
 import { useStageFit } from "../use-stage-fit"
 import { useWallet } from "@/hooks/use-fun"
-import { useBoardTheme } from "@/lib/live/themes"
+import { useBoardTheme, usePreloadImage } from "@/lib/live/themes"
 import { LudoDice } from "./ludo-dice"
 import { STEP_MS, useLudoAnimation } from "./use-ludo-animation"
 import { playSound, useOnChange } from "@/lib/live/sound"
@@ -88,8 +88,31 @@ const cryptoRand = () => {
  * seats, the status line, and the table's padding. The board gets the rest.
  */
 const BOARD_RESERVE_PX = 226
-/** The same on big screens, where the header, page padding and the dock also take height. */
-const BOARD_RESERVE_DESK_PX = 425
+/**
+ * The same on big screens, out of the measured stage height (the window less
+ * the header and dock): also the page's top padding, the hint line and the
+ * page's room under the dock.
+ */
+const BOARD_RESERVE_DESK_PX = 300
+/**
+ * Sideways (short, wide screens: landscape tablets, laptops, phones on their
+ * side) the seats sit left and right of the board, so only the status line and
+ * paddings take height…
+ */
+const BOARD_RESERVE_WIDE_PX = 100
+const BOARD_RESERVE_WIDE_DESK_PX = 170
+/** …and the two seat columns (9rem each), gaps and paddings take width. */
+const BOARD_SIDE_PX = 340
+/** Big screens: Tailwind's `md` (48rem). */
+const DESK_QUERY = "(min-width: 48rem)"
+
+/** Sideways when that gives a clearly bigger board than seats above and below. */
+function wideTable(width: number, height: number) {
+  const desk = window.matchMedia(DESK_QUERY).matches
+  const tall = Math.min(width - (desk ? 24 : 32), height - (desk ? BOARD_RESERVE_DESK_PX : BOARD_RESERVE_PX))
+  const side = Math.min(width - BOARD_SIDE_PX, height - (desk ? BOARD_RESERVE_WIDE_DESK_PX : BOARD_RESERVE_WIDE_PX))
+  return side > tall + 24
+}
 /** Let the last token walk into home before the results screen takes over. */
 const END_DELAY_MS = 1200
 
@@ -447,11 +470,13 @@ export function LudoGame({
 
   const [throwAt, setThrowAt] = React.useState<RoomPlayer | null>(null)
   // Phones: fit the table to the screen (see the root below)
-  const stageRef = useStageFit()
+  const stageRef = useStageFit(wideTable)
   // The board theme this device plays on (bought ones from the wallet)
   const wallet = useWallet()
   const theme = useBoardTheme("ludo", wallet?.themes)
   const look = theme.look
+  // Fetch and decode the board picture while the game state is still loading
+  usePreloadImage(look.image?.src)
 
   /* ── Render ──────────────────────────────────────────────────────── */
 
@@ -567,12 +592,13 @@ export function LudoGame({
   const seat = (
     colour: LudoColour,
     align: "left" | "right",
-    compact = false
+    compact = false,
+    className?: string
   ) => {
     const id = byColour[colour]
     const lp = id ? state.players[id] : undefined
     const rp = id ? byId[id] : undefined
-    if (!id || !lp || !rp) return <div key={colour} aria-hidden />
+    if (!id || !lp || !rp) return <div key={colour} aria-hidden className={className} />
     const isTurn = state.phase !== "over" && state.turn === id
     const canRoll =
       isTurn && id === uid && state.phase === "roll" && rollLock !== state.seq
@@ -607,9 +633,21 @@ export function LudoGame({
         compact={compact}
         geo={geo}
         onTap={id !== uid && !me.left ? () => setThrowAt(rp) : undefined}
+        className={className}
       />
     )
   }
+  // Sideways (square board only): each seat in its corner, left and right of the board
+  const sideCell = (row: "top" | "bottom", i: number) =>
+    penta
+      ? undefined
+      : row === "top"
+        ? i === 0
+          ? "group-data-[stage-wide]/stage:col-start-1 group-data-[stage-wide]/stage:row-start-1 group-data-[stage-wide]/stage:self-start"
+          : "group-data-[stage-wide]/stage:col-start-3 group-data-[stage-wide]/stage:row-start-1 group-data-[stage-wide]/stage:self-start"
+        : i === 0
+          ? "group-data-[stage-wide]/stage:col-start-1 group-data-[stage-wide]/stage:row-start-2 group-data-[stage-wide]/stage:self-end"
+          : "group-data-[stage-wide]/stage:col-start-3 group-data-[stage-wide]/stage:row-start-2 group-data-[stage-wide]/stage:self-end"
 
   return (
     <div
@@ -618,34 +656,47 @@ export function LudoGame({
         {
           // Power Ludo has a row of powers in the status box too
           "--board-reserve": `${BOARD_RESERVE_PX + (state.mode === "powers" ? 40 : 0)}px`,
-          "--board-reserve-desk": `${BOARD_RESERVE_DESK_PX}px`,
+          "--board-reserve-desk": `${BOARD_RESERVE_DESK_PX + (state.mode === "powers" ? 40 : 0)}px`,
+          "--board-reserve-wide": `${BOARD_RESERVE_WIDE_PX + (state.mode === "powers" ? 40 : 0)}px`,
+          "--board-reserve-wide-desk": `${BOARD_RESERVE_WIDE_DESK_PX + (state.mode === "powers" ? 40 : 0)}px`,
+          "--board-side": `${BOARD_SIDE_PX}px`,
         } as React.CSSProperties
       }
       className={cn(
-        "flex flex-col gap-2.5",
+        "group/stage flex flex-col gap-2.5",
         // Phones: the whole table fits between the header and the dock — no scrolling;
         // the board takes whatever height the seats and the status line leave
         "max-md:fixed max-md:inset-x-0 max-md:top-(--stage-top) max-md:z-20 max-md:h-(--stage-h) max-md:justify-center max-md:overflow-hidden max-md:bg-background max-md:p-2",
         "max-md:[--board-w:min(100%,calc(var(--stage-h)_-_var(--board-reserve)))]",
-        // Big screens: the board is also sized to the window height, so the game page never scrolls
-        "md:[--board-w:min(100%,calc(100svh_-_var(--board-reserve-desk)))]"
+        // Big screens: the board grows with the column and the measured height between the
+        // header and the dock (tablets, desktops), so the game page never scrolls
+        "md:[--board-w:min(100%,calc(var(--stage-h,100svh)_-_var(--board-reserve-desk)))]",
+        // Short, wide screens (square board): seats left and right, the board takes the height
+        !penta &&
+          "max-md:data-[stage-wide]:[--board-w:max(120px,min(calc(var(--stage-w)_-_var(--board-side)),calc(var(--stage-h)_-_var(--board-reserve-wide))))]",
+        !penta &&
+          "md:data-[stage-wide]:[--board-w:max(120px,min(calc(var(--stage-w)_-_var(--board-side)),calc(var(--stage-h)_-_var(--board-reserve-wide-desk))))]"
       )}
     >
       {/* The table: players in their corners around the board, Ludo King style */}
       <div
-        className="rounded-2xl p-2 text-white shadow-lg ring-1 ring-black/10 sm:p-3"
+        className={cn(
+          "rounded-2xl p-2 text-white shadow-lg ring-1 ring-black/10 sm:p-3",
+          !penta &&
+            "group-data-[stage-wide]/stage:grid group-data-[stage-wide]/stage:grid-cols-[minmax(0,1fr)_var(--board-w)_minmax(0,1fr)] group-data-[stage-wide]/stage:gap-x-2"
+        )}
         style={{
           background:
             look.table,
         }}
       >
-        <div className={cn("grid gap-2 px-1 pb-2", rowCols(topRow.length))}>
+        <div className={cn("grid gap-2 px-1 pb-2", rowCols(topRow.length), !penta && "group-data-[stage-wide]/stage:contents")}>
           {topRow.map((c, i) =>
-            seat(c, alignOf(i, topRow.length), topRow.length > 2)
+            seat(c, alignOf(i, topRow.length), topRow.length > 2, sideCell("top", i))
           )}
         </div>
-        {/* --board-w is set on phones; elsewhere the width falls back to the column */}
-        <div className="mx-auto w-(--board-w) max-w-[min(94vw,32rem)] rounded-xl bg-white/15 p-1 shadow-[0_12px_30px_rgb(0_0_0/0.4)]">
+        {/* --board-w: the column, or less if the height runs out */}
+        <div className="mx-auto w-(--board-w) max-w-full rounded-xl bg-white/15 p-1 shadow-[0_12px_30px_rgb(0_0_0/0.4)] group-data-[stage-wide]/stage:col-start-2 group-data-[stage-wide]/stage:row-span-2 group-data-[stage-wide]/stage:row-start-1">
           {penta ? (
             <LudoPentaBoard
               state={state}
@@ -682,12 +733,12 @@ export function LudoGame({
             />
           )}
         </div>
-        <div className={cn("grid gap-2 px-1 pt-2", rowCols(bottomRow.length))}>
+        <div className={cn("grid gap-2 px-1 pt-2", rowCols(bottomRow.length), !penta && "group-data-[stage-wide]/stage:contents")}>
           {bottomRow.map((c, i) =>
-            seat(c, alignOf(i, bottomRow.length), bottomRow.length > 2)
+            seat(c, alignOf(i, bottomRow.length), bottomRow.length > 2, sideCell("bottom", i))
           )}
         </div>
-        <div className="mt-2 flex min-h-12 flex-col justify-center rounded-xl bg-black/25 px-3 py-1.5 text-center">
+        <div className="mt-2 flex min-h-12 flex-col justify-center rounded-xl bg-black/25 px-3 py-1.5 text-center group-data-[stage-wide]/stage:col-span-3 group-data-[stage-wide]/stage:row-start-3">
           {state.mode === "powers" && mine && (
             <PowerTray
               me={me}
@@ -780,6 +831,7 @@ export function Seat({
   tint,
   team,
   partner = false,
+  className,
 }: {
   player: RoomPlayer
   ludo: LudoPlayer
@@ -803,6 +855,8 @@ export function Seat({
   team?: "A" | "B"
   /** Teams: this is your partner. */
   partner?: boolean
+  /** Placement in the table (e.g. its corner when the seats sit beside the board). */
+  className?: string
 }) {
   const colour = tint ?? TOKEN_COLOURS[ludo.colour]
   const out = !!ludo.out
@@ -876,6 +930,7 @@ export function Seat({
     <div
       className={cn(
         "flex min-w-0 items-center gap-1.5",
+        className,
         align === "right" && "flex-row-reverse",
         dim && "opacity-60"
       )}

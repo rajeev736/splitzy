@@ -7,42 +7,10 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { GameAvatar } from "@/components/game-avatar/game-avatar"
 import { LevelBadge, validLevel } from "@/components/game-avatar/level-badge"
 import type { RoomPlayer } from "@/lib/live/types"
-import { cn } from "@/lib/utils"
 import { Gloss } from "./lobby-styles"
 import { useBoxSize } from "./use-box-size"
 
-/** A jagged band of lightning across 0–1000 × 0–100: a thin crackle with spikes now and then. */
-function boltPath(seed: number) {
-  let a = seed >>> 0
-  const rnd = () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-  const n = 34
-  const top: string[] = []
-  const bottom: string[] = []
-  let drift = 0
-  for (let i = 0; i <= n; i++) {
-    const x = (i / n) * 1000
-    drift = drift * 0.55 + (rnd() - 0.5) * 22
-    const mid = 50 + drift
-    let up = 1.5 + rnd() * 4
-    let down = 1.5 + rnd() * 4
-    if (rnd() < 0.22) up += 10 + rnd() * 22
-    if (rnd() < 0.18) down += 8 + rnd() * 16
-    const edge = Math.min(1, Math.min(i, n - i) / 3)
-    top.push(`${x.toFixed(1)},${(mid - up * edge).toFixed(1)}`)
-    bottom.unshift(`${x.toFixed(1)},${(mid + down * edge).toFixed(1)}`)
-  }
-  return `M${top.join("L")}L${bottom.join("L")}Z`
-}
-const BOLT_A = boltPath(11)
-const BOLT_B = boltPath(47)
-
-/** The two halves, as in the VS intro (components/live/intro): seat 0 red on the left, seat 1 blue on the right. */
+/** The two halves: seat 0 red on the left, seat 1 blue on the right. */
 const SIDES = [
   {
     clip: "polygon(0 0, 57% 0, 43% 100%, 0 100%)",
@@ -73,14 +41,14 @@ const shortName = (name: string) => {
 
 /**
  * Two-player lobby, a fighting game's matchmaking screen: a diagonal red /
- * blue split with a lightning crackle across. While a seat is open its side
- * shows a pulsing "?" ("Finding opponent…"); once both are in, a VS slams in
- * between and the countdown runs. Same geometry as the VS intro that plays
- * when the game starts (seat 0 red left, seat 1 blue right, characters at
- * 47% height), so the lobby flows straight into it.
+ * blue split with a light seam across. While a seat is open its side shows a
+ * pulsing "?" ("Finding opponent…"); once both are in, a VS slams in between
+ * and the 3 · 2 · 1 runs under them (`children`). Everything here is static
+ * apart from those small entrances and the waiting pulse.
  */
 export function DuelScene({
   seats,
+  counting = false,
   meId,
   hostId,
   canKick,
@@ -90,6 +58,8 @@ export function DuelScene({
 }: {
   /** Seat 0 and seat 1 (null = open). */
   seats: [RoomPlayer | null, RoomPlayer | null]
+  /** The start countdown is running. */
+  counting?: boolean
   meId: string
   hostId: string
   canKick: boolean
@@ -104,7 +74,6 @@ export function DuelScene({
   const spread = Math.min(W * 0.28, 400)
   const cy = H * 0.47
   const vs = Math.round(clamp(Math.min(W * 0.2, H * 0.19), 52, 170))
-  const boltH = clamp(size * 0.95, 70, 180)
   const nameFs = Math.round(clamp(size * 0.2, 16, 34))
   const titleFs = Math.round(clamp(Math.min(W * 0.075, H * 0.06), 22, 54))
 
@@ -118,7 +87,7 @@ export function DuelScene({
           style={{ clipPath: s.clip, background: s.bg }}
         />
       ))}
-      {/* A warm glow where the halves meet, and light streaks drifting across */}
+      {/* A warm glow where the halves meet */}
       <div
         aria-hidden
         className="absolute inset-0"
@@ -127,26 +96,6 @@ export function DuelScene({
             "radial-gradient(ellipse 40% 55% at 50% 55%, rgba(255,214,150,.35), transparent 70%)",
         }}
       />
-      {[
-        [0.16, 0.12, 0.3],
-        [0.72, 0.08, 0.9],
-        [0.84, 0.16, 0.15],
-        [0.28, 0.06, 1.2],
-      ].map(([y, w, d], i) => (
-        <span
-          key={i}
-          aria-hidden
-          className={cn("lb-dash", i % 2 && "lb-dash-r")}
-          style={{
-            top: `${y * 100}%`,
-            left: `${20 + i * 18}%`,
-            width: `${w * 100}%`,
-            opacity: 0.55,
-            animationDelay: `${-d}s`,
-          }}
-        />
-      ))}
-
       <div
         className="absolute inset-x-0 flex items-center justify-center gap-3 px-4"
         style={{ top: Math.max(H * 0.1, 64) }}
@@ -157,13 +106,13 @@ export function DuelScene({
           className="h-[3px] w-[14vw] max-w-56 rounded-full bg-gradient-to-l from-white/90 to-transparent"
         />
         <Gloss
-          key={found ? "found" : "finding"}
+          key={counting ? "go" : found ? "found" : "finding"}
           size={titleFs}
           rim="#7a1fa2"
           tint="#ffd4f4"
           className="lb-pop"
         >
-          {found ? "Opponent found!" : "Finding opponent…"}
+          {counting ? "Get ready!" : found ? "Opponent found!" : "Finding opponent…"}
         </Gloss>
         <span
           aria-hidden
@@ -171,26 +120,17 @@ export function DuelScene({
         />
       </div>
 
+      {/* A light seam across, where the players face off (static: no filters, no flicker) */}
       <div
         aria-hidden
         className="absolute inset-x-0"
-        style={{ top: cy - boltH / 2, height: boltH }}
-      >
-        <svg
-          viewBox="0 0 1000 100"
-          preserveAspectRatio="none"
-          className="lb-bolt size-full overflow-visible"
-        >
-          <path d={BOLT_A} fill="#fff" className="lb-bolt-a" />
-          <path d={BOLT_B} fill="#fff" className="lb-bolt-b" />
-          <path
-            d="M0 50 L1000 50"
-            stroke="#fff"
-            strokeWidth="1.6"
-            vectorEffect="non-scaling-stroke"
-          />
-        </svg>
-      </div>
+        style={{
+          top: cy - 14,
+          height: 28,
+          background:
+            "linear-gradient(180deg, transparent, rgba(255,255,255,.28) 40%, rgba(255,255,255,.95) 50%, rgba(255,255,255,.28) 60%, transparent)",
+        }}
+      />
 
       {seats.map((p, i) => {
         const side = SIDES[i]

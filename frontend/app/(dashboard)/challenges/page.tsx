@@ -3,46 +3,46 @@
 import * as React from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { GameController03Icon } from "@hugeicons/core-free-icons"
-import { HugeiconsIcon } from "@hugeicons/react"
+import { useRouter } from "nextjs-toploader/app"
+import { GameController03Icon, Notification01Icon } from "@hugeicons/core-free-icons"
 
+import { Coins } from "@/components/fun/coin"
+import { GameAvatar } from "@/components/game-avatar/game-avatar"
+import { LevelBadge, XpBar } from "@/components/game-avatar/level-badge"
+import { GameButton, GameIconButton, GameNote, GameScreen, GameSectionTitle, GameTabs } from "@/components/game-ui/kit"
+import { GameGlyph } from "@/components/games/game-glyph"
 import { NewChallengeSheet } from "@/components/games/new-challenge-sheet"
+import { ModeSwitch } from "@/components/layout/mode-switch"
 import { LiveGamesPanel } from "@/components/live/live-games-panel"
-import { AppHeader } from "@/components/layout/app-header"
-import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
-import { EmptyState } from "@/components/shared/empty-state"
-import { ListSkeleton, QueryError } from "@/components/shared/query-state"
 import { UserAvatar } from "@/components/shared/user-avatar"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { useChallenges, useFriends } from "@/hooks/queries"
+import { Spinner } from "@/components/ui/spinner"
+import { useChallenges, useFriends, useUnreadCount } from "@/hooks/queries"
+import { useWallet } from "@/hooks/use-fun"
 import { GAMES, isForFun, type GameId } from "@/lib/games"
+import { levelInfo } from "@/lib/live/levels"
 import { formatPaise } from "@/lib/money"
 import type { Challenge } from "@/lib/types"
-import { useSwipeTabs } from "@/hooks/use-swipe-tabs"
-import { SwipeTabIndicator, SwipeTabPanels } from "@/components/shared/swipe-tabs"
 import { cn } from "@/lib/utils"
-import { GameGlyph } from "@/components/games/game-glyph"
 
 /** A soft colour per game, so the catalogue reads at a glance. */
 const GAME_TONE: Record<GameId, string> = {
-  rps: "bg-primary/10",
-  minefield: "bg-destructive/10",
-  gold_rush: "bg-yellow-500/15",
-  coin_toss: "bg-warning/12",
-  treasure: "bg-violet-500/12",
-  lucky_number: "bg-success/12",
-  penalty: "bg-emerald-600/12",
-  hilo: "bg-sky-500/12",
-  number_hunt: "bg-orange-500/12",
+  rps: "#dbeafe",
+  minefield: "#fee2e2",
+  gold_rush: "#fef3c7",
+  coin_toss: "#ffedd5",
+  treasure: "#ede9fe",
+  lucky_number: "#dcfce7",
+  penalty: "#d1fae5",
+  hilo: "#e0f2fe",
+  number_hunt: "#ffedd5",
 }
 
 /** Live: rooms with friends, right now. The other two are the turn-based challenges. */
 type Tab = "live" | "discount" | "fun"
 type ChallengeTab = Exclude<Tab, "live">
 const TAB_ORDER = ["live", "discount", "fun"] as const
-const TAB_LABELS: Record<Tab, string> = { live: "Live", discount: "Discounted", fun: "Just for fun" }
+const TAB_LABELS: Record<Tab, string> = { live: "Live", discount: "Discounted", fun: "For fun" }
 const isTab = (v: string | null): v is Tab => v === "live" || v === "discount" || v === "fun"
 const CHALLENGE_TABS: Record<ChallengeTab, { blurb: string }> = {
   discount: {
@@ -59,34 +59,38 @@ const INCOMING_PAGE = 4
 
 /** What this game needs from you right now, for the row status. */
 function statusFor(c: Challenge, uid: string): { label: string; tone: string } {
-  if (c.status === "CANCELLED") return { label: "Cancelled", tone: "text-muted-foreground" }
+  if (c.status === "CANCELLED") return { label: "Cancelled", tone: "var(--gu-ink-soft)" }
   if (c.status === "DONE") {
     if (c.hostId === uid) {
       return c.result?.winners.length
-        ? { label: "They won", tone: "text-muted-foreground" }
-        : { label: "You won", tone: "text-success" }
+        ? { label: "They won", tone: "var(--gu-ink-soft)" }
+        : { label: "You won", tone: "var(--gu-green-deep)" }
     }
     return c.result?.winners.includes(uid)
-      ? { label: "You won", tone: "text-success" }
-      : { label: "You lost", tone: "text-muted-foreground" }
+      ? { label: "You won", tone: "var(--gu-green-deep)" }
+      : { label: "You lost", tone: "var(--gu-ink-soft)" }
   }
-  if (c.hostId !== uid && c.moves[uid] === undefined) return { label: "Your turn", tone: "text-primary" }
-  return { label: "Waiting", tone: "text-warning" }
+  if (c.hostId !== uid && c.moves[uid] === undefined) return { label: "Your turn", tone: "var(--gu-blue-deep)" }
+  return { label: "Waiting", tone: "var(--gu-orange-deep)" }
 }
 
 const newestFirst = (a: Challenge, b: Challenge) => b.createdAt.localeCompare(a.createdAt)
 const tabOf = (c: Challenge): ChallengeTab => (isForFun(c) ? "fun" : "discount")
 
+/**
+ * The Games side of the app (switched to from the top, layout/mode-switch):
+ * one themed world — your player card, then Live rooms or the turn-based
+ * challenges. No bottom nav here; Split is one tap away at the top.
+ */
 export default function ChallengesPage() {
   return (
     <React.Suspense
       fallback={
-        <>
-          <AppHeader title="Games" showBack />
-          <PageContainer className="max-w-2xl">
-            <ListSkeleton rows={3} />
-          </PageContainer>
-        </>
+        <GameScreen>
+          <div className="flex flex-1 items-center justify-center">
+            <Spinner className="size-9 text-white" />
+          </div>
+        </GameScreen>
       }
     >
       <ChallengesContent />
@@ -115,72 +119,38 @@ function ChallengesContent() {
     setSyncedParam(paramTab)
     if (paramTab) setPicked(paramTab)
   }
-  const tab: Tab =
-    picked ?? (yourTurnCount("discount") > 0 ? "discount" : yourTurnCount("fun") > 0 ? "fun" : "live")
-  const openSheet = (game: GameId) => setSheet({ open: true, game })
-  // Swipe between Live, Discounted and Just for fun, anywhere below the header
-  const { surface: swipeSurface, ...swipe } = useSwipeTabs(TAB_ORDER, tab, setPicked)
+  const tab: Tab = picked ?? (yourTurnCount("discount") > 0 ? "discount" : yourTurnCount("fun") > 0 ? "fun" : "live")
 
   return (
-    <>
-      <AppHeader title="Games" showBack />
-      {/* flex-1: the swipe surface reaches the bottom of the screen, even when the tab is short */}
-      <PageContainer ref={swipeSurface} className="max-w-2xl flex-1 gap-2 pb-24">
-        {/* Live | Discounted | Just for fun */}
-        <div role="tablist" data-tour="game-tabs" aria-label="Kind of game" className="relative grid grid-cols-3 border-b">
-          {TAB_ORDER.map((value) => {
-            const count = yourTurnCount(value)
-            const active = tab === value
-            return (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setPicked(value)}
-                className={cn(
-                  "flex items-center justify-center gap-2 pb-2.5 text-sm transition-colors",
-                  active ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {TAB_LABELS[value]}
-                {count > 0 && (
-                  <span
-                    className={cn(
-                      "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums",
-                      value === "discount" ? "bg-success text-success-foreground" : "bg-primary text-primary-foreground"
-                    )}
-                    aria-label={`${count} waiting for you`}
-                  >
-                    {count}
-                  </span>
-                )}
-              </button>
-            )
-          })}
-          <SwipeTabIndicator swipe={swipe} className="bottom-[-1px]" />
+    <GameScreen>
+      <HubTopBar />
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-5 px-4 pt-1 pb-16">
+        <PlayerCard />
+
+        <div data-tour="game-tabs">
+          <GameTabs
+            label="Kind of game"
+            value={tab}
+            onChange={setPicked}
+            tabs={TAB_ORDER.map((t) => ({ value: t, label: TAB_LABELS[t], badge: yourTurnCount(t) || undefined }))}
+          />
         </div>
 
-        {/* Edge to edge, so panels slide in from the screen edge; scroll-mt clears the sticky header */}
-        <SwipeTabPanels swipe={swipe} className="-mx-4 scroll-mt-16 sm:-mx-6" panelClassName="px-4 sm:px-6">
-          {TAB_ORDER.map((t) =>
-            t === "live" ? (
-              <LiveGamesPanel key={t} />
-            ) : (
-              <GamesPanel
-                key={t}
-                tab={t}
-                blurb={CHALLENGE_TABS[t].blurb}
-                items={all.filter((c) => tabOf(c) === t)}
-                uid={uid}
-                isYourTurn={isYourTurn}
-                challenges={challenges}
-                onNew={() => openSheet("rps")}
-              />
-            )
-          )}
-        </SwipeTabPanels>
-      </PageContainer>
+        {tab === "live" ? (
+          <LiveGamesPanel />
+        ) : (
+          <GamesPanel
+            key={tab}
+            tab={tab}
+            blurb={CHALLENGE_TABS[tab].blurb}
+            items={all.filter((c) => tabOf(c) === tab)}
+            uid={uid}
+            isYourTurn={isYourTurn}
+            challenges={challenges}
+            onNew={() => setSheet({ open: true, game: "rps" })}
+          />
+        )}
+      </div>
 
       <NewChallengeSheet
         open={sheet.open}
@@ -188,7 +158,68 @@ function ChallengesContent() {
         initialGame={sheet.game}
         initialStake={tab === "live" ? "fun" : tab}
       />
-    </>
+    </GameScreen>
+  )
+}
+
+/** Split | Games in the middle, your coins and the bell around it. */
+function HubTopBar() {
+  const router = useRouter()
+  const wallet = useWallet()
+  const unread = useUnreadCount()
+  return (
+    <header className="sticky top-0 z-30 bg-gradient-to-b from-[#3f95ee] via-[#3f95ee]/95 to-[#3f95ee]/0 px-3 pt-[calc(0.6rem+env(safe-area-inset-top,0px))] pb-3">
+      <div className="mx-auto flex max-w-2xl items-center gap-2">
+        <Link
+          href="/profile/coins"
+          aria-label={wallet ? `${wallet.balance} coins` : "Coins"}
+          className="gu-chip h-9 shrink-0 !px-3 text-sm"
+        >
+          <Coins amount={wallet?.balance ?? 0} iconClassName="size-4" />
+        </Link>
+        <div className="flex flex-1 justify-center">
+          <ModeSwitch look="game" />
+        </div>
+        <GameIconButton
+          icon={Notification01Icon}
+          label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+          tone="cream"
+          size="sm"
+          badge={unread > 0 ? (unread > 9 ? "9+" : unread) : undefined}
+          onClick={() => router.push("/notifications")}
+        />
+      </div>
+    </header>
+  )
+}
+
+/** You as a player: your character, level and XP; tap for the full game profile. */
+function PlayerCard() {
+  const { user } = useSession()
+  const wallet = useWallet()
+  if (!user) return null
+  const info = levelInfo(wallet)
+  return (
+    <Link href="/profile#game" className="gu-panel-flat flex items-center gap-3.5 p-3 pr-4 active:translate-y-px">
+      <span className="relative shrink-0 p-1">
+        <GameAvatar character={user.gameAvatar} photo={user.photoURL} name={user.displayName} frame={user.frame} size={58} mode="idle" />
+        {wallet ? <LevelBadge level={info.level} size={24} className="absolute -bottom-1 left-1/2 -translate-x-1/2" /> : null}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-lg leading-tight font-bold">{user.displayName.split(" ")[0]}</span>
+        <span className="block truncate text-xs font-bold text-[var(--gu-brown)]">
+          {wallet ? `Level ${info.level} · ${info.title}` : "Player"}
+        </span>
+        {wallet ? (
+          <span className="mt-1.5 flex items-center gap-2">
+            <XpBar value={info.progress} className="h-2.5 flex-1 bg-[var(--gu-cream-2)]" />
+            <span className="shrink-0 text-[11px] font-bold text-[var(--gu-ink-soft)] tabular-nums">
+              {info.max ? "MAX" : `${info.into}/${info.need} XP`}
+            </span>
+          </span>
+        ) : null}
+      </span>
+    </Link>
   )
 }
 
@@ -217,71 +248,69 @@ function GamesPanel({
   const history = items.filter((c) => c.status !== "OPEN")
 
   return (
-    <div className="flex flex-col gap-5">
-      <p className="text-xs text-muted-foreground">{blurb}</p>
+    <div className="flex flex-col gap-6">
+      <p className="px-1 text-sm font-semibold text-white [text-shadow:0_1px_0_rgba(20,40,110,.35)]">{blurb}</p>
 
       {/* One way in: the sheet picks the game, who plays and the stakes */}
-      <Button size="lg" data-tour="new-challenge" className="h-11 w-full" onClick={onNew}>
-        <HugeiconsIcon icon={GameController03Icon} data-icon="inline-start" />
-        {tab === "discount" ? "Challenge someone who owes you" : "New challenge"}
-      </Button>
+      <GameButton tone={tab === "discount" ? "green" : "blue"} size="lg" icon={GameController03Icon} onClick={onNew} data-tour="new-challenge">
+        {tab === "discount" ? "Challenge for a discount" : "New challenge"}
+      </GameButton>
 
       {challenges.isPending ? (
-        <ListSkeleton rows={3} />
+        <div className="flex justify-center py-6">
+          <Spinner className="size-7 text-white" />
+        </div>
       ) : challenges.isError ? (
-        <QueryError error={challenges.error} onRetry={() => challenges.refetch()} />
+        <GameNote>
+          Couldn&apos;t load your challenges.{" "}
+          <button type="button" className="font-bold text-[var(--gu-blue-deep)] underline" onClick={() => challenges.refetch()}>
+            Try again
+          </button>
+        </GameNote>
       ) : (
         <>
-          {/* Everyone who has challenged you in this tab — each challenge, newest first */}
-          <section className="flex flex-col gap-2">
-            <SectionTitle title="Challenges for you" count={yourTurn.length} tone="text-primary" />
+          <section className="flex flex-col gap-3">
+            <GameSectionTitle count={yourTurn.length}>Challenges for you</GameSectionTitle>
             {yourTurn.length === 0 ? (
-              <p className="rounded-lg border border-dashed px-4 py-5 text-center text-xs text-muted-foreground">
+              <GameNote>
                 {tab === "discount"
                   ? "No discount challenges waiting. They come from people you owe."
                   : "No fun challenges waiting. Send one to a friend!"}
-              </p>
+              </GameNote>
             ) : (
               <>
-                <Card className="gap-0 divide-y py-0">
+                <div className="gu-panel-flat flex flex-col divide-y divide-[var(--gu-line)] px-1">
                   {yourTurn.slice(0, incomingShown).map((c) => (
                     <IncomingRow key={c.id} challenge={c} uid={uid} />
                   ))}
-                </Card>
+                </div>
                 {yourTurn.length > incomingShown && (
-                  <Button variant="ghost" size="sm" onClick={() => setIncomingShown(yourTurn.length)}>
+                  <GameButton tone="cream" size="sm" onClick={() => setIncomingShown(yourTurn.length)}>
                     Show all {yourTurn.length}
-                  </Button>
+                  </GameButton>
                 )}
               </>
             )}
           </section>
 
           {waiting.length > 0 && (
-            <section className="flex flex-col gap-2">
-              <SectionTitle title="Waiting for others" count={waiting.length} />
+            <section className="flex flex-col gap-3">
+              <GameSectionTitle count={waiting.length}>Waiting for others</GameSectionTitle>
               <ChallengeList items={waiting} uid={uid} />
             </section>
           )}
 
-          <section className="flex flex-col gap-2">
-            <SectionTitle title="History" count={history.length || undefined} />
+          <section className="flex flex-col gap-3">
+            <GameSectionTitle count={history.length || undefined}>History</GameSectionTitle>
             {history.length === 0 ? (
-              <Card>
-                <EmptyState
-                  className="py-6"
-                  icon={GameController03Icon}
-                  title="Nothing here yet"
-                  description="Finished games will show up here."
-                />
-              </Card>
+              <GameNote>Finished games will show up here.</GameNote>
             ) : (
               <>
                 <ChallengeList items={history.slice(0, historyShown)} uid={uid} />
                 {history.length > historyShown && (
-                  <Button variant="ghost" size="sm" onClick={() => setHistoryShown((n) => n + 10)}>
+                  <GameButton tone="cream" size="sm" onClick={() => setHistoryShown((n) => n + 10)}>
                     Show more ({history.length - historyShown})
-                  </Button>
+                  </GameButton>
                 )}
               </>
             )}
@@ -289,17 +318,6 @@ function GamesPanel({
         </>
       )}
     </div>
-  )
-}
-
-function SectionTitle({ title, count, tone }: { title: string; count?: number; tone?: string }) {
-  return (
-    <h2 className="flex items-center gap-2 text-sm font-semibold">
-      {title}
-      {count !== undefined && count > 0 && (
-        <span className={cn("text-xs font-medium tabular-nums", tone ?? "text-muted-foreground")}>{count}</span>
-      )}
-    </h2>
   )
 }
 
@@ -315,80 +333,70 @@ function IncomingRow({ challenge: c, uid }: { challenge: Challenge; uid: string 
   const save = Math.floor((base * c.discountPercent) / 100)
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
+    <div className="flex items-center gap-3 px-2 py-3">
       <span className="relative shrink-0">
         <UserAvatar uid={c.hostId} src={photo} name={c.hostName} size="md" />
         <span
-          className={cn(
-            "absolute -right-1 -bottom-1 flex size-6 items-center justify-center rounded-md border-2 border-card text-sm",
-            GAME_TONE[c.game]
-          )}
+          className="absolute -right-1.5 -bottom-1.5 flex size-7 items-center justify-center rounded-lg text-sm shadow-[0_0_0_2.5px_#fff]"
+          style={{ background: GAME_TONE[c.game] }}
           aria-hidden
         >
           <GameGlyph game={c.game} />
         </span>
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{c.hostName}</p>
-        <p className="truncate text-xs text-muted-foreground">
+        <p className="truncate font-bold">{c.hostName}</p>
+        <p className="truncate text-xs font-semibold text-[var(--gu-ink-soft)]">
           {game.name}
           {contextOf(c)}
         </p>
         {!isForFun(c) && (
-          <p className="truncate text-xs font-medium text-success">
+          <p className="truncate text-xs font-bold text-[var(--gu-green-deep)]">
             Win to save {formatPaise(save)} ({c.discountPercent}% off)
           </p>
         )}
       </div>
-      <Button
-        size="sm"
-        className="h-8 shrink-0 px-3 text-xs"
-        nativeButton={false}
-        render={<Link href={`/challenges/${c.id}`} />}
-      >
+      <Link href={`/challenges/${c.id}`} className="gu-btn gu-green gu-btn-sm shrink-0">
         Play
-      </Button>
+      </Link>
     </div>
   )
 }
 
 function ChallengeList({ items, uid }: { items: Challenge[]; uid: string }) {
   return (
-    <Card className="gap-0 divide-y py-0">
+    <div className="gu-panel-flat flex flex-col divide-y divide-[var(--gu-line)] px-1">
       {items.map((c) => {
         const status = statusFor(c, uid)
         const game = GAMES[c.game]
-        const opponents =
-          c.hostId === uid ? c.players.map((p) => c.playerNames[p]).join(", ") : `${c.hostName} (host)`
+        const opponents = c.hostId === uid ? c.players.map((p) => c.playerNames[p]).join(", ") : `${c.hostName} (host)`
         return (
-          <Link
-            key={c.id}
-            href={`/challenges/${c.id}`}
-            className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
-          >
+          <Link key={c.id} href={`/challenges/${c.id}`} className="flex items-center gap-3 px-2 py-3">
             <span
-              className={cn("flex size-9 shrink-0 items-center justify-center rounded-md text-lg", GAME_TONE[c.game])}
+              className={cn("flex size-11 shrink-0 items-center justify-center rounded-xl text-xl shadow-[inset_0_-3px_0_rgba(0,0,0,.08)]")}
+              style={{ background: GAME_TONE[c.game] }}
               aria-hidden
             >
               <GameGlyph game={c.game} />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">
+              <p className="truncate font-bold">
                 {game.name}
-                <span className="font-normal text-muted-foreground">{contextOf(c)}</span>
+                <span className="font-semibold text-[var(--gu-ink-soft)]">{contextOf(c)}</span>
               </p>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="truncate text-xs font-semibold text-[var(--gu-ink-soft)]">
                 {isForFun(c) ? "" : `${c.discountPercent}% off · `}
                 {opponents}
               </p>
             </div>
-            <span className={cn("flex shrink-0 items-center gap-1.5 text-xs font-medium", status.tone)}>
-              <span aria-hidden className="size-1.5 rounded-full bg-current" />
+            <span className="flex shrink-0 items-center gap-1.5 text-xs font-bold" style={{ color: status.tone }}>
+              <span aria-hidden className="size-2 rounded-full bg-current" />
               {status.label}
             </span>
           </Link>
         )
       })}
-    </Card>
+    </div>
   )
 }
+

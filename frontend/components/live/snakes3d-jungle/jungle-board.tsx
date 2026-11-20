@@ -9,11 +9,11 @@ import { JungleWorld } from "./jungle-world"
 
 /**
  * The jungle tower in real 3D (three.js, loaded only with this theme). Pure
- * like the night tower: it draws the state it's given and animates each
+ * like the plain CSS tower: it draws the state it's given and animates each
  * change; the camera follows `followUid` until you swipe away — then
  * "Back to me" brings it back (and so do your turn and your own move).
  * Arrows on the edges point at the pieces out of view. `onFail`: WebGL
- * couldn't start, so the caller shows the night tower instead.
+ * couldn't start, so the caller shows the plain CSS tower instead.
  */
 export default function JungleBoard({
   state,

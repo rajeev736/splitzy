@@ -56,6 +56,10 @@ export interface ResultScreenProps {
   onBack: () => void
   /** The sticker row, shown small at the bottom. */
   stickers?: React.ReactNode
+  /** Under the two buttons: more ways on (the group game room: pick another game). */
+  extra?: React.ReactNode
+  /** The left button's label (default "Back"). */
+  backLabel?: string
 }
 
 /**
@@ -76,6 +80,8 @@ export function ResultScreen({
   playAgain,
   onBack,
   stickers,
+  extra,
+  backLabel = "Back",
 }: ResultScreenProps) {
   const look = TONES[tone]
   // You played (you have a row): the game counts on your record, and may pop up a reward
@@ -112,7 +118,7 @@ export function ResultScreen({
 
           <div className="rs-btns" style={{ "--i": rows.length } as React.CSSProperties}>
             <button type="button" className="rs-btn rs-btn-teal" onClick={onBack}>
-              Back
+              {backLabel}
             </button>
             {playAgain.kind === "join" ? (
               <Link href={playAgain.href} replace className="rs-btn rs-btn-gold">
@@ -145,6 +151,7 @@ export function ResultScreen({
               Waiting for {playAgain.hostName} to start a rematch
             </p>
           )}
+          {extra}
         </div>
 
         {stickers && <div className="rs-stickers">{stickers}</div>}

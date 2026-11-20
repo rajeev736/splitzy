@@ -74,7 +74,7 @@ export function BottomNav() {
           <HugeiconsIcon icon={PlusSignIcon} className="size-6" strokeWidth={2} />
         </Link>
       )}
-      <nav className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-card/85 px-1.5 backdrop-blur-2xl backdrop-saturate-150 md:hidden">
+      <nav className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-card/90 px-1.5 backdrop-blur-md md:hidden">
         {/* Equal-width columns regardless of label length */}
         <div
           className="mx-auto grid max-w-md"

@@ -29,6 +29,8 @@ export async function enableSystemNotifications(): Promise<boolean> {
 export function notificationHref(n: AppNotification): string {
   const d = n.data
   // A live room invite: straight into the room (the link is the invite)
+  // The group's game room: always open, so always worth the tap
+  if (d?.lounge && d.groupId) return `/lounge/${d.groupId}`
   if (d?.roomCode) return `/play/${d.roomCode}`
   if (d?.challengeId) return `/challenges/${d.challengeId}`
   if (n.type === "PAYMENT_REMINDER" && d?.awaitingConfirm && d.actorId) return `/friends/${d.actorId}`

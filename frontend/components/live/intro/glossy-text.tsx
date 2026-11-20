@@ -3,9 +3,10 @@ import type * as React from "react"
 import { cn } from "@/lib/utils"
 
 /**
- * Big, chunky, glossy game type: a thick rim with a drop shadow behind, and a
- * face that is white on top and tinted below (the hard gloss line of a
- * mobile game's logotype). `rim` and `tint` take any CSS colour.
+ * Big, chunky, glossy game type: a thick rim with a 3D bottom edge behind, and
+ * a face that is white on top and tinted below (the hard gloss line of a
+ * mobile game's logotype). `rim` and `tint` take any CSS colour; `size` any
+ * CSS length (a number is px). Needs GLOSS_CSS (./styles) on the page.
  */
 export function GlossyText({
   children,
@@ -17,7 +18,7 @@ export function GlossyText({
   style,
 }: {
   children: React.ReactNode
-  size: number
+  size: number | string
   rim: string
   tint: string
   top?: string

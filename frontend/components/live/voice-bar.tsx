@@ -7,8 +7,8 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
+import { GameButton, GameIconButton } from "@/components/game-ui/kit"
 import { UserAvatar } from "@/components/shared/user-avatar"
-import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { useVoice } from "@/hooks/use-voice"
 import type { RoomPlayer, VoiceState } from "@/lib/live/types"
@@ -37,21 +37,17 @@ export function VoiceBar({
 
   if (!v.joined) {
     return (
-      <Button
-        variant="outline"
+      <GameButton
+        tone="green"
         size="sm"
-        className={cn("h-10", className)}
+        className={cn("gu shrink-0", className)}
         onClick={() => void v.join()}
         disabled={v.joining}
         aria-label="Join voice chat"
       >
-        {v.joining ? (
-          <Spinner />
-        ) : (
-          <HugeiconsIcon icon={Mic01Icon} data-icon="inline-start" />
-        )}
-        {v.joining ? "Joining…" : "Join voice"}
-      </Button>
+        {v.joining ? <Spinner className="size-4" /> : <HugeiconsIcon icon={Mic01Icon} className="size-4" strokeWidth={2.4} />}
+        {v.joining ? "Joining" : "Voice"}
+      </GameButton>
     )
   }
 
@@ -62,19 +58,15 @@ export function VoiceBar({
       role="group"
       aria-label="Voice chat"
     >
-      <Button
-        variant={v.muted ? "destructive" : "default"}
-        size="icon"
+      <GameIconButton
+        tone={v.muted ? "red" : "green"}
+        size="sm"
         aria-pressed={v.muted}
-        aria-label={v.muted ? "Unmute microphone" : "Mute microphone"}
-        title={v.muted ? "Unmute" : "Mute"}
+        icon={v.muted ? MicOff01Icon : Mic01Icon}
+        label={v.muted ? "Unmute microphone" : "Mute microphone"}
         onClick={v.toggleMute}
-      >
-        <HugeiconsIcon
-          icon={v.muted ? MicOff01Icon : Mic01Icon}
-          className="size-5"
-        />
-      </Button>
+        className="shrink-0"
+      />
 
       <ul
         className="no-scrollbar flex min-w-0 items-center gap-1.5 overflow-x-auto px-1 py-1"
@@ -95,15 +87,7 @@ export function VoiceBar({
         })}
       </ul>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label="Leave voice chat"
-        title="Leave voice"
-        onClick={() => void v.leave()}
-      >
-        <HugeiconsIcon icon={Cancel01Icon} className="size-5" />
-      </Button>
+      <GameIconButton tone="cream" size="sm" icon={Cancel01Icon} label="Leave voice chat" onClick={() => void v.leave()} className="shrink-0" />
     </div>
   )
 }
@@ -149,7 +133,7 @@ function VoiceAvatar({
         name={player.name}
         size="sm"
         className={cn(
-          "ring-2 ring-offset-2 ring-offset-background transition-[box-shadow,opacity] duration-200",
+          "ring-2 ring-offset-2 ring-offset-white transition-[box-shadow,opacity] duration-200",
           speaking && !muted ? "ring-success" : "ring-transparent",
           status !== "connected" && "opacity-50"
         )}

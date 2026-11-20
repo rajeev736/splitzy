@@ -1,7 +1,6 @@
 "use client"
 
-import Link from "next/link"
-import { PlayIcon, Tick02Icon } from "@hugeicons/core-free-icons"
+import { Tick02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { Button } from "@/components/ui/button"
@@ -9,6 +8,7 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle }
 import type { AppNotification } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { NotificationIcon } from "./notification-icon"
+import { RoomInviteAction } from "./room-invite-action"
 
 /** A notification in the list; payment reports get inline confirm / dispute buttons (on a second line) or a status once resolved. */
 export function NotificationRow({
@@ -84,13 +84,10 @@ export function NotificationRow({
             </div>
           )
         )}
-        {/* A live room invite: one tap straight into the room */}
-        {notif.type === "ROOM_INVITE" && notif.data?.roomCode && (
+        {/* A live room invite: one tap into the room — only while there is one to join */}
+        {notif.type === "ROOM_INVITE" && (notif.data?.roomCode || notif.data?.lounge) && (
           <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-            <Button size="sm" nativeButton={false} render={<Link href={`/play/${notif.data.roomCode}`} />}>
-              <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />
-              Join room
-            </Button>
+            <RoomInviteAction notif={notif} />
           </div>
         )}
       </ItemContent>

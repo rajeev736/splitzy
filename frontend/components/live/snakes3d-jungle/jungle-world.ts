@@ -10,7 +10,7 @@ import { axisAt, COLS, DEPTH, LADDER_SHAPES, RISE, rowOfZ, SNAKE_SHAPES, SPACING
 import { FOG_COLOUR, skyGradient } from "./textures"
 import { buildWorld, type WorldParts } from "./world"
 
-/** Time per square when a piece hops (as on the night tower). */
+/** Time per square when a piece hops (as on the plain CSS tower). */
 const STEP_S = 0.24
 /** The camera: vertical field of view, elevation and a slight turn to show the pillars' sides. */
 const FOV = 38
@@ -107,7 +107,7 @@ export class JungleWorld {
     const nav = navigator as Navigator & { deviceMemory?: number }
     const weak = (nav.hardwareConcurrency ?? 8) <= 4 || (nav.deviceMemory ?? 8) <= 4
     this.pixelRatio = Math.min(window.devicePixelRatio || 1, weak ? 1.5 : 2)
-    // Throws when WebGL isn't available: the board falls back to the night tower
+    // Throws when WebGL isn't available: the board falls back to the plain CSS tower
     this.renderer = new THREE.WebGLRenderer({ antialias: this.pixelRatio < 1.5, powerPreference: "high-performance", stencil: false })
     if (!this.renderer.getContext()) throw new Error("No WebGL")
     this.renderer.setPixelRatio(this.pixelRatio)

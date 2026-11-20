@@ -1,0 +1,455 @@
+/*
+ * The Games side's look (components/game-ui): a sky backdrop, cream panels in a
+ * thick blue frame, chunky 3D buttons and rounded type — one theme for every
+ * games screen, so nothing there looks like a plain form. Everything is flat
+ * colour + box-shadows (no blur, no filters) so it stays cheap to scroll.
+ */
+
+/* Tokens on :root, so a game button works anywhere (the lobby, the result screen); .gu adds the font */
+:root {
+  --gu-font: var(--font-game), ui-rounded, "Arial Rounded MT Bold", var(--font-inter), system-ui, sans-serif;
+  --gu-ink: #2c3f73;
+  --gu-ink-soft: #5d6a96;
+  --gu-brown: #8a5a36;
+  --gu-cream: #fff8ea;
+  --gu-cream-2: #f6ead2;
+  --gu-line: #ead8b6;
+  --gu-frame: #5b9cf5;
+  --gu-frame-deep: #3c72d6;
+  --gu-blue: #4f8ff7;
+  --gu-blue-deep: #2f63cf;
+  --gu-green: #2fd2a0;
+  --gu-green-deep: #15a07a;
+  --gu-orange: #ff8a3d;
+  --gu-orange-deep: #d9601c;
+  --gu-red: #f25555;
+  --gu-red-deep: #c12f3c;
+  --gu-yellow: #ffcd3c;
+  --gu-yellow-deep: #d99a0b;
+  --gu-purple: #8b6cf6;
+  --gu-purple-deep: #5e41cc;
+}
+
+/*
+ * Inside a games screen the app's own palette turns into the game's — light
+ * and warm whatever the device theme — so any card, button or text a game
+ * draws with the shared components (Card, Button, text-muted-foreground…)
+ * sits in the theme instead of looking like a plain form.
+ */
+.gu {
+  --background: #fff8ea;
+  --foreground: #2c3f73;
+  --card: #fff8ea;
+  --card-foreground: #2c3f73;
+  --card-stroke: transparent;
+  --popover: #fffaf0;
+  --popover-foreground: #2c3f73;
+  --primary: #4f8ff7;
+  --primary-hover: #3f7fe8;
+  --primary-pressed: #2f63cf;
+  --primary-foreground: #ffffff;
+  --secondary: #f6ead2;
+  --secondary-foreground: #2c3f73;
+  --muted: #f6ead2;
+  --muted-foreground: #5d6a96;
+  --accent: #f6ead2;
+  --accent-foreground: #2c3f73;
+  --subtle-hover: #f6ead2;
+  --subtle-pressed: #ead8b6;
+  --border: #ead8b6;
+  --input: #dccaa6;
+  --ring: #4f8ff7;
+  color-scheme: light;
+}
+.gu [data-slot="card"] {
+  border: 0;
+  border-radius: 22px;
+  background: var(--gu-cream);
+  color: var(--gu-ink);
+  box-shadow:
+    inset 0 -3px 0 var(--gu-line),
+    0 4px 0 rgba(44, 63, 115, 0.18),
+    0 8px 18px rgba(30, 40, 110, 0.14);
+}
+
+.gu {
+  font-family: var(--gu-font);
+  color: var(--gu-ink);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The backdrop: a soft sky, blue on top fading to lavender, with a few still clouds */
+.gu-sky {
+  background:
+    radial-gradient(60% 22% at 6% 92%, rgba(255, 255, 255, 0.55) 0 60%, transparent 61%),
+    radial-gradient(45% 18% at 98% 96%, rgba(255, 236, 252, 0.6) 0 60%, transparent 61%),
+    radial-gradient(38% 9% at 88% 20%, rgba(255, 255, 255, 0.35) 0 60%, transparent 61%),
+    radial-gradient(30% 7% at 12% 9%, rgba(255, 255, 255, 0.4) 0 60%, transparent 61%),
+    linear-gradient(180deg, #3f95ee 0%, #6aa9f2 32%, #9db3f2 64%, #c4b2ef 86%, #dcbcf0 100%);
+  background-color: #6aa9f2;
+}
+
+/* Headings and labels */
+.gu-title {
+  font-family: var(--gu-font);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #fff;
+  text-shadow:
+    0 2px 0 var(--gu-frame-deep),
+    0 3px 6px rgba(20, 40, 110, 0.28);
+}
+.gu-label {
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gu-brown);
+}
+
+/* A cream panel in a thick blue frame (the pause dialog's card) */
+.gu-panel {
+  position: relative;
+  border-radius: 26px;
+  background: var(--gu-cream);
+  box-shadow:
+    0 0 0 5px var(--gu-frame),
+    0 7px 0 3px var(--gu-frame-deep),
+    0 14px 26px rgba(30, 40, 110, 0.28);
+}
+.gu-panel-flat {
+  border-radius: 20px;
+  background: var(--gu-cream);
+  box-shadow:
+    inset 0 -3px 0 var(--gu-line),
+    0 4px 0 rgba(44, 63, 115, 0.18),
+    0 8px 18px rgba(30, 40, 110, 0.14);
+}
+/* The ribbon a panel's title sits on, half over its top edge */
+.gu-ribbon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 9rem;
+  padding: 0.45rem 1.6rem 0.5rem;
+  border-radius: 999px 999px 22px 22px;
+  background: var(--gu-cream);
+  color: var(--gu-ink);
+  font-weight: 700;
+  font-size: 1.35rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow:
+    inset 0 -3px 0 var(--gu-line),
+    0 0 0 4px var(--gu-frame);
+}
+
+/* Chunky 3D buttons: a lighter face on a deeper base; pressing sinks the face */
+.gu-btn {
+  --c: var(--gu-blue);
+  --d: var(--gu-blue-deep);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 1.4rem;
+  height: 3.1rem;
+  font-family: var(--gu-font);
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  text-shadow: 0 1.5px 0 var(--d);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--c) 82%, white) 0%, var(--c) 55%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -3px 0 color-mix(in oklab, var(--d) 60%, var(--c)),
+    0 5px 0 var(--d),
+    0 8px 14px rgba(20, 30, 90, 0.22);
+  transform: translateY(0);
+  transition:
+    transform 90ms ease-out,
+    box-shadow 90ms ease-out,
+    filter 120ms;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.gu-btn:active:not(:disabled) {
+  transform: translateY(4px);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -3px 0 color-mix(in oklab, var(--d) 60%, var(--c)),
+    0 1px 0 var(--d),
+    0 3px 6px rgba(20, 30, 90, 0.2);
+}
+.gu-btn:disabled {
+  filter: grayscale(0.55) brightness(0.95);
+  opacity: 0.75;
+  cursor: default;
+}
+.gu-btn:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+.gu-btn-sm {
+  height: 2.4rem;
+  padding: 0 1rem;
+  font-size: 0.9rem;
+}
+.gu-btn-lg {
+  height: 3.6rem;
+  font-size: 1.3rem;
+}
+.gu-btn-icon {
+  width: 3.1rem;
+  padding: 0;
+}
+.gu-btn-icon.gu-btn-sm {
+  width: 2.4rem;
+}
+.gu-green {
+  --c: var(--gu-green);
+  --d: var(--gu-green-deep);
+}
+.gu-orange {
+  --c: var(--gu-orange);
+  --d: var(--gu-orange-deep);
+}
+.gu-red {
+  --c: var(--gu-red);
+  --d: var(--gu-red-deep);
+}
+.gu-yellow {
+  --c: var(--gu-yellow);
+  --d: var(--gu-yellow-deep);
+  color: #6b3d00;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.gu-purple {
+  --c: var(--gu-purple);
+  --d: var(--gu-purple-deep);
+}
+.gu-cream {
+  --c: #fffaf0;
+  --d: #e3cfa8;
+  color: var(--gu-ink);
+  text-shadow: none;
+}
+
+/* A sunken field / track on cream */
+.gu-well {
+  border-radius: 16px;
+  background: var(--gu-cream-2);
+  box-shadow: inset 0 3px 0 rgba(138, 90, 54, 0.12);
+}
+.gu-input {
+  width: 100%;
+  height: 3.1rem;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 1.2rem;
+  background: #fff;
+  color: var(--gu-ink);
+  font-family: var(--gu-font);
+  font-weight: 600;
+  font-size: 1.05rem;
+  box-shadow:
+    inset 0 3px 0 rgba(44, 63, 115, 0.1),
+    0 0 0 3px var(--gu-line);
+  outline: none;
+}
+.gu-input:focus {
+  box-shadow:
+    inset 0 3px 0 rgba(44, 63, 115, 0.1),
+    0 0 0 3px var(--gu-frame);
+}
+.gu-input::placeholder {
+  color: #a7a2b8;
+  font-weight: 500;
+}
+
+/* A selectable card (game options, friends): a white tile that lifts and goes blue when picked */
+.gu-choice {
+  position: relative;
+  border: 0;
+  border-radius: 18px;
+  background: #fff;
+  color: var(--gu-ink);
+  font-family: var(--gu-font);
+  box-shadow:
+    0 0 0 3px var(--gu-line),
+    0 4px 0 3px var(--gu-line);
+  transition:
+    transform 100ms ease-out,
+    box-shadow 100ms;
+  cursor: pointer;
+}
+.gu-choice:active {
+  transform: translateY(2px);
+}
+.gu-choice[aria-pressed="true"],
+.gu-choice[aria-checked="true"],
+.gu-choice[aria-selected="true"] {
+  background: #eef5ff;
+  box-shadow:
+    0 0 0 3px var(--gu-frame),
+    0 4px 0 3px var(--gu-frame-deep);
+}
+.gu-choice:focus-visible {
+  outline: 3px solid var(--gu-ink);
+  outline-offset: 3px;
+}
+
+/* Segmented tabs: a cream track with a blue sliding pill */
+.gu-tabs {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  box-shadow: inset 0 2px 0 rgba(20, 40, 110, 0.15);
+}
+.gu-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  height: 2.5rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  font-family: var(--gu-font);
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 0 rgba(20, 40, 110, 0.35);
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+.gu-tab[aria-selected="true"] {
+  background: var(--gu-cream);
+  color: var(--gu-ink);
+  text-shadow: none;
+  box-shadow:
+    inset 0 -3px 0 var(--gu-line),
+    0 3px 0 rgba(20, 40, 110, 0.22);
+}
+
+/* Small pill badges */
+.gu-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  background: #fff;
+  color: var(--gu-ink);
+  box-shadow: 0 2px 0 rgba(44, 63, 115, 0.2);
+}
+
+/* A progress track with a glossy fill (loading bars, XP) */
+.gu-track {
+  position: relative;
+  overflow: hidden;
+  height: 14px;
+  border-radius: 999px;
+  background: #2a2747;
+  box-shadow:
+    0 0 0 3px #5b55a8,
+    inset 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+.gu-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #8ff07a 0%, #3fcf3f 55%, #22a52e 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.5);
+  transition: width 400ms ease-out;
+}
+
+/* Toggle (sounds on / off) */
+.gu-switch {
+  position: relative;
+  width: 4.6rem;
+  height: 2.3rem;
+  border: 0;
+  border-radius: 999px;
+  background: #d9cdb7;
+  box-shadow: inset 0 3px 0 rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition: background 150ms;
+  font-family: var(--gu-font);
+}
+.gu-switch[aria-checked="true"] {
+  background: #7fe0a8;
+}
+.gu-switch::after {
+  content: "";
+  position: absolute;
+  top: 0.2rem;
+  left: 0.2rem;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 999px;
+  background: var(--gu-blue);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.45),
+    0 2px 0 var(--gu-blue-deep);
+  transition: transform 150ms ease-out;
+}
+.gu-switch[aria-checked="true"]::after {
+  transform: translateX(2.3rem);
+}
+.gu-switch > span {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: #fff;
+}
+
+/* Overlay behind game dialogs */
+.gu-scrim {
+  background: rgba(20, 16, 50, 0.55);
+}
+
+@keyframes gu-pop {
+  0% {
+    transform: scale(0.86);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.02);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+  }
+}
+.gu-pop {
+  animation: gu-pop 220ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gu-pop {
+    animation: none;
+  }
+  .gu-btn,
+  .gu-choice,
+  .gu-fill,
+  .gu-switch::after {
+    transition: none;
+  }
+}

@@ -307,10 +307,7 @@ function Banner({
           style={{ background: open ? "rgba(255,255,255,.45)" : "#f6c445" }}
         />
       </div>
-      <div
-        className="lb-sway relative -mt-1 w-full"
-        style={{ animationDelay: `${-delay * 0.9}s` }}
-      >
+      <div className="relative -mt-1 w-full">
         <svg
           aria-hidden
           className="absolute inset-0 size-full overflow-visible"
@@ -333,6 +330,13 @@ function Banner({
               />
             </linearGradient>
           </defs>
+          {/* A cheap drop shadow: the same shape, offset and faint (no filter) */}
+          {!open && (
+            <path
+              d="M3 4 H101 V90 L52 104 L3 90 Z"
+              fill="rgba(0,0,0,.22)"
+            />
+          )}
           <path
             d="M1 0 H99 V86 L50 100 L1 86 Z"
             fill={`url(#${id}g)`}
@@ -340,11 +344,6 @@ function Banner({
             strokeWidth="2"
             strokeDasharray={open ? "6 5" : undefined}
             vectorEffect="non-scaling-stroke"
-            style={{
-              filter: open
-                ? undefined
-                : "drop-shadow(0 6px 10px rgba(0,0,0,.35))",
-            }}
           />
           {!open && (
             <path

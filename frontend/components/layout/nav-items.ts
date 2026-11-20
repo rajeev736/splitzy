@@ -29,7 +29,8 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Split Summary", mobileLabel: "Splits", href: "/split-summary", icon: ReceiptIndianRupeeIcon, mobile: true },
   { label: "Insights", href: "/insights", icon: Analytics01Icon },
   { label: "Friends", href: "/friends", icon: UserCheck01Icon, mobile: true },
-  { label: "Games", href: "/challenges", icon: GameController03Icon, mobile: true },
+  // Not a bottom tab: Games is the other side of the app, switched to from the top (layout/mode-switch)
+  { label: "Games", href: "/challenges", icon: GameController03Icon },
   { label: "Notifications", href: "/notifications", icon: Notification01Icon, showUnread: true },
   { label: "Profile", href: "/profile", icon: UserIcon, mobile: true },
   { label: "Settings", href: "/settings", icon: Settings01Icon },

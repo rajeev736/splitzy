@@ -415,6 +415,8 @@ export interface AppNotification {
     frame?: string;
     /** A live game room you were invited to (/play/{code}). */
     roomCode?: string;
+    /** A call into the group's always-open game room (/lounge/{groupId}). */
+    lounge?: boolean;
   };
   read: boolean;
   actionTaken?: "CONFIRMED" | "DISPUTED";

@@ -60,8 +60,8 @@ export function StickerBar({
           aria-label={s.label}
           onClick={() => throw_(s.id)}
           className={cn(
-            "flex size-10 shrink-0 items-center justify-center rounded-lg border bg-card transition-transform hover:bg-muted active:scale-90",
-            s.glyph.length > 2 ? "text-xs font-bold text-primary" : "text-xl"
+            "flex size-10 shrink-0 items-center justify-center rounded-full bg-white shadow-[0_3px_0_rgba(44,63,115,.25),0_0_0_2px_#ead8b6] transition-transform active:translate-y-0.5 active:scale-95",
+            s.glyph.length > 2 ? "text-xs font-bold text-[#2f63cf]" : "text-xl"
           )}
         >
           {s.glyph}

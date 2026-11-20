@@ -2,19 +2,19 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { ArrowRight01Icon, Cancel01Icon } from "@hugeicons/core-free-icons"
+import { Cancel01Icon, PlayIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
-import { Card } from "@/components/ui/card"
+import { GameSectionTitle } from "@/components/game-ui/kit"
 import { useMarkNotificationRead } from "@/hooks/mutations"
 import { useNotifications } from "@/hooks/queries"
-import { useRoomNode } from "@/hooks/use-live-room"
-import { useNow } from "@/hooks/use-now"
+import { useRoomNode, useServerClock } from "@/hooks/use-live-room"
 import { LiveGameLogo } from "@/components/live/live-game-logo"
 import { LIVE_GAMES } from "@/lib/live/games"
-import type { RoomMeta } from "@/lib/live/types"
+import { roomLiveness, type RoomLiveness } from "@/lib/live/liveness"
+import type { RoomMeta, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
-import { forgetUserRoom, watchUserRooms } from "@/services/live-rooms"
+import { closeAbandonedRoom, forgetUserRoom, watchUserRooms } from "@/services/live-rooms"
 
 const MAX_ROOMS = 12
 /** An invite older than this is stale: that room has long started or closed. */
@@ -22,26 +22,28 @@ const INVITE_TTL_MS = 3 * 60 * 60 * 1000
 /** Finished games shown before "Show all". */
 const RECENT_SHOWN = 3
 
-/* ── Live room meta, one small listener per room ───────────────────────── */
+/* ── Live room meta + seats, one small listener pair per room ─────────── */
 
-type Metas = Record<string, RoomMeta | null | undefined>
+export type WatchedRoom = { meta: RoomMeta | null | undefined; players: Record<string, RoomPlayer> | null | undefined }
+type Watched = Record<string, WatchedRoom>
 
-function MetaWatcher({ code, onMeta }: { code: string; onMeta: (code: string, meta: RoomMeta | null | undefined) => void }) {
-  const { data } = useRoomNode<RoomMeta>(code, "meta")
-  React.useEffect(() => onMeta(code, data), [code, data, onMeta])
+function RoomWatcher({ code, onRoom }: { code: string; onRoom: (code: string, room: WatchedRoom) => void }) {
+  const { data: meta } = useRoomNode<RoomMeta>(code, "meta")
+  const { data: players } = useRoomNode<Record<string, RoomPlayer>>(code, "players")
+  React.useEffect(() => onRoom(code, { meta, players }), [code, meta, players, onRoom])
   return null
 }
 
-/** The meta of each room in `codes`, live, plus the (invisible) listeners to render. */
-function useRoomMetas(codes: string[]) {
-  const [metas, setMetas] = React.useState<Metas>({})
-  const onMeta = React.useCallback(
-    (code: string, meta: RoomMeta | null | undefined) =>
-      setMetas((m) => (m[code] === meta ? m : { ...m, [code]: meta })),
+/** The meta and seats of each room in `codes`, live, plus the (invisible) listeners to render. */
+export function useWatchedRooms(codes: string[]) {
+  const [rooms, setRooms] = React.useState<Watched>({})
+  const onRoom = React.useCallback(
+    (code: string, room: WatchedRoom) =>
+      setRooms((m) => (m[code]?.meta === room.meta && m[code]?.players === room.players ? m : { ...m, [code]: room })),
     []
   )
-  const watchers = codes.map((code) => <MetaWatcher key={code} code={code} onMeta={onMeta} />)
-  return { metas, watchers }
+  const watchers = codes.map((code) => <RoomWatcher key={code} code={code} onRoom={onRoom} />)
+  return { rooms, watchers }
 }
 
 /* ── Invites you dismissed (per device) ──────────────────────────────── */
@@ -92,11 +94,17 @@ export interface RoomInvite {
   read: boolean
 }
 
+export type Room = { code: string; meta: RoomMeta; live: RoomLiveness }
+
 /**
  * Your rooms and the invites waiting for you, sorted into what the Live tab
  * shows: the game you're in (waiting or playing), invites to rooms still in
  * their lobby, and finished games. Render `watchers` somewhere (they draw
- * nothing; they keep each room's status live).
+ * nothing; they keep each room live).
+ *
+ * A room nobody has had open for a long while (everyone closed the app
+ * without leaving) isn't shown as "in progress": it reads "everyone's away",
+ * and once abandoned for good this device closes it (lib/live/liveness).
  */
 export function useLiveRooms(uid: string | undefined) {
   const [codes, setCodes] = React.useState<string[]>([])
@@ -105,11 +113,12 @@ export function useLiveRooms(uid: string | undefined) {
     return watchUserRooms(uid, (rooms) => setCodes(rooms.slice(0, MAX_ROOMS).map((r) => r.code)))
   }, [uid])
 
+  // A slow tick: "away" and "abandoned" move in minutes
+  const { now } = useServerClock(30_000)
+
   // Invites: the newest per room, from the last few hours, not dismissed, not a room you're already in
   const { data: notifications } = useNotifications()
   const dismissed = useDismissed()
-  // The shared clock, not ticking (an invite going stale a minute late is fine)
-  const now = useNow(0)
   const invites = React.useMemo(() => {
     const byCode = new Map<string, RoomInvite>()
     for (const n of notifications) {
@@ -124,66 +133,85 @@ export function useLiveRooms(uid: string | undefined) {
   }, [notifications, dismissed, codes, now])
 
   const watched = React.useMemo(() => [...codes, ...invites.map((i) => i.code)], [codes, invites])
-  const { metas, watchers } = useRoomMetas(watched)
+  const { rooms, watchers } = useWatchedRooms(watched)
 
   // A deleted room has nothing to show: drop it from your list for good
   React.useEffect(() => {
     if (!uid) return
-    for (const code of codes) if (metas[code] === null) void forgetUserRoom(uid, code)
-  }, [uid, codes, metas])
+    for (const code of codes) if (rooms[code]?.meta === null) void forgetUserRoom(uid, code)
+  }, [uid, codes, rooms])
 
-  const mine = codes.flatMap((code) => (metas[code] ? [{ code, meta: metas[code] }] : []))
+  const mine: Room[] = codes.flatMap((code) => {
+    const r = rooms[code]
+    if (!r?.meta || r.players === undefined) return []
+    return [{ code, meta: r.meta, live: roomLiveness(r.meta, r.players, now) }]
+  })
+
+  // Abandoned for good: close it (once per room per visit)
+  const closing = React.useRef(new Set<string>())
+  React.useEffect(() => {
+    if (!uid) return
+    for (const r of mine) {
+      if (!r.live.abandoned || closing.current.has(r.code)) continue
+      closing.current.add(r.code)
+      void closeAbandonedRoom(uid, r.meta).catch(() => undefined)
+    }
+  })
+
   return {
     watchers,
     now,
     active: mine.filter((r) => r.meta.status !== "ended"),
     finished: mine.filter((r) => r.meta.status === "ended"),
-    // Only rooms still gathering players can be joined
+    // Only rooms still gathering players, with someone inside, can be joined
     invites: invites.flatMap((i) => {
-      const meta = metas[i.code]
-      return meta && meta.status === "lobby" ? [{ ...i, meta }] : []
+      const r = rooms[i.code]
+      if (!r?.meta || r.meta.status !== "lobby") return []
+      const live = roomLiveness(r.meta, r.players, now)
+      return live.life === "idle" ? [] : [{ ...i, meta: r.meta }]
     }),
   }
 }
 
-/* ── The sections ────────────────────────────────────────────────────── */
+/* ── The sections (Games hub, game-ui look) ──────────────────────────── */
 
-type Room = { code: string; meta: RoomMeta }
+/** What the room is doing, for its card. */
+export function roomStatus(r: { meta: RoomMeta; live: RoomLiveness }) {
+  if (r.live.life === "idle")
+    return { label: r.meta.status === "playing" ? "Paused · everyone left" : "Nobody inside", tone: "#8a5a36", pulse: false }
+  if (r.meta.status === "playing") return { label: "In progress", tone: "#15a07a", pulse: true }
+  if (r.meta.status === "countdown") return { label: "Starting…", tone: "#15a07a", pulse: true }
+  return { label: "Waiting for players", tone: "#d9601c", pulse: true }
+}
 
 /** The game you're in right now — big, so getting back is one tap. */
 export function ActiveRooms({ rooms, uid }: { rooms: Room[]; uid: string }) {
   if (rooms.length === 0) return null
   return (
-    <section className="flex flex-col gap-2" aria-label="Your game">
-      {rooms.map(({ code, meta }) => {
+    <section className="flex flex-col gap-3" aria-label="Your game">
+      <GameSectionTitle>Your game</GameSectionTitle>
+      {rooms.map((r) => {
+        const { code, meta } = r
         const game = LIVE_GAMES[meta.game]
-        const playing = meta.status === "playing" || meta.status === "countdown"
+        const status = roomStatus(r)
         return (
-          <Link
-            key={code}
-            href={`/play/${code}`}
-            className="group flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3 shadow-xs transition-colors hover:bg-primary/10"
-          >
-            <LiveGameLogo game={game.id} className="size-12 rounded-xl" />
+          <Link key={code} href={`/play/${code}`} className="gu-panel-flat flex items-center gap-3 p-3 active:translate-y-px">
+            <LiveGameLogo game={game.id} className="size-14 rounded-2xl" />
             <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+              <span className="flex items-center gap-1.5 text-xs font-bold" style={{ color: status.tone }}>
                 <span aria-hidden className="relative flex size-2">
-                  {playing && <span className="absolute inset-0 animate-ping rounded-full bg-current opacity-60" />}
+                  {status.pulse && <span className="absolute inset-0 animate-ping rounded-full bg-current opacity-60" />}
                   <span className="relative size-2 rounded-full bg-current" />
                 </span>
-                {playing ? "In progress" : "Waiting in lobby"}
+                {status.label}
               </span>
-              <span className="mt-0.5 block truncate text-sm font-semibold">
-                {game.name}{" "}
-                <span className="font-mono text-xs font-normal tracking-wider text-muted-foreground">{code}</span>
+              <span className="mt-0.5 block truncate text-lg leading-tight font-bold">{game.name}</span>
+              <span className="block truncate text-xs font-semibold text-[var(--gu-ink-soft)]">
+                {meta.hostId === uid ? "Your room" : `${meta.hostName.split(" ")[0]}'s room`} · {code}
               </span>
-              {meta.hostId !== uid && (
-                <span className="block truncate text-xs text-muted-foreground">{meta.hostName.split(" ")[0]}&apos;s room</span>
-              )}
             </span>
-            <span className="flex h-9 shrink-0 items-center gap-0.5 rounded-full bg-primary px-3.5 text-sm font-semibold text-primary-foreground">
-              {playing ? "Rejoin" : "Open"}
-              <HugeiconsIcon icon={ArrowRight01Icon} className="size-4" />
+            <span className="gu-btn gu-green gu-btn-sm pointer-events-none shrink-0">
+              {meta.status === "playing" ? "Rejoin" : "Open"}
             </span>
           </Link>
         )
@@ -197,22 +225,17 @@ export function RoomInvites({ invites, now }: { invites: (RoomInvite & { meta: R
   const markRead = useMarkNotificationRead()
   if (invites.length === 0) return null
   return (
-    <section className="flex flex-col gap-2">
-      <h2 className="flex items-center gap-2 text-sm font-semibold">
-        Invites
-        <span className="rounded-full bg-primary px-1.5 text-[11px] leading-[18px] font-bold text-primary-foreground tabular-nums">
-          {invites.length}
-        </span>
-      </h2>
-      <Card className="gap-0 divide-y py-0">
+    <section className="flex flex-col gap-3">
+      <GameSectionTitle count={invites.length}>Invites</GameSectionTitle>
+      <div className="gu-panel-flat flex flex-col divide-y divide-[var(--gu-line)] px-1">
         {invites.map((inv) => {
           const game = LIVE_GAMES[inv.meta.game]
           return (
-            <div key={inv.code} className="flex items-center gap-3 py-2.5 pr-2 pl-3">
-              <LiveGameLogo game={game.id} className="size-10 rounded-lg" />
+            <div key={inv.code} className="flex items-center gap-3 py-2.5 pr-1 pl-2">
+              <LiveGameLogo game={game.id} className="size-11 rounded-xl" />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{game.name}</span>
-                <span className="block truncate text-xs text-muted-foreground">
+                <span className="block truncate font-bold">{game.name}</span>
+                <span className="block truncate text-xs font-semibold text-[var(--gu-ink-soft)]">
                   From {inv.from.split(" ")[0]} · {ago(inv.at, now)}
                 </span>
               </span>
@@ -221,8 +244,9 @@ export function RoomInvites({ invites, now }: { invites: (RoomInvite & { meta: R
                 onClick={() => {
                   if (!inv.read) markRead.mutate(inv.notificationId)
                 }}
-                className="flex h-8 shrink-0 items-center rounded-full bg-primary px-3.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+                className="gu-btn gu-green gu-btn-sm shrink-0"
               >
+                <HugeiconsIcon icon={PlayIcon} className="size-4" strokeWidth={2.4} />
                 Join
               </Link>
               <button
@@ -232,14 +256,14 @@ export function RoomInvites({ invites, now }: { invites: (RoomInvite & { meta: R
                   dismissInvite(inv.code)
                   if (!inv.read) markRead.mutate(inv.notificationId)
                 }}
-                className="-ml-1 flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="flex size-8 shrink-0 items-center justify-center rounded-full text-[var(--gu-ink-soft)] active:bg-black/5"
               >
-                <HugeiconsIcon icon={Cancel01Icon} className="size-4" />
+                <HugeiconsIcon icon={Cancel01Icon} className="size-4" strokeWidth={2.4} />
               </button>
             </div>
           )
         })}
-      </Card>
+      </div>
     </section>
   )
 }
@@ -250,37 +274,49 @@ export function RecentRooms({ rooms, uid }: { rooms: Room[]; uid: string }) {
   if (rooms.length === 0) return null
   const shown = all ? rooms : rooms.slice(0, RECENT_SHOWN)
   return (
-    <section className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Recent games</h2>
-        <button
-          type="button"
-          onClick={() => rooms.forEach((r) => void forgetUserRoom(uid, r.code))}
-          className="text-xs font-medium text-muted-foreground hover:text-foreground"
-        >
-          Clear all
-        </button>
-      </div>
-      <Card className="gap-0 divide-y py-0">
+    <section className="flex flex-col gap-3">
+      <GameSectionTitle
+        action={
+          <button
+            type="button"
+            onClick={() => rooms.forEach((r) => void forgetUserRoom(uid, r.code))}
+            className="gu-chip active:translate-y-px"
+          >
+            Clear all
+          </button>
+        }
+      >
+        Recent games
+      </GameSectionTitle>
+      <div className="gu-panel-flat flex flex-col divide-y divide-[var(--gu-line)] px-1">
         {shown.map(({ code, meta }) => {
           const game = LIVE_GAMES[meta.game]
           // RTDB drops an empty winnerIds array, so a draw arrives without one
           const winners = meta.result ? (meta.result.winnerIds ?? []) : undefined
-          const outcome = !winners ? "Finished" : winners.length === 0 ? "Draw" : winners.includes(uid) ? "You won" : "You lost"
+          const outcome = !winners
+            ? "Finished"
+            : meta.result?.reason === "everyone_left"
+              ? "Everyone left"
+              : winners.length === 0
+                ? "Draw"
+                : winners.includes(uid)
+                  ? "You won"
+                  : "You lost"
           return (
             <div key={code} className="flex items-center">
-              <Link
-                href={`/play/${code}`}
-                className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pr-1 pl-3 transition-colors hover:bg-muted/50"
-              >
-                <LiveGameLogo game={game.id} className="size-9 rounded-lg" />
+              <Link href={`/play/${code}`} className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pr-1 pl-2">
+                <LiveGameLogo game={game.id} className="size-10 rounded-xl" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{game.name}</span>
-                  <span className={cn("block truncate text-xs font-medium", outcome === "You won" ? "text-success" : "text-muted-foreground")}>
-                    {outcome}
-                    {meta.hostId !== uid && (
-                      <span className="font-normal"> · {meta.hostName.split(" ")[0]}&apos;s room</span>
+                  <span className="block truncate font-bold">{game.name}</span>
+                  <span
+                    className={cn(
+                      "block truncate text-xs font-bold",
+                      outcome === "You won" ? "text-[var(--gu-green-deep)]" : "text-[var(--gu-ink-soft)]"
                     )}
+                  >
+                    {outcome === "You won" ? "🏆 " : ""}
+                    {outcome}
+                    {meta.hostId !== uid && <span className="font-semibold"> · {meta.hostName.split(" ")[0]}&apos;s room</span>}
                   </span>
                 </span>
               </Link>
@@ -288,23 +324,19 @@ export function RecentRooms({ rooms, uid }: { rooms: Room[]; uid: string }) {
                 type="button"
                 aria-label={`Remove ${game.name} room ${code} from recent games`}
                 onClick={() => void forgetUserRoom(uid, code)}
-                className="mr-1.5 flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="mr-1 flex size-9 shrink-0 items-center justify-center rounded-full text-[var(--gu-ink-soft)] active:bg-black/5"
               >
-                <HugeiconsIcon icon={Cancel01Icon} className="size-4" />
+                <HugeiconsIcon icon={Cancel01Icon} className="size-4" strokeWidth={2.4} />
               </button>
             </div>
           )
         })}
         {rooms.length > RECENT_SHOWN && (
-          <button
-            type="button"
-            onClick={() => setAll((v) => !v)}
-            className="py-2.5 text-center text-xs font-semibold text-primary hover:bg-muted/50"
-          >
+          <button type="button" onClick={() => setAll((v) => !v)} className="py-2.5 text-center text-sm font-bold text-[var(--gu-blue-deep)]">
             {all ? "Show less" : `Show all (${rooms.length})`}
           </button>
         )}
-      </Card>
+      </div>
     </section>
   )
 }

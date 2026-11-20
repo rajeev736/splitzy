@@ -17,19 +17,11 @@ const LOBBY_CSS = `
 .lb-gloss-face{position:relative;display:block;color:transparent;-webkit-background-clip:text;background-clip:text;
   background-image:linear-gradient(180deg,var(--lb-top,#fff) 0%,var(--lb-top,#fff) 47%,var(--lb-tint) 53%,var(--lb-tint) 100%)}
 
-/* Glass buttons on the scene */
-.lb-glass{background:rgba(12,6,30,.38);color:#fff;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.28);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
-.lb-glass:hover{background:rgba(12,6,30,.5)}
+/* Glass buttons on the scene (no backdrop blur: it re-blurs whatever animates behind, every frame) */
+.lb-glass{background:rgba(12,6,30,.48);color:#fff;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.28)}
+.lb-glass:hover{background:rgba(12,6,30,.6)}
 
-/* Duel: lightning, streaks, the waiting "?" */
-.lb-bolt{filter:drop-shadow(0 0 4px #fff) drop-shadow(0 0 12px rgba(255,255,255,.8)) drop-shadow(0 0 24px rgba(255,255,255,.4))}
-@keyframes lb-flick-a{0%,49%{opacity:1}50%,100%{opacity:0}}
-@keyframes lb-flick-b{0%,49%{opacity:0}50%,100%{opacity:1}}
-.lb-bolt-a{animation:lb-flick-a 160ms steps(1) infinite}
-.lb-bolt-b{opacity:0;animation:lb-flick-b 160ms steps(1) infinite}
-@keyframes lb-dash{0%{transform:translate3d(-30vw,0,0);opacity:0}20%,80%{opacity:.9}100%{transform:translate3d(30vw,0,0);opacity:0}}
-.lb-dash{position:absolute;height:3px;border-radius:3px;background:rgba(255,255,255,.85);animation:lb-dash 1.8s linear infinite}
-.lb-dash-r{animation-direction:reverse}
+/* Duel: the waiting "?" */
 @keyframes lb-ping{0%{transform:scale(.9);opacity:.85}100%{transform:scale(1.55);opacity:0}}
 .lb-ping{position:absolute;inset:0;border-radius:50%;box-shadow:inset 0 0 0 3px rgba(255,255,255,.75);animation:lb-ping 1.8s ease-out infinite}
 @keyframes lb-breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
@@ -41,13 +33,16 @@ const LOBBY_CSS = `
 @keyframes lb-fade-up{0%{transform:translate3d(0,10px,0);opacity:0}100%{transform:none;opacity:1}}
 .lb-fade-up{animation:lb-fade-up 320ms var(--lb-ease) both}
 
-/* Party: hanging banners sway a little, lights twinkle */
-@keyframes lb-sway{0%,100%{transform:rotate(-1.2deg)}50%{transform:rotate(1.2deg)}}
-.lb-sway{transform-origin:50% 0;animation:lb-sway 5s ease-in-out infinite}
-@keyframes lb-twinkle{0%,100%{opacity:.25}50%{opacity:1}}
-.lb-twinkle{animation:lb-twinkle 2.4s ease-in-out infinite}
-@keyframes lb-drift{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(0,-6px,0)}}
-.lb-drift{animation:lb-drift 4s ease-in-out infinite}
+/* Countdown: "Starting in" + the number popping in each second */
+.lb-count-scrim{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 75% 60% at 50% 50%,transparent 40%,rgba(8,3,22,.5) 100%);animation:lb-fade-in 300ms ease-out both}
+@keyframes lb-fade-in{from{opacity:0}to{opacity:1}}
+.lb-count-num{display:flex;align-items:center;justify-content:center;border-radius:999px;
+  background:radial-gradient(circle at 50% 30%,#9b5cff 0%,#6a2ee0 50%,#3b1585 100%);
+  box-shadow:0 0 0 4px #fff,0 0 0 8px rgba(255,255,255,.25),0 10px 22px rgba(20,6,50,.4)}
+@keyframes lb-count{0%{transform:scale(.55);opacity:0}55%{transform:scale(1.1);opacity:1}100%{transform:none;opacity:1}}
+.lb-count{animation:lb-count 340ms var(--lb-ease) both}
+.lb-dot{width:8px;height:8px;border-radius:999px;background:rgba(255,255,255,.35);transition:background-color 200ms,transform 200ms}
+.lb-dot-on{background:#ffd24a;transform:scale(1.25)}
 
 /* The big gold button */
 .lb-gold{position:relative;overflow:hidden;font-family:var(--lb-font);font-weight:900;letter-spacing:.01em;color:#6b3300;
@@ -56,11 +51,11 @@ const LOBBY_CSS = `
   text-shadow:0 1px 0 rgba(255,255,255,.6);transition:transform 120ms,box-shadow 120ms,filter 120ms}
 .lb-gold:active:not(:disabled){transform:translateY(3px);box-shadow:inset 0 0 0 2px rgba(255,255,255,.75),inset 0 -4px 0 rgba(186,92,0,.35),0 2px 0 #a95a00,0 6px 12px rgba(40,10,0,.3)}
 .lb-gold:disabled{filter:grayscale(.85) brightness(.92);color:#4a3a2a;cursor:default}
-.lb-gold::after{content:"";position:absolute;top:-30%;bottom:-30%;width:30%;left:-40%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);transform:skewX(-18deg);animation:lb-shine 3.2s ease-in-out infinite}
+.lb-gold::after{content:"";position:absolute;top:-30%;bottom:-30%;width:30%;left:0;background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);transform:translate3d(-140%,0,0) skewX(-18deg);animation:lb-shine 3.2s ease-in-out infinite}
 .lb-gold:disabled::after{display:none}
-@keyframes lb-shine{0%,60%{left:-40%}100%{left:130%}}
+@keyframes lb-shine{0%,60%{transform:translate3d(-140%,0,0) skewX(-18deg)}100%{transform:translate3d(440%,0,0) skewX(-18deg)}}
 
-@media (prefers-reduced-motion:reduce){.lb-root *,.lb-root *::before,.lb-root *::after{animation:none!important}.lb-bolt-b{opacity:0}}
+@media (prefers-reduced-motion:reduce){.lb-root *,.lb-root *::before,.lb-root *::after{animation:none!important}}
 `
 
 export function LobbyStyles() {

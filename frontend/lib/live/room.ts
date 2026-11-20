@@ -26,7 +26,7 @@ export const roomLink = (code: string) =>
   `${(process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== "undefined" ? window.location.origin : "")).replace(/\/$/, "")}/play/${code}`
 
 /** Seconds from "every seat taken" to the game starting by itself. */
-export const AUTO_START_SECONDS = 5
+export const AUTO_START_SECONDS = 3
 /** Offline this long during a game and the room treats you as gone (your turn is skipped / forfeited). */
 export const ABANDON_MS = 60 * 1000
 /** Rooms that never started disappear after this. */

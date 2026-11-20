@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { preload } from "react-dom"
 
 import type { LudoColour } from "./ludo"
 
@@ -22,6 +23,8 @@ export type Shade = { light: string; mid: string; dark: string }
  */
 export interface BoardImage {
   src: string
+  /** A small copy (384px) for the theme pickers' cards. */
+  thumb?: string
   breaks: [number, number, number, number]
 }
 
@@ -58,14 +61,16 @@ export interface ChessLook {
   board?: string
   /** A picture of the board in its frame, the squares `frameInset` (a fraction of the width) in from each edge. */
   framed?: string
+  /** A smaller copy of `framed`, for the theme pickers' cards. */
+  framedThumb?: string
   frameInset?: number
   /** Tint on the last move's squares. */
   highlight: string
 }
 
 export interface Snakes3DLook {
-  /** Which world the tower is drawn in. */
-  scene: "jungle" | "night"
+  /** Which world the tower is drawn in (devices without WebGL fall back to the plain CSS tower). */
+  scene: "jungle"
   /** A picture for the theme picker. */
   preview: string
   /** The table around the board (CSS background). */
@@ -125,7 +130,7 @@ export const LUDO_THEMES: BoardTheme<LudoLook>[] = [
     blurb: "The board from the box: bold, flat colours",
     price: 1500,
     look: {
-      image: { src: "/boards/ludo-flat.webp", breaks: [12 / 736, 297 / 736, 439 / 736, 724 / 736] },
+      image: { src: "/boards/ludo-flat.webp", thumb: "/boards/ludo-flat-thumb.webp", breaks: [12 / 736, 297 / 736, 439 / 736, 724 / 736] },
       palette: {
         red: flat("#fd0100", "#9b0a10", "#ff6b70"),
         green: flat("#009a2a", "#04621c", "#4fd474"),
@@ -150,7 +155,7 @@ export const LUDO_THEMES: BoardTheme<LudoLook>[] = [
     blurb: "Deep colours, cream track, mandalas in every base",
     price: 2500,
     look: {
-      image: { src: "/boards/ludo-mandala.webp", breaks: [20 / 600, 244 / 600, 356 / 600, 580 / 600] },
+      image: { src: "/boards/ludo-mandala.webp", thumb: "/boards/ludo-mandala-thumb.webp", breaks: [20 / 600, 244 / 600, 356 / 600, 580 / 600] },
       // The picture's top-right base is blue and bottom-left green
       palette: {
         red: flat("#c0272d", "#6b1110", "#e2706f"),
@@ -177,7 +182,7 @@ export const LUDO_THEMES: BoardTheme<LudoLook>[] = [
     blurb: "Embroidered: muted colours and stitched motifs",
     price: 2500,
     look: {
-      image: { src: "/boards/ludo-stitch.webp", breaks: [171 / 1200, 506 / 1200, 694 / 1200, 1029 / 1200] },
+      image: { src: "/boards/ludo-stitch.webp", thumb: "/boards/ludo-stitch-thumb.webp", breaks: [171 / 1200, 506 / 1200, 694 / 1200, 1029 / 1200] },
       safeMarks: { ink: "#3f3f46", fill: "#a8854f" },
       palette: {
         red: flat("#a73046", "#6f0e23", "#e07790"),
@@ -204,7 +209,7 @@ export const LUDO_THEMES: BoardTheme<LudoLook>[] = [
     blurb: "Miniature-painting palette with flowers",
     price: 3500,
     look: {
-      image: { src: "/boards/ludo-mughal.webp", breaks: [86 / 736, 321 / 736, 410 / 736, 650 / 736] },
+      image: { src: "/boards/ludo-mughal.webp", thumb: "/boards/ludo-mughal-thumb.webp", breaks: [86 / 736, 321 / 736, 410 / 736, 650 / 736] },
       // The picture's bases: yellow, pink, maroon, olive (clockwise from top-left)
       palette: {
         red: flat("#d4a238", "#8a6614", "#f0cd7c"),
@@ -241,7 +246,7 @@ export const CHESS_THEMES: BoardTheme<ChessLook>[] = [
     name: "Wood",
     blurb: "Maple and walnut in a dark frame",
     price: 2500,
-    look: { light: "#d7b185", dark: "#382214", framed: "/boards/chess-wood.webp", frameInset: 27 / 1084, highlight: "#d1a52d" },
+    look: { light: "#d7b185", dark: "#382214", framed: "/boards/chess-wood.webp", framedThumb: "/boards/chess-wood-thumb.webp", frameInset: 27 / 1084, highlight: "#d1a52d" },
   },
   {
     id: "chess_green",
@@ -258,24 +263,12 @@ export const SNAKES3D_THEMES: BoardTheme<Snakes3DLook>[] = [
     id: "snakes3d_jungle",
     game: "snakes3d",
     name: "Jungle",
-    blurb: "Premium real 3D: stone pillars, vines and a waterfall",
-    price: 5000,
+    blurb: "Real 3D: stone pillars, vines and a waterfall",
+    price: 0,
     look: {
       scene: "jungle",
       preview: "/boards/snakes3d-jungle.webp",
       table: "radial-gradient(130% 90% at 50% 0%, #1f8a7a 0%, #0f5e57 45%, #08332f 100%)",
-    },
-  },
-  {
-    id: "snakes3d_night",
-    game: "snakes3d",
-    name: "Night tower",
-    blurb: "A terraced tower under the stars",
-    price: 0,
-    look: {
-      scene: "night",
-      preview: "/boards/snakes3d-night.webp",
-      table: "radial-gradient(130% 90% at 50% 0%, #2f6be0 0%, #1a46a8 45%, #0d2463 100%)",
     },
   },
 ]
@@ -308,6 +301,26 @@ export const ownsTheme = (theme: BoardTheme<unknown>, owned: string[] | undefine
   theme.price === 0 || !!owned?.includes(theme.id)
 /** The free theme a game starts on. */
 const defaultTheme = (game: ThemeGame) => (THEMES[game] as BoardTheme<unknown>[]).find((t) => t.price === 0)!.id
+
+/* ── Loading a board's picture early ───────────────────────────────────── */
+
+const warmed = new Map<string, HTMLImageElement>()
+
+/**
+ * Starts fetching and decoding a board picture as soon as a game opens
+ * (before its state has arrived), so the board doesn't pop in late.
+ */
+export function usePreloadImage(src: string | undefined) {
+  if (src) preload(src, { as: "image", fetchPriority: "high" })
+  React.useEffect(() => {
+    if (!src || warmed.has(src)) return
+    const img = new Image()
+    img.decoding = "async"
+    img.src = src
+    warmed.set(src, img)
+    img.decode().catch(() => warmed.delete(src))
+  }, [src])
+}
 
 /* ── Which theme this device plays on ──────────────────────────────────── */
 

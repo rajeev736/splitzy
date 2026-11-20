@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Delete02Icon, Notification01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
+import { useRouter } from "nextjs-toploader/app"
 import { toast } from "sonner"
 
 import { AppHeader } from "@/components/layout/app-header"
@@ -39,6 +40,7 @@ type Filter = (typeof FILTERS)[number]["value"]
 const FILTER_VALUES: Filter[] = ["all", "payments", "friends", "groups"]
 
 function NotificationsContent() {
+  const router = useRouter()
   const { data: notifications, isPending, isError, error, refetch } = useNotifications()
   const { data: expenses } = useExpenses()
   const markRead = useMarkNotificationRead()
@@ -83,6 +85,8 @@ function NotificationsContent() {
     <>
       <AppHeader
         title="Notifications"
+        showBack
+        onBack={() => (window.history.length > 1 ? router.back() : router.replace("/home"))}
         rightAction={
           <div className="flex items-center gap-2">
             {notifications.some((n) => !n.read) && (

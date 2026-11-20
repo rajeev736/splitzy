@@ -14,6 +14,7 @@ import {
 import { useFriendRequests, useGroupInvites, useGroups } from "@/hooks/queries"
 import type { AppNotification } from "@/lib/types"
 import { NotificationIcon } from "./notification-icon"
+import { RoomInviteAction } from "./room-invite-action"
 import { usePaymentReportActions } from "./use-payment-report-actions"
 
 const CTA = "h-11 w-full"
@@ -76,13 +77,9 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
   }
   const goToExpenseOrHistory = () => go(data?.expenseId ? `/expenses/${data.expenseId}` : data?.groupId ? `/groups/${data.groupId}` : "/history")
 
-  /* Live room invite: the room shell handles full / started / ended on arrival */
-  if (notif.type === "ROOM_INVITE" && data?.roomCode) {
-    return (
-      <Button size="lg" className={CTA} onClick={() => go(`/play/${data.roomCode}`)}>
-        Join room
-      </Button>
-    )
+  /* Live room invite: checked against the room, so it never offers a dead Join */
+  if (notif.type === "ROOM_INVITE" && (data?.roomCode || data?.lounge)) {
+    return <RoomInviteAction notif={notif} size="lg" onGo={onClose} />
   }
 
   /* Group invitation: accept / decline (or view if already a member) */

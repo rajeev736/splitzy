@@ -110,6 +110,37 @@
       }
     },
 
+    "lounges": {
+      "$groupId": {
+        ".read": "auth != null",
+        "room": {
+          ".write": "auth != null",
+          ".validate": "newData.isString() && newData.val().matches(/^[A-HJ-NP-Z2-9]{6}$/) && root.child('rooms/' + newData.val() + '/meta/hostId').val() === auth.uid"
+        },
+        "game": {
+          ".write": "auth != null",
+          ".validate": "newData.isString() && newData.val().matches(/^(scribble|ludo|chess|checkers|tictactoe|snakes|snakes3d|sudoku)$/)"
+        },
+        "by": { ".write": "auth != null", ".validate": "newData.val() === auth.uid" },
+        "byName": { ".write": "auth != null", ".validate": "newData.isString() && newData.val().length <= 60" },
+        "at": { ".write": "auth != null", ".validate": "newData.isNumber() && newData.val() <= now" },
+        "calledAt": { ".write": "auth != null", ".validate": "newData.isNumber() && newData.val() <= now + 60000" },
+        "here": {
+          "$uid": {
+            ".write": "auth != null && $uid === auth.uid",
+            ".validate": "newData.hasChildren(['name', 'at']) && newData.child('name').isString() && newData.child('name').val().length <= 60 && newData.child('at').isNumber()",
+            "photo": { ".validate": "newData.isString() && newData.val().length <= 2000" },
+            "avatar": { ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9_-]{1,40}$/)" },
+            "frame": { ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9_-]{1,40}$/)" },
+            "name": { ".validate": true },
+            "at": { ".validate": true },
+            "$other": { ".validate": false }
+          }
+        },
+        "$other": { ".validate": false }
+      }
+    },
+
     "chats": {
       "$chatId": {
         ".read": "auth != null && (($chatId.beginsWith('dm_') && ($chatId.beginsWith('dm_' + auth.uid + '_') || $chatId.endsWith('_' + auth.uid))) || ($chatId.beginsWith('g_') && root.child('chatMembers/' + $chatId + '/' + auth.uid).val() === true))",

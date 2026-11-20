@@ -5,7 +5,7 @@ import { useParams } from "next/navigation"
 import { Clock01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
-import { AppHeader } from "@/components/layout/app-header"
+import { GameScreen, GameTopBar } from "@/components/game-ui/kit"
 import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
 import { CoinTossPicker, emptyCoinCalls, isCoinComplete } from "@/components/games/coin-toss-picker"
@@ -59,9 +59,9 @@ export default function ChallengePage() {
   const exitGame = useGameExit()
 
   return (
-    <>
-      <AppHeader title={challenge ? GAMES[challenge.game].name : "Game"} showBack onBack={exitGame} />
-      <PageContainer className="max-w-xl gap-4 pb-24">
+    <GameScreen>
+      <GameTopBar title={challenge ? GAMES[challenge.game].name : "Game"} subtitle="Challenge" onBack={exitGame} />
+      <PageContainer className="max-w-xl gap-4 pt-2 pb-24">
         {challenges.isPending ? (
           <ListSkeleton rows={3} />
         ) : challenges.isError ? (
@@ -74,7 +74,7 @@ export default function ChallengePage() {
           <ChallengeBody challenge={challenge} uid={user.uid} />
         )}
       </PageContainer>
-    </>
+    </GameScreen>
   )
 }
 

@@ -106,7 +106,7 @@ service cloud.firestore {
     function themePrice(id) {
       return {
         'ludo_flat': 1500, 'ludo_mandala': 2500, 'ludo_stitch': 2500, 'ludo_mughal': 3500,
-        'chess_wood': 2500, 'chess_green': 2000, 'snakes3d_jungle': 5000,
+        'chess_wood': 2500, 'chess_green': 2000,
         'tictactoe_candy': 2000, 'tictactoe_arcade': 2000, 'tictactoe_neon': 1500,
         'tictactoe_flat': 1500, 'tictactoe_pastel': 2000, 'tictactoe_metal': 2500
       }.get(id, 0);

@@ -46,7 +46,10 @@ export function ThemePicture({ theme, className }: { theme: BoardTheme<unknown>;
         <img
           src={src}
           alt=""
+          width={400}
+          height={400}
           loading="lazy"
+          decoding="async"
           onError={() => setFailed(src)}
           className="block size-full object-cover object-top"
         />
@@ -69,7 +72,7 @@ export function BoardThemeThumb({ theme }: { theme: BoardTheme<unknown> }) {
     const f = look.frameInset ?? 0
     const k = 2 / (1 - 2 * f) // the picture's width, in previews
     const squares = look.framed
-      ? `url(${look.framed}) ${((f * k) / (k - 1)) * 100}% ${((f * k) / (k - 1)) * 100}% / ${k * 100}% no-repeat`
+      ? `url(${look.framedThumb ?? look.framed}) ${((f * k) / (k - 1)) * 100}% ${((f * k) / (k - 1)) * 100}% / ${k * 100}% no-repeat`
       : look.board
         ? `url(${look.board}) 0 0 / 200% 200% no-repeat`
         : `repeating-conic-gradient(${look.dark} 0 25%, ${look.light} 0 50%) 0 0 / 50% 50%`
@@ -98,7 +101,15 @@ export function BoardThemeThumb({ theme }: { theme: BoardTheme<unknown> }) {
   if (look.image)
     return (
       // eslint-disable-next-line @next/next/no-img-element -- a small static picture; no optimising needed
-      <img src={look.image.src} alt="" loading="lazy" className="block aspect-square w-full rounded-md object-cover" />
+      <img
+        src={look.image.thumb ?? look.image.src}
+        alt=""
+        width={384}
+        height={384}
+        loading="lazy"
+        decoding="async"
+        className="block aspect-square h-auto w-full rounded-md object-cover"
+      />
     )
   return (
     <div className="rounded-md p-1" style={{ background: look.table }}>

@@ -161,7 +161,7 @@ function CharacterCard({
       onClick={onClick}
       aria-label={`${def.name}, ${def.tier} character`}
       className={cn(
-        "flex min-w-0 flex-col overflow-hidden rounded-xl border border-card-stroke bg-card text-left shadow-xs transition-[background-color,transform] hover:bg-subtle-hover active:scale-[0.98]",
+        "flex min-w-0 flex-col overflow-hidden rounded-xl border border-card-stroke bg-card text-left shadow-xs transition-[background-color,transform] [contain-intrinsic-height:auto_12rem] [content-visibility:auto] hover:bg-subtle-hover active:scale-[0.98]",
         wearing && "border-primary ring-2 ring-primary/20"
       )}
     >

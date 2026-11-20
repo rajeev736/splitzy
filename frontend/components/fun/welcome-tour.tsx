@@ -84,7 +84,7 @@ const STEPS: TourStep[] = [
     route: "/challenges",
     target: "game-tabs",
     title: "Games",
-    text: "Live: play Scribble, Ludo, Chess and more with friends in real time. Discounted: challenge someone who owes you — if they win, they pay less. Just for fun: play anyone, and put coins on it.",
+    text: "Switch to Games at the very top. Live: play Scribble, Ludo, Chess and more with friends in real time — or drop into your group's always-open game room. Discounted: challenge someone who owes you — if they win, they pay less. Just for fun: play anyone, and put coins on it.",
   },
   {
     // Live is the default tab; the challenge button lives on the others

@@ -159,7 +159,8 @@ function FrameCard({
       onClick={onClick}
       aria-label={`${info.name} frame`}
       className={cn(
-        "relative flex min-w-0 flex-col items-center gap-1 rounded-xl border border-card-stroke bg-card px-1 pt-1 pb-2.5 shadow-xs transition-[background-color,transform] hover:bg-subtle-hover active:scale-[0.97]",
+        // Off screen, a card (and its frame's animation) isn't rendered: keeps a long, animated grid smooth to scroll
+        "relative flex min-w-0 flex-col items-center gap-1 rounded-xl border border-card-stroke bg-card px-1 pt-1 pb-2.5 shadow-xs transition-[background-color,transform] [contain-intrinsic-height:auto_8.5rem] [content-visibility:auto] hover:bg-subtle-hover active:scale-[0.97]",
         (wearing || selected) && "border-primary ring-2 ring-primary/20"
       )}
     >

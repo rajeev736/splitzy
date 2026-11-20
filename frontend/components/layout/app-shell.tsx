@@ -11,6 +11,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { trackGameRoute } from "@/lib/games-nav"
 import { cn } from "@/lib/utils"
 import { AppSidebar } from "./app-sidebar"
+import { ModeSwitch } from "./mode-switch"
 import { BottomNav } from "./bottom-nav"
 import { isBottomNavPage, NAV_ITEMS, showsAddExpenseFab } from "./nav-items"
 
@@ -87,6 +88,12 @@ export function AppShell({ children, hideNav = false }: { children: React.ReactN
             showBottomNav ? (showsAddExpenseFab(pathname) ? "pb-36 md:pb-8" : "pb-20 md:pb-8") : "md:pb-8"
           )}
         >
+          {/* The money tabs: Split | Games at the very top (the Games hub draws its own) */}
+          {showBottomNav && (
+            <div className="flex justify-center bg-background px-4 pt-[calc(0.5rem+env(safe-area-inset-top,0px))] pb-0.5">
+              <ModeSwitch />
+            </div>
+          )}
           {children}
         </main>
         {showBottomNav && <BottomNav />}

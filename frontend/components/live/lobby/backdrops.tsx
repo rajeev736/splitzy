@@ -7,7 +7,8 @@ import type { LiveGameId } from "@/lib/live/types"
  * vector layers so they paint fast on any phone: a wall (CSS gradient), a
  * strip of decorations along the top, props standing at the left and right
  * edges, and a floor. Layers are anchored to the edges, so the same scene
- * works on a tall phone and a wide desktop. Purely decorative.
+ * works on a tall phone and a wide desktop. Purely decorative, and static:
+ * no animation, no filters, so the lobby stays smooth on mid-range phones.
  *
  * - Ludo: a festive games room — bunting, fairy lights, a board rug, dice
  * - Snakes & Ladders: a jungle clearing — vines, leaves, a ladder, a snake
@@ -148,11 +149,7 @@ function LudoRoom() {
           {/* Paper lanterns at the corners */}
           {main &&
             [22, 378].map((x, i) => (
-              <g
-                key={x}
-                className="lb-drift"
-                style={{ animationDelay: `${-i * 1.6}s` }}
-              >
+              <g key={x}>
                 <line
                   x1={x}
                   y1="0"
@@ -194,8 +191,7 @@ function LudoRoom() {
           {Array.from({ length: 14 }, (_, i) => (
             <circle
               key={i}
-              className="lb-twinkle"
-              style={{ animationDelay: `${-(i % 5) * 0.5}s` }}
+              opacity={[1, 0.45, 0.8, 0.3, 0.65][i % 5]}
               cx={14 + i * 28}
               cy={96 + Math.sin(i * 0.9) * 6}
               r="2.6"
@@ -365,11 +361,11 @@ function Jungle({ temple = false }: { temple?: boolean }) {
           ].map(([x, y], i) => (
             <span
               key={i}
-              className="lb-twinkle absolute size-1.5 rounded-full bg-[#eaff8a] shadow-[0_0_8px_3px_rgba(234,255,138,.6)]"
+              className="absolute size-1.5 rounded-full bg-[#eaff8a] shadow-[0_0_8px_3px_rgba(234,255,138,.6)]"
               style={{
                 left: `${x}%`,
                 top: `${y}%`,
-                animationDelay: `${-i * 0.7}s`,
+                opacity: [0.9, 0.5, 0.75][i % 3],
               }}
             />
           ))}
@@ -572,11 +568,10 @@ function Study() {
           ].map(([d, x, y], i) => (
             <span
               key={i}
-              className="lb-drift lb-font absolute text-2xl font-black text-white/15"
+              className="lb-font absolute text-2xl font-black text-white/15"
               style={{
                 left: `${x}%`,
                 top: `${y}%`,
-                animationDelay: `${-i * 0.6}s`,
               }}
             >
               {d}

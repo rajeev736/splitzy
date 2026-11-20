@@ -34,7 +34,7 @@ import { ABANDON_MS } from "@/lib/live/room"
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import { playSound, useOnChange } from "@/lib/live/sound"
-import { useBoardTheme } from "@/lib/live/themes"
+import { useBoardTheme, usePreloadImage } from "@/lib/live/themes"
 import { useWallet } from "@/hooks/use-fun"
 import { stateTransaction, updateState } from "@/services/live-rooms"
 import { PlayerAvatar } from "../player-avatar"
@@ -72,6 +72,8 @@ export function ChessGame({
   const { data: state } = useRoomNode<ChessState>(code, "state")
   const wallet = useWallet()
   const chessTheme = useBoardTheme("chess", wallet?.themes)
+  // Fetch and decode the board picture while the game state is still loading
+  usePreloadImage(chessTheme.look.framed ?? chessTheme.look.board)
   // Sounds: a wooden knock per move, a sharper one for a capture, a chime for check
   useOnChange(state?.moves?.length ?? 0, (n, was) => {
     if (n <= was) return
@@ -364,7 +366,7 @@ export function ChessGame({
   )
 
   return (
-    <div className="mx-auto flex w-full max-w-[min(92vw,30rem)] flex-col gap-2">
+    <div className="mx-auto flex w-full max-w-[min(92vw,30rem)] flex-col gap-2 md:max-w-[clamp(30rem,calc(100svh-16rem),44rem)]">
       {chip(topPlayer, topColour)}
 
       <ChessBoard

@@ -94,7 +94,7 @@ export function Inventory({
       </section>
 
       <Tabs value={tab} onValueChange={(v) => goTo(v as Tab)} className="gap-4">
-        <TabsList className="sticky top-[3.75rem] z-10 grid w-full grid-cols-5 bg-background/90 backdrop-blur">
+        <TabsList className="sticky top-[3.75rem] z-10 grid w-full grid-cols-5 bg-background/95">
           {TABS.map((t) => (
             <TabsTrigger key={t.id} value={t.id} className="px-0.5 max-[359px]:text-[11px]">
               {t.label}

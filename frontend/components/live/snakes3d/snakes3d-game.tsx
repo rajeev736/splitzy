@@ -5,7 +5,7 @@ import dynamic from "next/dynamic"
 
 import { Card, CardContent } from "@/components/ui/card"
 import { useWallet } from "@/hooks/use-fun"
-import { SNAKES3D_THEMES, useBoardTheme } from "@/lib/live/themes"
+import { useBoardTheme } from "@/lib/live/themes"
 import { Spinner } from "@/components/ui/spinner"
 import { describeLast, ordinal, SNAKES_MAX_MISSED, type SnakesState } from "@/lib/live/snakes"
 import { playSound, useOnChange, type SnakesSound } from "@/lib/live/sound"
@@ -18,9 +18,10 @@ import { ThrowOverlay, ThrowPicker } from "../throwables"
 import { useStageFit } from "../use-stage-fit"
 import { Snakes3DBoard } from "./snakes3d-board"
 
-/** The jungle in real 3D: three.js loads only when this theme is on. */
-const SNAKES3D_NIGHT_TABLE = SNAKES3D_THEMES[1].look.table
+/** The table around the plain CSS tower, shown on devices without WebGL. */
+const FALLBACK_TABLE = "radial-gradient(130% 90% at 50% 0%, #2f6be0 0%, #1a46a8 45%, #0d2463 100%)"
 
+/** The jungle in real 3D (three.js loads with it). */
 const JungleBoard = dynamic(() => import("../snakes3d-jungle/jungle-board"), {
   ssr: false,
   loading: () => (
@@ -80,9 +81,9 @@ export function Snakes3DTable({ code, uid, me, state, myTurn, canRoll, rolling, 
   const stageRef = useStageFit()
   const wallet = useWallet()
   const theme = useBoardTheme("snakes3d", wallet?.themes)
-  // No WebGL on this device: the jungle gives way to the night tower
+  // No WebGL on this device: the jungle gives way to the plain CSS tower
   const [noGl, setNoGl] = React.useState(false)
-  const jungle = theme.look.scene === "jungle" && !noGl
+  const jungle = !noGl
 
   // The face each player's dice rests on: their last roll
   const last = state.last
@@ -214,7 +215,7 @@ export function Snakes3DTable({ code, uid, me, state, myTurn, canRoll, rolling, 
     >
       <div
         className="flex min-h-0 flex-1 flex-col rounded-2xl p-2 text-white shadow-lg ring-1 ring-black/10 sm:p-3"
-        style={{ background: jungle ? theme.look.table : SNAKES3D_NIGHT_TABLE }}
+        style={{ background: jungle ? theme.look.table : FALLBACK_TABLE }}
       >
         <div className={cn("grid gap-2 px-1 pb-2", rowCols(topRow.length))}>
           {topRow.map((id, i) => seat(id, alignOf(i, topRow.length), topRow.length > 2))}

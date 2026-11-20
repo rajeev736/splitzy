@@ -5,9 +5,7 @@ import { useRouter } from "nextjs-toploader/app"
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import { GameButton } from "@/components/game-ui/kit"
 import { Spinner } from "@/components/ui/spinner"
 import { parseRoomCode, ROOM_CODE_LENGTH } from "@/lib/live/room"
 
@@ -49,46 +47,37 @@ export function JoinRoomCard() {
   }
 
   return (
-    <Card className="gap-0 py-0">
-      {/* One line: a code or a pasted link, and go */}
-      <form onSubmit={submit} className="flex flex-col gap-2 p-2.5" noValidate>
-        <div className="flex gap-2">
-          <Input
-            value={value}
-            onChange={(e) => {
-              setValue(tidy(e.target.value))
-              setError(null)
-            }}
-            placeholder="Have a room code?"
-            aria-label="Room code"
-            aria-invalid={error ? true : undefined}
-            autoCapitalize="characters"
-            autoComplete="off"
-            autoCorrect="off"
-            spellCheck={false}
-            enterKeyHint="go"
-            // A drag across the field selects text; it mustn't swipe the tab
-            data-no-swipe
-            className="h-11 flex-1 font-mono text-base font-semibold tracking-[0.25em] uppercase placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:normal-case"
-          />
-          <Button
-            type="submit"
-            className="h-11 shrink-0"
-            disabled={going || value.length === 0}
-          >
-            {going ? <Spinner /> : null}
-            Join
-            {!going && (
-              <HugeiconsIcon icon={ArrowRight01Icon} data-icon="inline-end" />
-            )}
-          </Button>
-        </div>
-        {error && (
-          <p role="alert" className="text-xs text-destructive">
-            {error}
-          </p>
-        )}
-      </form>
-    </Card>
+    <form onSubmit={submit} className="gu-panel-flat flex flex-col gap-2 p-2.5" noValidate>
+      <div className="flex gap-2">
+        <input
+          value={value}
+          onChange={(e) => {
+            setValue(tidy(e.target.value))
+            setError(null)
+          }}
+          placeholder="Got a room code?"
+          aria-label="Room code"
+          aria-invalid={error ? true : undefined}
+          autoCapitalize="characters"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          enterKeyHint="go"
+          // A drag across the field selects text; it mustn't swipe the tab
+          data-no-swipe
+          className="gu-input min-w-0 flex-1 text-lg tracking-[0.25em] uppercase placeholder:text-base placeholder:tracking-normal placeholder:normal-case"
+        />
+        <GameButton type="submit" tone="green" className="shrink-0" disabled={going || value.length === 0}>
+          {going ? <Spinner className="size-5" /> : null}
+          Join
+          {!going && <HugeiconsIcon icon={ArrowRight01Icon} className="size-5" strokeWidth={2.6} />}
+        </GameButton>
+      </div>
+      {error && (
+        <p role="alert" className="px-2 text-xs font-bold text-[var(--gu-red-deep)]">
+          {error}
+        </p>
+      )}
+    </form>
   )
 }

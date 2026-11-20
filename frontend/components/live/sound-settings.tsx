@@ -3,6 +3,7 @@
 import { VolumeHighIcon, VolumeOffIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
+import { GameChoice, GameSwitch } from "@/components/game-ui/kit"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -60,5 +61,41 @@ export function SoundMenu() {
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+/**
+ * The same settings, laid out for the game's pause panel: an ON / OFF switch
+ * and the packs as big cards (no menus inside a game).
+ */
+export function SoundSettingsPanel() {
+  const { on, pack } = useSoundSettings()
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-2.5 text-[var(--gu-brown)]">
+          <HugeiconsIcon icon={on ? VolumeHighIcon : VolumeOffIcon} className="size-7" strokeWidth={2} />
+          <span className="gu-label">Sounds</span>
+        </span>
+        <GameSwitch checked={on} onChange={(v) => setSoundSettings({ on: v })} label="Game sounds" />
+      </div>
+      <div className="grid grid-cols-2 gap-2.5" role="radiogroup" aria-label="Sound pack">
+        {SOUND_PACKS.map((p) => (
+          <GameChoice
+            key={p.value}
+            role="radio"
+            selected={on && pack === p.value}
+            onClick={() => {
+              setSoundSettings({ pack: p.value as SoundPack, on: true })
+              playSound(p.value === "classic" ? "dice" : "captured")
+            }}
+            className="px-2.5 py-2 text-left"
+          >
+            <span className="block truncate text-sm font-bold">{p.label}</span>
+            <span className="line-clamp-2 text-[11px] leading-tight font-medium text-[var(--gu-ink-soft)]">{p.blurb}</span>
+          </GameChoice>
+        ))}
+      </div>
+    </div>
   )
 }

@@ -13,6 +13,7 @@ import { LudoDice } from "../ludo/ludo-dice"
 import { Seat } from "../ludo/ludo-game"
 import { ThrowOverlay, ThrowPicker } from "../throwables"
 import { useStageFit } from "../use-stage-fit"
+import { usePreloadImage } from "@/lib/live/themes"
 import { useSnakesGame } from "./use-snakes-game"
 
 /** Square n (1–100) → its centre on the 10×10 board (row 1 at the bottom, rows snake left/right). */
@@ -26,9 +27,11 @@ export function squarePoint(n: number): { x: number; y: number } {
 /** Start: a strip under the board. */
 const startPoint = (seat: number) => ({ x: 0.55 + seat * 0.62, y: 10.55 })
 
+const BOARD_ART = "/boards/snakes-classic.webp"
+
 /** The board: the picture (its ladders and snakes are the ones in LADDERS / SNAKES). */
 export const SnakesBoardArt = React.memo(function Board() {
-  return <image href="/boards/snakes-classic.webp" x={0} y={0} width={10} height={10} preserveAspectRatio="none" />
+  return <image href={BOARD_ART} x={0} y={0} width={10} height={10} preserveAspectRatio="none" />
 })
 
 /**
@@ -89,6 +92,8 @@ function useWalk(state: SnakesState | null | undefined, onSound: (s: SnakesSound
 /** Snakes & Ladders on a flat 10×10 board, 2–5 players. */
 export function SnakesGame(props: LiveGameProps) {
   const game = useSnakesGame(props)
+  // Fetch and decode the board picture while the game state is still loading
+  usePreloadImage(BOARD_ART)
   if (!game.state) {
     return (
       <div className="flex justify-center py-16">
@@ -204,12 +209,13 @@ export function SnakesTable({ code, uid, me, state, canRoll, rolling, roll, byId
   return (
     <div
       ref={stageRef}
-      style={{ "--board-reserve": "236px", "--board-reserve-desk": "425px" } as React.CSSProperties}
+      style={{ "--board-reserve": "236px", "--board-reserve-desk": "310px" } as React.CSSProperties}
       className={cn(
         "flex flex-col gap-2.5",
         "max-md:fixed max-md:inset-x-0 max-md:top-(--stage-top) max-md:z-20 max-md:h-(--stage-h) max-md:justify-center max-md:overflow-hidden max-md:bg-background max-md:p-2",
         "max-md:[--board-w:min(100%,calc(var(--stage-h)_-_var(--board-reserve)))]",
-        "md:[--board-w:min(100%,calc(100svh_-_var(--board-reserve-desk)))]"
+        // Big screens: out of the measured height between the header and the dock
+        "md:[--board-w:min(100%,calc(var(--stage-h,100svh)_-_var(--board-reserve-desk)))]"
       )}
     >
       <div
@@ -217,7 +223,7 @@ export function SnakesTable({ code, uid, me, state, canRoll, rolling, roll, byId
         style={{ background: "radial-gradient(130% 90% at 50% 0%, #16a34a 0%, #15803d 40%, #052e16 100%)" }}
       >
         <div className={cn("grid gap-2 px-1 pb-2", cols(top.length))}>{top.map((u, i) => seat(u, align(i, top.length), top.length > 2))}</div>
-        <div className="mx-auto w-(--board-w) max-w-[min(94vw,32rem)] rounded-xl bg-white/15 p-1 shadow-[0_12px_30px_rgb(0_0_0/0.4)]">
+        <div className="mx-auto w-(--board-w) max-w-[min(94vw,32rem)] rounded-xl bg-white/15 md:max-w-full p-1 shadow-[0_12px_30px_rgb(0_0_0/0.4)]">
           <svg viewBox="-0.15 -0.8 10.3 12" className="block h-auto w-full select-none" role="img" aria-label="Snakes and ladders board">
             <rect x={-0.05} y={-0.05} width={10.1} height={10.1} rx={0.15} fill="#1f2937" />
             <SnakesBoardArt />

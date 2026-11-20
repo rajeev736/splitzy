@@ -51,6 +51,7 @@ import { RoomChat } from "../room-chat"
 import { SoundMenu } from "../sound-settings"
 import { ReactionsOverlay, StickerBar } from "../stickers"
 import { VoiceBar } from "../voice-bar"
+import { CountdownScrim, LobbyCountdown } from "./countdown"
 import { DuelScene } from "./duel-scene"
 import { Gloss, LobbyStyles } from "./lobby-styles"
 import { PartyScene } from "./party-scene"
@@ -70,6 +71,7 @@ export function LobbyView({
   me,
   onLeft,
   onLeaving,
+  topAction,
 }: {
   room: LiveRoom
   meta: RoomMeta
@@ -78,8 +80,10 @@ export function LobbyView({
   onLeft: () => void
   /** Right before leaving, so your own exit isn't taken for a kick. */
   onLeaving?: () => void
+  /** One more button in the top bar (the group game room: switch game). */
+  topAction?: React.ReactNode
 }) {
-  const { code, players, uid, isHost, now, serverNow, voice } = room
+  const { code, players, uid, isHost, serverNow, voice } = room
   const game = LIVE_GAMES[meta.game]
   const duel = meta.maxPlayers === 2
   const team = isTeamRoom(meta)
@@ -94,10 +98,8 @@ export function LobbyView({
   const active = players.filter((p) => !p.left)
   const ready = canStart(meta, players)
   const seated = seatedPlayers(meta, players).length
-  const countdown =
-    meta.status === "countdown" && meta.startsAt
-      ? Math.max(0, Math.ceil((meta.startsAt - now) / 1000))
-      : null
+  const startsAt =
+    meta.status === "countdown" && meta.startsAt ? meta.startsAt : null
 
   const leave = async () => {
     setLeaving(true)
@@ -148,7 +150,8 @@ export function LobbyView({
       isHost={isHost}
       ready={ready}
       seated={seated}
-      countdown={countdown}
+      startsAt={startsAt}
+      serverNow={serverNow}
       pending={startPending}
       onStart={start}
       onInvite={() => setInvite(true)}
@@ -159,10 +162,12 @@ export function LobbyView({
     <div className="lb-root relative isolate h-svh min-h-[30rem] w-full overflow-hidden bg-[#150a2e] text-white md:h-[calc(100svh-2rem)]">
       <LobbyStyles />
       <ReactionsOverlay code={code} />
+      {startsAt !== null && <CountdownScrim />}
 
       {duel ? (
         <DuelScene
           seats={[playerInSeat(active, 0), playerInSeat(active, 1)]}
+          counting={startsAt !== null}
           meId={uid}
           hostId={meta.hostId}
           canKick={isHost}
@@ -228,6 +233,7 @@ export function LobbyView({
             />
           </button>
         </div>
+        {topAction}
         <button
           type="button"
           onClick={() => setInvite(true)}
@@ -261,7 +267,7 @@ export function LobbyView({
       )}
 
       {/* Dock: voice, sounds, stickers, chat */}
-      <div className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t bg-background/92 text-foreground backdrop-blur-sm">
+      <div className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t bg-background text-foreground">
         {chat.preview && !stickers && (
           <button
             type="button"
@@ -395,7 +401,8 @@ function StartBar({
   isHost,
   ready,
   seated,
-  countdown,
+  startsAt,
+  serverNow,
   pending,
   onStart,
   onInvite,
@@ -408,7 +415,9 @@ function StartBar({
   isHost: boolean
   ready: boolean
   seated: number
-  countdown: number | null
+  /** Counting down to this (server time). */
+  startsAt: number | null
+  serverNow: () => number
   pending: boolean
   onStart: () => void
   onInvite: () => void
@@ -416,29 +425,10 @@ function StartBar({
   const full = isFull(meta, players)
   const benched = benchedPlayer(meta, players)
 
-  if (countdown !== null)
+  // Every seat taken: a big 3 · 2 · 1 under the players (it's only a few seconds, nothing to press)
+  if (startsAt !== null)
     return (
-      <div className="flex flex-col items-center gap-2" aria-live="polite">
-        <Gloss
-          key={countdown}
-          size={30}
-          rim="#5b1a7a"
-          tint="#ffe08a"
-          className="lb-pop"
-        >
-          {countdown > 0 ? `Starting in ${countdown}` : "Here we go!"}
-        </Gloss>
-        {isHost && !duel && (
-          <button
-            type="button"
-            onClick={onStart}
-            disabled={pending}
-            className="lb-glass rounded-full px-4 py-1.5 text-sm font-bold"
-          >
-            Start now
-          </button>
-        )}
-      </div>
+      <LobbyCountdown key={startsAt} startsAt={startsAt} serverNow={serverNow} />
     )
 
   // Two players: nothing to press — it starts once the opponent is in

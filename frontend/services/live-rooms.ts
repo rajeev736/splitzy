@@ -16,6 +16,7 @@ import {
 import { AppError } from "@/lib/errors"
 import { rtdb } from "@/lib/firebase/config"
 import { defaultOptions, seatOrder } from "@/lib/live/games"
+import { EVERYONE_LEFT_REASON } from "@/lib/live/liveness"
 import { AUTO_START_SECONDS, isJoinable, randomRoomCode } from "@/lib/live/room"
 import { canMoveTo, canStart, isTeamRoom, resolveClash, seatsFor } from "@/lib/live/seats"
 import { initialStateFor } from "@/lib/live/start"
@@ -86,14 +87,42 @@ export const setPlayerLevel = (code: string, uid: string, level: number) =>
 
 /* ── Rooms ───────────────────────────────────────────────────────────── */
 
+/** Creating a room that takes longer than this has lost the game server: say so instead of spinning forever. */
+const CREATE_TIMEOUT_MS = 15_000
+
+/** Rejects with `message` if `work` hasn't settled in `ms`. */
+function withTimeout<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const id = setTimeout(() => reject(new AppError(message)), ms)
+    work.then(
+      (v) => {
+        clearTimeout(id)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(id)
+        reject(e)
+      }
+    )
+  })
+}
+
 /** Opens a room for `game` with you in seat 0. Returns its code. */
-export async function createRoom(
+export function createRoom(
   user: UserProfile,
   game: LiveGameId,
   picked: RoomOptions = {},
   /** Your game level, for your seat (lib/live/levels). */
   level?: number
 ): Promise<string> {
+  return withTimeout(
+    openRoom(user, game, picked, level),
+    CREATE_TIMEOUT_MS,
+    "Couldn't reach the game server — check your internet and try again"
+  )
+}
+
+async function openRoom(user: UserProfile, game: LiveGameId, picked: RoomOptions, level?: number): Promise<string> {
   const options = defaultOptions(game, picked)
   // Team Ludo is always four seats (lib/live/seats)
   const { minPlayers, maxPlayers } = seatsFor(game, options)
@@ -116,9 +145,8 @@ export async function createRoom(
     )
     if (!res.committed) continue
     await set(roomRef(code, `players/${user.uid}`), playerEntry(user, 0, level))
-    await set(ref(liveDb(), `userRooms/${user.uid}/${code}`), ts()).catch(
-      () => undefined
-    )
+    // Your list of rooms: best effort, never holds up opening the room
+    void set(ref(liveDb(), `userRooms/${user.uid}/${code}`), ts()).catch(() => undefined)
     return code
   }
   throw new AppError("Couldn't open a room — please try again")
@@ -372,6 +400,24 @@ export async function cleanupRoom(code: string): Promise<void> {
 
 /** Deletes a room you host (lobby or ended) or any room past its time-to-live. */
 export const deleteRoom = (code: string) => remove(roomRef(code))
+
+/**
+ * A room everyone walked away from (lib/live/liveness: nobody has had it open
+ * for a long while), closed by a participant who sees it in a list: a game
+ * ends with no winner, a lobby closes (the host deletes it; anyone else gives
+ * up their seat). Best effort — whoever sees it next tries again.
+ */
+export async function closeAbandonedRoom(uid: string, meta: RoomMeta): Promise<void> {
+  const code = meta.code
+  if (meta.status === "playing") {
+    await endGame(code, { winnerIds: [], reason: EVERYONE_LEFT_REASON })
+    return
+  }
+  if (meta.status === "ended") return
+  if (meta.hostId === uid) await deleteRoom(code)
+  else await leaveRoom(uid, code)
+  await remove(ref(liveDb(), `userRooms/${uid}/${code}`)).catch(() => undefined)
+}
 
 /** Opens a fresh room with the same game and settings, and points this room at it. */
 export async function rematch(
