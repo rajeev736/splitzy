@@ -52,6 +52,17 @@ export const roomRef = (code: string, path?: string): DatabaseReference =>
 
 const userRoomsRef = (uid: string) => ref(liveDb(), `userRooms/${uid}`)
 
+/**
+ * Your photo as a room may carry it: a link, never an uploaded picture (those
+ * are data URLs tens of KB long, which the rules refuse — a seat carrying one
+ * would be rejected, and you'd bounce out of the room as if removed).
+ * Without it, your character or initials show instead.
+ */
+export function roomPhoto(url: string | null | undefined): string | undefined {
+  if (!url || url.startsWith("data:") || url.length > 2000) return undefined
+  return url
+}
+
 /** The server's idea of "now", as a write-time placeholder. */
 const ts = () => serverTimestamp() as unknown as number
 
@@ -64,8 +75,9 @@ function playerEntry(user: UserProfile, seat: number, level?: number): RoomPlaye
     online: true,
     lastSeen: ts(),
   }
-  // The database rejects `undefined` values: only send the photo when there is one
-  if (user.photoURL) entry.photo = user.photoURL
+  // The database rejects `undefined` values: only send the photo when there is one (and it fits)
+  const photo = roomPhoto(user.photoURL)
+  if (photo) entry.photo = photo
   // The game profile: character and frame, drawn on every device without lookups
   if (user.gameAvatar) entry.avatar = user.gameAvatar
   if (user.frame) entry.frame = user.frame
@@ -182,7 +194,8 @@ export async function joinRoom(
       name: user.displayName,
       ...gameProfilePatch(user, level),
     }
-    if (user.photoURL) patch.photo = user.photoURL
+    // An uploaded photo can't ride on a seat: clear an old one rather than fail the whole update
+    patch.photo = roomPhoto(user.photoURL) ?? null
     if (isJoinable(meta) && me.left) patch.left = null
     await update(playerRef, patch)
     void set(ref(liveDb(), `userRooms/${user.uid}/${code}`), ts()).catch(

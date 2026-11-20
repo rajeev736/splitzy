@@ -12,7 +12,7 @@ import {
 import { LIVE_GAMES } from "@/lib/live/games"
 import type { LiveGameId, RoomOptions } from "@/lib/live/types"
 import type { UserProfile } from "@/lib/types"
-import { createRoom, deleteRoom, liveDb } from "./live-rooms"
+import { createRoom, deleteRoom, liveDb, roomPhoto } from "./live-rooms"
 import { sendNotification } from "./shared"
 
 /**
@@ -64,7 +64,8 @@ export function watchLounge(groupId: string, cb: (lounge: Lounge | null) => void
 export function enterLounge(groupId: string, user: Pick<UserProfile, "uid" | "displayName" | "photoURL" | "gameAvatar" | "frame">) {
   const me = loungeRef(groupId, `here/${user.uid}`)
   const visitor: Record<string, unknown> = { name: user.displayName.slice(0, 60), at: ts() }
-  if (user.photoURL) visitor.photo = user.photoURL
+  const photo = roomPhoto(user.photoURL)
+  if (photo) visitor.photo = photo
   if (user.gameAvatar) visitor.avatar = user.gameAvatar
   if (user.frame) visitor.frame = user.frame
   const off = onValue(ref(liveDb(), ".info/connected"), (snap) => {

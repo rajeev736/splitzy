@@ -13,7 +13,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
-import { onValue, ref } from "firebase/database"
+import { get, onValue, ref } from "firebase/database"
 
 import {
   GameButton,
@@ -45,6 +45,7 @@ import {
   liveDb,
   leaveRoom,
   rematch,
+  roomRef,
   setPlayerLevel,
   startCountdown,
   startGame,
@@ -129,13 +130,20 @@ export function RoomShell({ code, lounge }: { code: string; lounge?: LoungeLink 
   // Take a seat (or come back to yours) as soon as the room is known — unless the host removed you
   const [join, setJoin] = React.useState<"idle" | JoinOutcome>("idle")
   const joining = React.useRef(false)
+  // A join on its way: a seat seen now may be this device's own write, not yet accepted
+  const joinInFlight = React.useRef(false)
   const [kicked, setKicked] = React.useState(() => wasKicked(code))
   React.useEffect(() => {
     if (!loaded || notFound || !user || !meta || me || kicked || join !== "idle" || joining.current) return
     joining.current = true
+    joinInFlight.current = true
     joinRoom(user, code, level)
-      .then(setJoin)
+      .then((outcome) => {
+        joinInFlight.current = false
+        setJoin(outcome)
+      })
       .catch((e) => {
+        joinInFlight.current = false
         toast.error(getErrorMessage(e, "Couldn't join the room"))
         setJoin("not_found")
       })
@@ -149,19 +157,33 @@ export function RoomShell({ code, lounge }: { code: string; lounge?: LoungeLink 
     void setPlayerLevel(code, me.uid, level).catch(() => undefined)
   }, [me, level, code])
 
-  // The host removed you from the lobby: out you go, and you stay out until you choose to join again
+  // The host removed you from the lobby: out you go, and you stay out until you choose to join again.
+  // Only a seat the server accepted counts, and the loss is checked on the server first —
+  // a refused join (shown for a moment, then rolled back) or a closing room is not a kick.
   const seatedHere = React.useRef(false)
+  // The check outlives re-renders (the countdown stopping as you go is part of the same kick)
+  const kickCheck = React.useRef<number | undefined>(undefined)
+  React.useEffect(() => () => window.clearTimeout(kickCheck.current), [])
   React.useEffect(() => {
     if (me && !me.left) {
-      seatedHere.current = true
+      if (!joinInFlight.current) seatedHere.current = true
       return
     }
-    if (!seatedHere.current || me || !meta || !isJoinable(meta) || leavingRooms.has(code)) return
+    if (!seatedHere.current || me || !meta || !isJoinable(meta) || leavingRooms.has(code) || !user) return
     seatedHere.current = false
-    markKicked(code, true)
-    toast.error("The host removed you from the room")
-    exitGame()
-  }, [me, meta, code, exitGame])
+    window.clearTimeout(kickCheck.current)
+    kickCheck.current = window.setTimeout(() => {
+      void Promise.all([get(roomRef(code, "meta")), get(roomRef(code, `players/${user.uid}`))])
+        .then(([m, p]) => {
+          const now = m.val() as RoomMeta | null
+          if (!now || !isJoinable(now) || p.exists() || leavingRooms.has(code)) return
+          markKicked(code, true)
+          toast.error("The host removed you from the room")
+          exitGame()
+        })
+        .catch(() => undefined)
+    }, 1200)
+  }, [me, meta, code, exitGame, user, join])
 
   // Referee: start the countdown when full, cancel it when someone leaves, start the game on time
   const starting = React.useRef(false)
