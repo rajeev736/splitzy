@@ -43,7 +43,8 @@ export function LiveGameGrid({
   className?: string
 }) {
   return (
-    <div className={cn("grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4", className)}>
+    // No card behind each game: just its logo on the sky, so more fit on a screen
+    <div className={cn("grid grid-cols-3 gap-x-2 gap-y-4 sm:grid-cols-4 lg:grid-cols-5", className)}>
       {games.map((id) => {
         const g = LIVE_GAMES[id]
         return (
@@ -52,15 +53,14 @@ export function LiveGameGrid({
             type="button"
             onClick={() => onPick(id)}
             aria-label={`Play ${g.name}`}
-            className="gu-panel-flat group relative flex flex-col items-center gap-2 overflow-hidden px-2 pt-4 pb-3 text-center transition-transform active:translate-y-0.5"
-            style={{ backgroundImage: `radial-gradient(90% 70% at 50% 0%, ${GAME_GLOW[id]}40, transparent 70%)` }}
+            className="group relative flex min-w-0 flex-col items-center gap-1.5 rounded-2xl px-1 pt-1 pb-1 text-center transition-transform active:scale-95"
           >
             {recent.includes(id) ? (
-              <span className="gu-chip absolute top-2 left-2 z-10 !px-2 !py-0.5 text-[10px] text-[var(--gu-blue-deep)]">Recent</span>
+              <span className="gu-chip absolute -top-1 left-1/2 z-10 -translate-x-1/2 !px-2 !py-0.5 text-[10px] text-[var(--gu-blue-deep)]">Recent</span>
             ) : null}
             <LiveGameLogo game={id} className="size-[4.5rem] rounded-[1.4rem] drop-shadow-[0_4px_0_rgba(44,63,115,.18)]" />
-            <span className="w-full truncate text-[1.05rem] leading-tight font-bold">{g.shortName ?? g.name}</span>
-            <span className="flex items-center gap-1 text-[11px] font-bold text-[var(--gu-ink-soft)]">
+            <span className="w-full truncate text-[1.02rem] leading-tight font-bold text-white [text-shadow:0_1px_0_rgba(20,40,110,.45)]">{g.shortName ?? g.name}</span>
+            <span className="flex items-center gap-1 text-[11px] font-bold text-white/90 [text-shadow:0_1px_0_rgba(20,40,110,.4)]">
               <HugeiconsIcon icon={UserGroupIcon} className="size-3.5" strokeWidth={2.2} />
               {playersLabel(g)}
             </span>

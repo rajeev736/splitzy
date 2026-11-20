@@ -29,7 +29,10 @@ export type RollOutcome =
 export async function serverRoll(app: App, uid: string, code: string, seq: number): Promise<RollOutcome> {
   const db = getDatabase(app)
   const room = db.ref(`rooms/${code}`)
-  const [metaSnap, playersSnap] = await Promise.all([room.child("meta").get(), room.child("players").get()])
+  const stateRef = room.child("state")
+  // Everything read in one go; reading the state also gives the transaction below
+  // the real value on its first pass (no extra round trip)
+  const [metaSnap, playersSnap] = await Promise.all([room.child("meta").get(), room.child("players").get(), stateRef.get()])
   const meta = metaSnap.val() as RoomMeta | null
   if (!meta) return { ok: false, status: 404, reason: "no room" }
   if (meta.status !== "playing") return { ok: false, status: 409, reason: "not playing" }
@@ -40,9 +43,6 @@ export async function serverRoll(app: App, uid: string, code: string, seq: numbe
   if (!me || me.left) return { ok: false, status: 403, reason: "not playing in this room" }
   const gone = players.filter((p) => p.left).map((p) => p.uid)
 
-  const stateRef = room.child("state")
-  // Warm the local copy so the transaction's first pass sees the real state
-  await stateRef.get()
   let rolled: { value: number; seq: number } | null = null
   let refusal: RollOutcome | null = null
   const res = await stateRef.transaction((cur: (LudoState | SnakesState) & { log?: unknown } | null) => {
@@ -86,4 +86,13 @@ export async function serverRoll(app: App, uid: string, code: string, seq: numbe
   })
   if (res.committed && rolled) return { ok: true, ...(rolled as { value: number; seq: number }) }
   return refusal ?? { ok: false, status: 409, reason: "not rolled" }
+}
+
+/**
+ * Gets the server ready to roll before anyone taps: the function is up, the
+ * admin SDK is set up and its database connection is open — so the first
+ * roll of a game doesn't pay for any of that.
+ */
+export async function warmRoller(app: App): Promise<void> {
+  await getDatabase(app).ref(".info/serverTimeOffset").get().catch(() => undefined)
 }

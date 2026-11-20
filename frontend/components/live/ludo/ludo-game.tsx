@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { rollOnServer } from "@/services/live-server"
+import { rollOnServer, useWarmDice } from "@/services/live-server"
 import { GameBackdrop, TABLE_CLASS } from "../game-backdrop"
 import { serverTimestamp } from "firebase/database"
 import { toast } from "sonner"
@@ -298,6 +298,8 @@ export function LudoGame({
   const autoToken = state && myTurn ? singleMove(state, uid) : -1
 
   const [rollLock, setRollLock] = React.useState(-1)
+  // The dice come from the server: have it ready before the first tap
+  useWarmDice(!me.left)
   const roll = () => {
     if (!state || !myTurn || state.phase !== "roll") return
     // The server rolls (app/api/live/roll): nobody can pick their number. Fair at

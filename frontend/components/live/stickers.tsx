@@ -10,20 +10,23 @@ import { sendReaction } from "@/services/live-rooms"
 
 /** Stickers anyone can throw onto the game, free. */
 export const STICKERS: { id: string; glyph: string; label: string }[] = [
-  { id: "fire", glyph: "🔥", label: "Fire" },
   { id: "laugh", glyph: "😂", label: "Haha" },
+  { id: "fire", glyph: "🔥", label: "Fire" },
   { id: "clap", glyph: "👏", label: "Clap" },
   { id: "wow", glyph: "😮", label: "Wow" },
-  { id: "party", glyph: "🎉", label: "Party" },
   { id: "cry", glyph: "😭", label: "Noooo" },
-  { id: "skull", glyph: "💀", label: "Dead" },
-  { id: "heart", glyph: "❤️", label: "Love" },
-  { id: "think", glyph: "🤔", label: "Hmm" },
   { id: "angry", glyph: "😡", label: "Angry" },
+  { id: "heart", glyph: "❤️", label: "Love" },
   { id: "cool", glyph: "😎", label: "Cool" },
+]
+/** Stickers no longer on the bar, still shown when an older device throws one. */
+const RETIRED: { id: string; glyph: string; label: string }[] = [
+  { id: "party", glyph: "🎉", label: "Party" },
+  { id: "skull", glyph: "💀", label: "Dead" },
+  { id: "think", glyph: "🤔", label: "Hmm" },
   { id: "gg", glyph: "GG", label: "Good game" },
 ]
-const BY_ID = Object.fromEntries(STICKERS.map((s) => [s.id, s]))
+const BY_ID = Object.fromEntries([...STICKERS, ...RETIRED].map((s) => [s.id, s]))
 /** One sticker per this many ms per person, so the screen stays readable. */
 const THROTTLE_MS = 700
 /** How long a thrown sticker floats. */
@@ -46,7 +49,7 @@ export function StickerBar({
   return (
     <div
       className={cn(
-        "no-scrollbar flex gap-1.5 overflow-x-auto py-1",
+        "no-scrollbar flex justify-center gap-1 overflow-x-auto py-1",
         className
       )}
       role="toolbar"
@@ -59,10 +62,8 @@ export function StickerBar({
           title={s.label}
           aria-label={s.label}
           onClick={() => throw_(s.id)}
-          className={cn(
-            "flex size-10 shrink-0 items-center justify-center rounded-full bg-white shadow-[0_3px_0_rgba(44,63,115,.25),0_0_0_2px_#ead8b6] transition-transform active:translate-y-0.5 active:scale-95",
-            s.glyph.length > 2 ? "text-xs font-bold text-[#2f63cf]" : "text-xl"
-          )}
+          // Just the emoji, big, with a soft lift — no badge around it
+          className="flex size-10 shrink-0 items-center justify-center text-[1.65rem] leading-none drop-shadow-[0_2px_2px_rgba(0,0,0,.28)] transition-transform hover:scale-110 active:scale-90"
         >
           {s.glyph}
         </button>

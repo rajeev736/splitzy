@@ -7,7 +7,6 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { FriendActionButton, type FriendState } from "@/components/profile-peek/friend-action"
 import { GroupIcon } from "@/components/shared/group-icon"
 import { useGroups } from "@/hooks/queries"
-import { useWallet } from "@/hooks/use-fun"
 import { formatPaise } from "@/lib/money"
 import type { Expense, UserProfile } from "@/lib/types"
 import { ProfilePair } from "./profile-pair"
@@ -30,7 +29,6 @@ export function NonFriendProfile({
   meUid: string
 }) {
   const { data: groups } = useGroups()
-  const wallet = useWallet(person.uid)
   const together = groups.filter((g) => g.members.includes(person.uid))
   const first = person.displayName.split(" ")[0]
 
@@ -38,7 +36,7 @@ export function NonFriendProfile({
     <>
       <section className="flex flex-col items-center gap-3 text-center">
         <h1 className="sr-only">{person.displayName}</h1>
-        <ProfilePair friend={person} wallet={wallet} />
+        <ProfilePair friend={person} />
         <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
           {state.kind === "sent" ? "Friend request sent" : state.kind === "received" ? `${first} wants to be friends` : "Not a friend yet"}
         </span>

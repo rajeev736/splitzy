@@ -729,9 +729,15 @@ function EndedView({
       stats: !s
         ? undefined
         : "kills" in s
-          ? [`Cut ${s.kills ?? 0}`, `Got cut ${s.deaths ?? 0}`]
+          ? [
+              { kind: "cut" as const, value: s.kills ?? 0 },
+              { kind: "cutBy" as const, value: s.deaths ?? 0 },
+            ]
           : "ladders" in s
-            ? [`Ladders ${s.ladders ?? 0}`, `Snakes ${s.snakes ?? 0}`]
+            ? [
+                { kind: "ladder" as const, value: s.ladders ?? 0 },
+                { kind: "snake" as const, value: s.snakes ?? 0 },
+              ]
             : undefined,
     }
   })

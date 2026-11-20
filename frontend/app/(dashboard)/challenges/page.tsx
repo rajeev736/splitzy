@@ -161,12 +161,12 @@ function ChallengesContent() {
 function HubTopBar() {
   return (
     <header className="sticky top-0 z-30 bg-[#3f95ee] shadow-[0_10px_18px_-12px_rgba(20,40,110,.6)]">
-      <ModeBar look="game" />
+      <ModeBar look="game" right={<GameBell />} />
     </header>
   )
 }
 
-/** The Games bell (game notifications only), beside your coins on the player card. */
+/** The Games bell (game notifications only), beside the Split | Games switch. */
 function GameBell() {
   const router = useRouter()
   const { data: notifications } = useNotifications()
@@ -180,7 +180,6 @@ function GameBell() {
       data-tour="game-bell"
       badge={unread > 0 ? (unread > 9 ? "9+" : unread) : undefined}
       onClick={() => router.push("/game-notifications")}
-      className="!size-8"
     />
   )
 }
@@ -194,8 +193,7 @@ function PlayerCard() {
   return (
     <div className="gu-panel-flat relative" data-tour="player-card">
       {/* Your coins: to the coin history and shop. Claimed coins fly into it (data-coin-target) */}
-      <span className="absolute top-3 right-3 z-10 flex items-center gap-1.5">
-        <GameBell />
+      <span className="absolute top-3 right-3 z-10 flex items-center">
         <Link
           href="/games/coins"
           data-coin-target
@@ -212,7 +210,7 @@ function PlayerCard() {
           {wallet ? <LevelBadge level={info.level} size={24} className="absolute -bottom-1 left-1/2 -translate-x-1/2" /> : null}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate pr-36 text-lg leading-tight font-bold">{user.gameName?.trim() || user.displayName.split(" ")[0]}</span>
+          <span className="block truncate pr-24 text-lg leading-tight font-bold">{user.gameName?.trim() || user.displayName.split(" ")[0]}</span>
           <span className="block truncate text-xs font-bold text-[var(--gu-brown)]">
             {wallet ? `Level ${info.level} · ${info.title}` : "Player"}
           </span>

@@ -1,5 +1,7 @@
 "use client"
 
+import * as React from "react"
+
 import { auth } from "@/lib/firebase/config"
 import { AppError } from "@/lib/errors"
 import type { Wallet } from "@/lib/types"
@@ -20,6 +22,19 @@ async function call<T>(path: string, body: object, opts: { keepalive?: boolean }
   const data = (await res.json().catch(() => null)) as (T & { reason?: string }) | null
   if (!res.ok || !data) throw new AppError(data?.reason ?? "The game server didn't answer — try again")
   return data
+}
+
+/** Wakes the dice server up ahead of the first roll (best effort; see warmRoller). */
+export const warmDice = () => call<{ ok: true }>("/api/live/roll", { warm: true }).catch(() => undefined)
+
+/** Keeps the dice server awake while a dice game is open: now, then every few minutes. */
+export function useWarmDice(on: boolean) {
+  React.useEffect(() => {
+    if (!on) return
+    void warmDice()
+    const id = window.setInterval(() => void warmDice(), 4 * 60 * 1000)
+    return () => window.clearInterval(id)
+  }, [on])
 }
 
 /** Rolls your dice on the server (Ludo, Snakes & Ladders); the board updates through the room as usual. */

@@ -29,10 +29,26 @@ export const isGamesHub = (pathname: string) => pathname === GAMES_HUB
 
 type Mode = "split" | "games"
 
-/** The side the switch last showed: the next page's switch slides on from there. */
-let lastShown: Mode | null = null
-const remember = (m: Mode) => {
-  lastShown = m
+/** How long the pill takes to slide across. */
+const SLIDE_MS = 280
+/**
+ * The slide under way, if any. The switch you tap starts it; the page you
+ * land on has its own switch, which picks the slide up from wherever it has
+ * got to — so the pill makes one smooth trip, never restarting or jumping.
+ */
+let slide: { to: Mode; at: number } | null = null
+const startSlide = (to: Mode) => {
+  slide = { to, at: performance.now() }
+}
+/** Where the pill is (0 = Split, 1 = Games) and how long it has left to get to `mode`. */
+function slideState(mode: Mode): { x: number; left: number } {
+  const target = mode === "games" ? 1 : 0
+  if (!slide || slide.to !== mode) return { x: target, left: 0 }
+  const done = Math.min(1, (performance.now() - slide.at) / SLIDE_MS)
+  if (done >= 1) return { x: target, left: 0 }
+  // Ease-out position for the time gone, from the other side
+  const eased = 1 - Math.pow(1 - done, 3)
+  return { x: target === 1 ? eased : 1 - eased, left: SLIDE_MS * (1 - done) }
 }
 
 function readFrom(): string | null {
@@ -88,19 +104,25 @@ const ITEMS = [
 export function ModeSwitch({ look = "app", className }: { look?: "app" | "game"; className?: string }) {
   const { mode, go } = useModeSwitch()
   const yourTurn = useGamesYourTurn()
-  // The pill starts where the last page's switch left it, then slides to this side
-  const [shown, setShown] = React.useState<Mode>(() => lastShown ?? mode)
+  // The pill: where it is (0 Split … 1 Games) and how long its move takes. A
+  // switch on a page you just switched to carries on the slide already going.
+  const [pill, setPill] = React.useState(() => {
+    const now = typeof window === "undefined" ? { x: mode === "games" ? 1 : 0, left: 0 } : slideState(mode)
+    return { x: now.x, ms: 0, left: now.left }
+  })
   React.useEffect(() => {
-    const id = window.requestAnimationFrame(() => setShown(mode))
-    remember(mode)
+    if (pill.left <= 0) return
+    // Next frame: the rest of the trip, in the time that's left
+    const id = window.requestAnimationFrame(() => setPill({ x: mode === "games" ? 1 : 0, ms: pill.left, left: 0 }))
     return () => window.cancelAnimationFrame(id)
-  }, [mode])
+  }, [pill.left, mode])
+  const shown: Mode = pill.x >= 0.5 ? "games" : "split"
 
   const pick = (next: Mode) => {
     if (next === mode) return
-    // Slide now; the page follows
-    setShown(next)
-    remember(next)
+    // Slide now; the page follows (and its own switch carries the slide on)
+    startSlide(next)
+    setPill({ x: next === "games" ? 1 : 0, ms: SLIDE_MS, left: 0 })
     go(next)
   }
 
@@ -123,12 +145,15 @@ export function ModeSwitch({ look = "app", className }: { look?: "app" | "game";
       <span
         aria-hidden
         className={cn(
-          "absolute top-1 bottom-1 left-1 w-[calc(50%-0.25rem)] rounded-full transition-transform duration-300 ease-[cubic-bezier(.2,.85,.25,1)] will-change-transform motion-reduce:transition-none",
+          "absolute top-1 bottom-1 left-1 w-[calc(50%-0.25rem)] rounded-full will-change-transform motion-reduce:!transition-none",
           game
             ? "bg-gradient-to-b from-[#ffe066] to-[#ffc928] shadow-[inset_0_-3px_0_#e0a400,inset_0_2px_0_rgba(255,255,255,.6),0_3px_0_rgba(20,40,110,.25)]"
             : "bg-primary shadow-sm"
         )}
-        style={{ transform: shown === "games" ? "translateX(100%)" : "translateX(0)" }}
+        style={{
+          transform: `translateX(${pill.x * 100}%)`,
+          transition: pill.ms ? `transform ${Math.round(pill.ms)}ms cubic-bezier(.22,.8,.3,1)` : "none",
+        }}
       />
       {ITEMS.map((it) => {
         const active = shown === it.value
@@ -161,8 +186,9 @@ export function ModeSwitch({ look = "app", className }: { look?: "app" | "game";
 
 /**
  * The bar the switch lives in, identical on both sides: same height, same
- * top inset, the switch across the full width — so flipping sides never moves
- * it. (Optional side slots sit beside it; neither side uses them now.)
+ * top inset, a slot of the same size on each side of the switch (Games puts
+ * its bell on the right; empty slots keep the space) — so flipping sides
+ * never moves or resizes it.
  */
 export function ModeBar({
   look = "app",
@@ -177,10 +203,10 @@ export function ModeBar({
 }) {
   return (
     <div className={cn("pt-[env(safe-area-inset-top,0px)]", className)}>
-      <div className="mx-auto flex h-16 max-w-2xl items-center gap-2 px-3">
-        {left ? <div className="flex shrink-0 items-center">{left}</div> : null}
+      <div className="mx-auto flex h-16 max-w-2xl items-center gap-2.5 px-3">
+        <div className="flex size-10 shrink-0 items-center justify-center">{left}</div>
         <ModeSwitch look={look} />
-        {right ? <div className="flex shrink-0 items-center gap-2">{right}</div> : null}
+        <div className="flex size-10 shrink-0 items-center justify-center">{right}</div>
       </div>
     </div>
   )

@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+import { SkullIcon, SwordsIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import Link from "next/link"
 import { Nunito } from "next/font/google"
 
@@ -32,8 +34,59 @@ export interface ResultRow {
   winner: boolean
   you: boolean
   score?: number
-  /** The game's own numbers, e.g. ["Cut 3", "Got cut 1"]. */
-  stats?: string[]
+  /** The game's own numbers (Ludo: pieces cut / got cut · Snakes: ladders / snakes). */
+  stats?: RowStat[]
+}
+
+/** One of a player's numbers, shown as a small icon and the count. */
+export interface RowStat {
+  kind: "cut" | "cutBy" | "ladder" | "snake"
+  value: number
+}
+
+const STAT_LABEL: Record<RowStat["kind"], (n: number) => string> = {
+  cut: (n) => `Cut ${n} ${n === 1 ? "piece" : "pieces"}`,
+  cutBy: (n) => `Got cut ${n} ${n === 1 ? "time" : "times"}`,
+  ladder: (n) => `Climbed ${n} ${n === 1 ? "ladder" : "ladders"}`,
+  snake: (n) => `Bitten by ${n} ${n === 1 ? "snake" : "snakes"}`,
+}
+
+/** The little picture for each number (drawn, so it matches the game art, not an emoji). */
+function StatGlyph({ kind }: { kind: RowStat["kind"] }) {
+  const common = { width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.4, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true }
+  switch (kind) {
+    case "cut": // crossed swords: pieces you cut
+      return <HugeiconsIcon icon={SwordsIcon} className="size-3.5" strokeWidth={2.2} />
+    case "cutBy": // a skull: times your pieces were cut
+      return <HugeiconsIcon icon={SkullIcon} className="size-3.5" strokeWidth={2.2} />
+    case "ladder":
+      return (
+        <svg {...common}>
+          <path d="M7 3v18M17 3v18M7 7h10M7 12h10M7 17h10" />
+        </svg>
+      )
+    case "snake":
+      return (
+        <svg {...common}>
+          <path d="M18 5.5c-1.5-1.3-4-1.2-5 .4-1.2 2 .6 3.6 2.6 4.5 2.3 1 3 3.5 1.2 5.2-1.9 1.8-5.5 1.6-7.6-.3-1.5-1.4-3.1-1.2-4.2.2" />
+          <circle cx="19" cy="6.4" r=".6" fill="currentColor" />
+        </svg>
+      )
+  }
+}
+
+/** A player's numbers: icon + count, side by side, each with its meaning on hover / for screen readers. */
+function Stats({ stats }: { stats: RowStat[] }) {
+  return (
+    <span className="rs-stats">
+      {stats.map((st) => (
+        <span key={st.kind} className="rs-stat" title={STAT_LABEL[st.kind](st.value)} aria-label={STAT_LABEL[st.kind](st.value)}>
+          <StatGlyph kind={st.kind} />
+          <b>{st.value}</b>
+        </span>
+      ))}
+    </span>
+  )
 }
 
 /** The yellow button: start a rematch (host), join one that exists, or wait for the host. */
@@ -592,9 +645,9 @@ function Confetti() {
 function Row({ row, draw, index }: { row: ResultRow; draw: boolean; index: number }) {
   const gold = row.winner
   const medal: MedalKind = draw ? "tie" : gold ? "gold" : row.place === 2 ? "silver" : row.place === 3 ? "bronze" : "plain"
-  // The score goes in the pill; the game's numbers go there too, or under the name when there's a score
-  const pill = row.score !== undefined ? [String(row.score)] : row.stats
-  const under = row.score !== undefined ? row.stats : undefined
+  // A score goes in the pill (the game's numbers then sit under the name); otherwise the numbers take its place
+  const scored = row.score !== undefined
+  const under = scored ? row.stats : undefined
   const level = validLevel(row.level)
   return (
     <li
@@ -620,18 +673,16 @@ function Row({ row, draw, index }: { row: ResultRow; draw: boolean; index: numbe
           {row.you && <span className="sr-only"> (you)</span>}
           {row.winner && <CrownGlyph />}
         </span>
-        {under && <span className="rs-under">{under.join(" · ")}</span>}
+        {under && under.length > 0 && <Stats stats={under} />}
       </span>
-      {pill && (
-        <span className="rs-pill" data-score={row.score !== undefined || undefined}>
-          {row.score !== undefined && <PointsGlyph />}
-          <span className="flex flex-col leading-[1.1]">
-            {pill.map((t) => (
-              <span key={t}>{t}</span>
-            ))}
-          </span>
+      {scored ? (
+        <span className="rs-pill" data-score>
+          <PointsGlyph />
+          <span className="leading-[1.1]">{row.score}</span>
         </span>
-      )}
+      ) : row.stats && row.stats.length > 0 ? (
+        <Stats stats={row.stats} />
+      ) : null}
     </li>
   )
 }
@@ -794,6 +845,12 @@ function ResultStyles() {
 .rs-row[data-gold] .rs-name{color:#fff;text-shadow:0 1px 0 rgb(170 100 0/.95),0 0 3px rgb(170 100 0/.7)}
 .rs-crown-glyph{display:inline-block;width:1.05em;height:.8em;margin-left:.3em;vertical-align:-.02em;filter:drop-shadow(0 1px 0 rgb(0 0 0/.25))}
 .rs-under{font-size:.68rem;font-weight:800;color:rgb(255 255 255/.75);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rs-stats{display:flex;flex-shrink:0;align-items:center;gap:.3rem}
+.rs-who .rs-stats{margin-top:.15rem}
+.rs-stat{display:inline-flex;align-items:center;gap:.22rem;border-radius:9999px;padding:.2rem .5rem .2rem .4rem;font-size:clamp(.72rem,calc(var(--rh)*.2),.86rem);line-height:1;color:#fff;background:rgb(0 60 58/.38);box-shadow:inset 0 1px 2px rgb(0 0 0/.22)}
+.rs-stat b{font-weight:900;font-variant-numeric:tabular-nums}
+.rs-stat svg{opacity:.92}
+.rs-row[data-gold] .rs-stat{color:#7a3f00;background:rgb(255 255 255/.55);box-shadow:inset 0 1px 2px rgb(150 80 0/.25)}
 .rs-row[data-gold] .rs-under{color:rgb(120 70 0/.85)}
 .rs-pill{position:relative;display:flex;flex-shrink:0;align-items:center;gap:.3rem;border-radius:9999px;padding:.22rem .6rem;font-size:clamp(.66rem,calc(var(--rh)*.18),.8rem);font-weight:900;text-align:right;white-space:nowrap;color:#fff;background:rgb(0 60 58/.42);box-shadow:inset 0 1px 2px rgb(0 0 0/.25)}
 .rs-pill[data-score]{padding:.22rem .7rem .22rem .22rem;font-size:clamp(.85rem,calc(var(--rh)*.24),1.05rem)}

@@ -40,6 +40,56 @@ const FACE_PLACE: Record<number, string> = {
 const clampFace = (v: number | null | undefined) =>
   v && v >= 1 && v <= 6 ? v : 6
 
+/** One turn of the waiting tumble (s): 360° on X and 270° on Y. */
+const TUMBLE_S = 0.45
+/** How long a landing takes (s). */
+const LAND_S = 0.7
+
+/**
+ * Brings the cube to rest on `face`. A roll lands with a spin and a hop; one
+ * that was already tumbling (your own, waiting on the server) keeps its
+ * speed and simply slows down onto the face — power2.out starts at twice the
+ * average speed, so the spin carried in matches the spin going out.
+ */
+function landOn(cube: HTMLDivElement, hop: HTMLDivElement | null, face: number, isRoll: boolean, size: number, fromTumble = false) {
+  const target = FACE_ANGLE[face]
+  const curX = Number(gsap.getProperty(cube, "rotationX")) || 0
+  const curY = Number(gsap.getProperty(cube, "rotationY")) || 0
+  // The next angle at or past `want` degrees from here that shows the face
+  const ahead = (cur: number, faceAngle: number, want: number) => {
+    const base = cur + want
+    return Math.ceil((base - faceAngle) / 360) * 360 + faceAngle
+  }
+  let endX: number
+  let endY: number
+  if (fromTumble) {
+    // The tumble's speed (°/s) × the landing time ÷ 2 (power2.out starts at 2× its average)
+    endX = ahead(curX, target.x, ((360 / TUMBLE_S) * LAND_S) / 2 - 120)
+    endY = ahead(curY, target.y, ((270 / TUMBLE_S) * LAND_S) / 2 - 90)
+  } else {
+    const turnsX = isRoll ? 2 : 0
+    const turnsY = isRoll ? 1 : 0
+    endX = Math.ceil((curX - target.x) / 360 + turnsX) * 360 + target.x
+    endY = Math.ceil((curY - target.y) / 360 + turnsY) * 360 + target.y
+  }
+  gsap.to(cube, {
+    rotationX: endX,
+    rotationY: endY,
+    duration: fromTumble ? LAND_S : isRoll ? 0.85 : 0.35,
+    ease: fromTumble ? "power2.out" : isRoll ? "power3.out" : "power2.out",
+    overwrite: true,
+  })
+  if (!hop) return
+  if (fromTumble) {
+    // Already lifted: drop onto the board with a small bounce
+    gsap.to(hop, { y: 0, scale: 1, duration: LAND_S * 0.9, ease: "bounce.out", overwrite: true })
+  } else if (isRoll) {
+    gsap.fromTo(hop, { y: -size * 0.45, scale: 1.12 }, { y: 0, scale: 1, duration: 0.75, ease: "bounce.out", overwrite: true })
+  } else {
+    gsap.to(hop, { y: 0, scale: 1, duration: 0.2, overwrite: true })
+  }
+}
+
 /**
  * A real 3D dice (six faces, CSS 3D) animated with GSAP.
  *
@@ -78,6 +128,8 @@ export function LudoDice({
   const hopRef = React.useRef<HTMLDivElement>(null)
   const lastSpin = React.useRef<number | null>(spin)
   const loop = React.useRef<gsap.core.Tween | null>(null)
+  /** Tumbling while the server rolls: the landing carries that spin on instead of starting a new one. */
+  const tumbling = React.useRef(false)
   const boxRef = React.useRef<HTMLDivElement>(null)
 
   // Your roll: a gentle pulse inviting the tap
@@ -102,52 +154,44 @@ export function LudoDice({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Waiting for the roll to land: keep tumbling
+  // Waiting for the roll to land: tumble at a steady spin, lifted a little —
+  // it spins up from rest (no jolt), and the landing below slows it down
   React.useEffect(() => {
     const cube = cubeRef.current
+    const hop = hopRef.current
     if (!rolling || !cube) return
-    loop.current = gsap.to(cube, {
-      rotationX: "+=360",
-      rotationY: "+=270",
-      duration: 0.45,
-      ease: "none",
-      repeat: -1,
+    tumbling.current = true
+    const spinUp = gsap.to(cube, { rotationX: "+=150", rotationY: "+=110", duration: 0.3, ease: "power1.in" })
+    spinUp.eventCallback("onComplete", () => {
+      loop.current = gsap.to(cube, { rotationX: "+=360", rotationY: "+=270", duration: TUMBLE_S, ease: "none", repeat: -1 })
     })
+    if (hop) gsap.to(hop, { y: -size * 0.18, scale: 1.06, duration: 0.25, ease: "power2.out" })
     return () => {
+      spinUp.kill()
       loop.current?.kill()
       loop.current = null
+      // No roll came (refused, stale): settle back on the face it shows
+      gsap.delayedCall(0.05, () => {
+        if (!tumbling.current) return
+        tumbling.current = false
+        landOn(cube, hop, face, false, size)
+      })
     }
-  }, [rolling])
+    // The face is read when it settles
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rolling, size])
 
-  // A new roll (or a new resting face): tumble onto it
+  // A new roll (or a new resting face): land on it
   React.useEffect(() => {
     const cube = cubeRef.current
     if (!cube) return
     const isRoll = spin !== null && spin !== lastSpin.current
     lastSpin.current = spin
-    const target = FACE_ANGLE[face]
-    const curX = Number(gsap.getProperty(cube, "rotationX")) || 0
-    const curY = Number(gsap.getProperty(cube, "rotationY")) || 0
-    // Always end on a whole number of turns past where it is, plus the face angle
-    const turnsX = isRoll ? 2 : 0
-    const turnsY = isRoll ? 1 : 0
-    const endX = Math.ceil((curX - target.x) / 360 + turnsX) * 360 + target.x
-    const endY = Math.ceil((curY - target.y) / 360 + turnsY) * 360 + target.y
+    // Your own roll: the dice is already tumbling — slow that same spin down onto the face
+    const fromTumble = tumbling.current
+    tumbling.current = false
     loop.current?.kill()
-    gsap.to(cube, {
-      rotationX: endX,
-      rotationY: endY,
-      duration: isRoll ? 0.85 : 0.35,
-      ease: isRoll ? "power3.out" : "power2.out",
-      overwrite: true,
-    })
-    if (isRoll && hopRef.current) {
-      gsap.fromTo(
-        hopRef.current,
-        { y: -size * 0.45, scale: 1.12 },
-        { y: 0, scale: 1, duration: 0.75, ease: "bounce.out", overwrite: true }
-      )
-    }
+    landOn(cube, hopRef.current, face, isRoll, size, fromTumble)
   }, [spin, face, size])
 
   const half = size / 2

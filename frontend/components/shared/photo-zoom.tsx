@@ -100,7 +100,18 @@ export function PhotoZoom({
       </span>
       {shown && src
         ? createPortal(
-            <div role="dialog" aria-modal="true" aria-label={alt} className="fixed inset-0 z-[70]" onClick={close}>
+            // A portal still bubbles React events to the page around the avatar: stop it here,
+            // or a tap that closes the photo would reach a tappable parent and open it again
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={alt}
+              className="fixed inset-0 z-[70]"
+              onClick={(e) => {
+                e.stopPropagation()
+                close()
+              }}
+            >
               <div
                 className="absolute inset-0 bg-black/85"
                 style={{ opacity: out ? 1 : 0, transition: `opacity ${MS}ms ${EASE}` }}

@@ -369,17 +369,19 @@ export default function FriendsPage() {
                               className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
                               onClick={() => openProfile(friend.uid)}
                             >
+                              {/* The row opens their profile: the avatar doesn't open a peek of its own */}
                               <UserAvatar
                                 uid={friend.uid}
+                                peek={false}
                                 src={friend.photoURL}
                                 name={friend.displayName}
                                 size="md"
                                 badge={
                                   isMoodId(friend.mood?.id) ? (
-                                    <MoodFace
-                                      mood={friend.mood.id}
-                                      className="size-4.5 rounded-full ring-2 ring-card"
-                                    />
+                                    // Their mood, big enough to read, on its own (no circle behind it)
+                                    <span className="-mr-1.5 -mb-1.5 block size-6">
+                                      <MoodFace mood={friend.mood.id} className="size-6 drop-shadow-[0_1px_1px_rgba(0,0,0,.25)]" />
+                                    </span>
                                   ) : undefined
                                 }
                               />

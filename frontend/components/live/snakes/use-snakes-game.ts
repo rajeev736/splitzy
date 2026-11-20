@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { rollOnServer } from "@/services/live-server"
+import { rollOnServer, useWarmDice } from "@/services/live-server"
 import { serverTimestamp } from "firebase/database"
 import { toast } from "sonner"
 
@@ -60,6 +60,8 @@ export function useSnakesGame({ code, meta, players, uid, me, isReferee, now, se
 
   const myTurn = !!state && state.phase !== "over" && state.turn === uid && !me.left && !state.players[uid]?.out
   const [rollLock, setRollLock] = React.useState(-1)
+  // The dice come from the server: have it ready before the first tap
+  useWarmDice(!me.left)
   const seq = state?.seq ?? -1
   /** Tapped and waiting for the roll to land. */
   const rolling = rollLock === seq && myTurn

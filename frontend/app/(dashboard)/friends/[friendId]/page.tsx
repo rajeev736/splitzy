@@ -38,7 +38,6 @@ import {
   useLiveProfile,
   useLoveBondCount,
   useMoments,
-  useWallet,
 } from "@/hooks/use-fun"
 import { dmChatId } from "@/lib/chat"
 import { isMoodId, MOODS } from "@/lib/fun/catalog"
@@ -70,7 +69,6 @@ function FriendProfileContent() {
   const cached = friends.data.find((f) => f.uid === friendId)
   const friend = live ?? cached
   const { friendship } = useFriendship(friendId)
-  const wallet = useWallet(friendId)
   const loveBonds = useLoveBondCount(friendId)
   const badges = useBadges(friendId, loveBonds ?? 0)
   const moments = useMoments(friendId)
@@ -179,10 +177,13 @@ function FriendProfileContent() {
       />
 
       <PageContainer className="max-w-2xl gap-6 pb-28">
-        {/* Who they are, for splitting: photo (no frame), name, JoySplit ID */}
+        {/* Who they are: their Split photo and their game self, then name and ID */}
         <section className="flex flex-col items-center gap-3 text-center">
-          <h1 className="sr-only">{friend.displayName}</h1>
-          <ProfilePair friend={friend} wallet={wallet} />
+          <ProfilePair friend={friend} />
+          <div className="flex flex-col items-center gap-1">
+            <h1 className="text-xl font-bold tracking-tight">{friend.displayName}</h1>
+            <p className="font-mono text-xs text-muted-foreground">{friend.splitzyId}</p>
+          </div>
           {mood && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/70 py-1 pr-3 pl-1 text-xs font-medium">
               <MoodFace
