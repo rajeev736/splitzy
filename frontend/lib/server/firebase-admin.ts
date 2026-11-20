@@ -1,7 +1,8 @@
 import { cert, getApp, getApps, initializeApp, type App } from "firebase-admin/app"
 
 /**
- * Firebase Admin on the server (Vercel), only for sending push notifications.
+ * Firebase Admin on the server (Vercel): push notifications, and the live
+ * games' referee work (dice, checking results — app/api/live).
  * Credentials come from the FIREBASE_SERVICE_ACCOUNT_KEY environment variable:
  * the service account JSON from Firebase Console → Project settings → Service
  * accounts → Generate new private key (paste the whole file as the value).
@@ -18,6 +19,8 @@ export function adminApp(): App | null {
       private_key: string
     }
     return initializeApp({
+      // The Realtime Database (live game rooms), when this deployment has one
+      ...(process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL ? { databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL } : {}),
       credential: cert({
         projectId: key.project_id,
         clientEmail: key.client_email,

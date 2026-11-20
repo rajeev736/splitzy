@@ -1,3 +1,4 @@
+import { ABANDON_MS } from "./room"
 import type { LiveResult, RoomOptions, RoomPlayer } from "./types"
 
 /**
@@ -17,6 +18,12 @@ import type { LiveResult, RoomOptions, RoomPlayer } from "./types"
 export const LAST = 100
 /** An online player gets this long to roll before the referee passes their turn. */
 export const SNAKES_IDLE_MS = 30_000
+/**
+ * A player away from the room for ABANDON_MS gets only this long on their turn
+ * (not the full SNAKES_IDLE_MS) — a short wait rather than none, so a turn
+ * skipped as "offline" always shows some time spent on it (lib/live/verify/snakes).
+ */
+export const SNAKES_AWAY_MS = 10_000
 /** Turns in a row lost to the clock before a player is out of the game. */
 export const SNAKES_MAX_MISSED = 3
 
@@ -227,6 +234,29 @@ export function rollFor(s: SnakesState, uid: string, rand: () => number): number
     if (r < 0) return face
   }
   return 6
+}
+
+/**
+ * Why the referee may pass the turn of `p` (whose turn began at `since`,
+ * server ms) at `now` — or null while it's still theirs: left for good; away
+ * from the room ABANDON_MS and on the clock SNAKES_AWAY_MS; or out of time.
+ */
+export function skipReason(p: RoomPlayer, since: number, now: number): SnakesSkipReason | null {
+  if (p.left) return "left"
+  const waited = since > 0 ? now - since : 0
+  if (!p.online && now - p.lastSeen >= ABANDON_MS && waited >= SNAKES_AWAY_MS) return "offline"
+  if (since > 0 && waited >= SNAKES_IDLE_MS) return p.online ? "idle" : "offline"
+  return null
+}
+
+/**
+ * The move-log entry for a skip (lib/live/log): "s:<reason>:<uid>", the uid
+ * being whose turn was passed — left out if it would make the entry longer
+ * than the rules allow (40 characters; Firebase uids are 28).
+ */
+export function skipAction(reason: SnakesSkipReason, uid: string): string {
+  const full = `s:${reason}:${uid}`
+  return full.length <= 40 ? full : `s:${reason}`
 }
 
 /** The referee passes an idle / offline / departed player's turn; 3 clock misses in a row and they're out. */

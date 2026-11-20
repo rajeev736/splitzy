@@ -219,32 +219,6 @@ service cloud.firestore {
                : delta == 0 && rewardItemOk(a, item, levelFrame(a)));
     }
 
-    /**
-     * A finished live game on your wallet. Rooms live in the Realtime Database,
-     * out of these rules' reach, so this checks the shape: once per game (its
-     * record users/{uid}/live/{code}_{startedAt} written in the same batch), at
-     * most one every 20 seconds, no coins, and the counters stepping by one — a
-     * win adds to the streak, anything else ends it.
-     */
-    function liveResultOk(tx, delta) {
-      let w = resource.data;
-      let n = request.resource.data;
-      let won = tx[2] == 'win';
-      let streak = won ? w.get('streak', 0) + 1 : 0;
-      let best = w.get('bestStreak', 0);
-      let p = /databases/$(database)/documents/users/$(uid())/live/$(tx[1]);
-      return tx.size() == 3 && tx[1].matches('^[A-HJ-NP-Z2-9]{6}_[0-9]{10,16}$') &&
-             tx[2] in ['win', 'lose', 'draw'] && delta == 0 &&
-             n.frames == w.frames && n.get('avatars', []) == w.get('avatars', []) &&
-             existsAfter(p) && !exists(p) && getAfter(p).data.result == tx[2] &&
-             n.get('livePlayed', 0) == w.get('livePlayed', 0) + 1 &&
-             n.get('liveWins', 0) == w.get('liveWins', 0) + (won ? 1 : 0) &&
-             n.get('streak', 0) == streak &&
-             n.get('bestStreak', 0) == (streak > best ? streak : best) &&
-             n.get('liveAt', null) == request.time &&
-             (w.get('liveAt', null) == null || request.time > w.liveAt + duration.value(20, 's'));
-    }
-
     /** Frame (free or owned), game character (free or owned), mood and birthday on a profile. */
     function profileExtrasOk(userId) {
       let d = request.resource.data;
@@ -321,17 +295,17 @@ service cloud.firestore {
 
     /**
      * Lifetime stats move only with their proof: a win with its Game Champ
-     * badge, a game with its played record, coins won with a payout, the live
-     * counters with a live result (liveResultOk checks each step). Read off the
-     * one diff of the update: most updates touch no stat at all.
+     * badge, a game with its played record, coins won with a payout. The live
+     * counters (livePlayed, liveWins, streak) are the server's alone: it counts
+     * a game after checking it (app/api/live/settle). Read off the one diff of
+     * the update: most updates touch no stat at all.
      */
     function statsOk(tx, changed) {
       let moved = changed.intersection(['wins', 'played', 'coinsWon', 'livePlayed', 'liveWins', 'streak', 'bestStreak', 'liveAt'].toSet());
       return moved.size() == 0 ||
              (tx[0] == 'win' && moved.hasOnly(['wins']) && statUp('wins')) ||
              (tx[0] == 'played' && moved.hasOnly(['played']) && statUp('played')) ||
-             (tx[0] == 'payout' && moved.hasOnly(['coinsWon'])) ||
-             (tx[0] == 'live' && moved.hasOnly(['livePlayed', 'liveWins', 'streak', 'bestStreak', 'liveAt']));
+             (tx[0] == 'payout' && moved.hasOnly(['coinsWon']));
     }
 
     function winRecorded(cid) {
@@ -403,7 +377,6 @@ service cloud.firestore {
              (tx[0] == 'avatar' && tx.size() == 2 && characterBuyOk(tx[1], delta)) ||
              (tx[0] == 'earn' && tx.size() == 3 &&
               (tx[1].matches('lv[0-9]{1,2}') ? levelRewardOk(tx[1], tx[2], delta) : delta == 0 && rewardOk(tx[1], tx[2]))) ||
-             (tx[0] == 'live' && liveResultOk(tx, delta)) ||
              (framesSame &&
               delta == 0 && tx.size() == 2 &&
               ((tx[0] == 'win' && winRecorded(tx[1])) || (tx[0] == 'played' && playedRecorded(tx[1])))) ||
@@ -538,18 +511,12 @@ service cloud.firestore {
                     !exists(/databases/$(database)/documents/users/$(userId));
     }
 
-    // One record per live game you finished or forfeited (id {roomCode}_{startedAt}): counted
-    // once on your wallet's live counters, in the same batch (liveResultOk).
+    // One record per live game you finished or forfeited (id {roomCode}_{startedAt}).
+    // A live game counted on your wallet: written only by the server, which checks
+    // the game first (app/api/live/settle) — together with the wallet's counters
     match /users/{userId}/live/{gameId} {
       allow read: if signedIn() && uid() == userId;
-      allow create: if signedIn() && uid() == userId &&
-                    request.resource.data.keys().hasOnly(['game', 'result', 'at']) &&
-                    request.resource.data.game is string && request.resource.data.game.size() <= 20 &&
-                    request.resource.data.result in ['win', 'lose', 'draw'] &&
-                    request.resource.data.at is string &&
-                    getAfter(/databases/$(database)/documents/wallets/$(uid())).data.lastTx ==
-                      'live:' + gameId + ':' + request.resource.data.result;
-      allow update: if false;
+      allow create, update: if false;
       allow delete: if signedIn() && uid() == userId &&
                     !exists(/databases/$(database)/documents/users/$(userId));
     }
@@ -1651,7 +1618,7 @@ service cloud.firestore {
                d.discountPercent >= 1 &&
                d.bases[d.players[0]] is int && d.bases[d.players[0]] > 0 &&
                d.liveGame is string &&
-               d.liveGame.matches('^(scribble|ludo|chess|checkers|tictactoe|snakes|snakes3d|sudoku)$') &&
+               d.liveGame.matches('^(ludo|chess|checkers|tictactoe|snakes|snakes3d)$') &&
                d.roomCode is string && d.roomCode.matches('^[A-HJ-NP-Z2-9]{6}$') &&
                d.get('stake', 0) == 0;
       }
@@ -1756,18 +1723,9 @@ service cloud.firestore {
                          ? validLuckyResult(resource.data, secretDoc(challengeId), request.resource.data.result)
                          : (validVerdictResult(challengeId, resource.data, secretDoc(challengeId), request.resource.data.result) ||
                             validSoloResult(resource.data, secretDoc(challengeId), request.resource.data.result))))
-                      ||
-                      // A live game for a discount: only the host — the one being paid — records
-                      // who won, so the friend who'd gain from a fake win can't write it. The
-                      // winner is that friend or nobody; the discount then works as for any game.
-                      (resource.data.game == 'live' &&
-                       resource.data.hostId == uid() &&
-                       onlyChanges(['status', 'result', 'resolvedAt']) &&
-                       request.resource.data.status == 'DONE' &&
-                       request.resource.data.resolvedAt == request.time &&
-                       request.resource.data.result.keys().hasOnly(['winners']) &&
-                       (request.resource.data.result.winners == [] ||
-                        request.resource.data.result.winners == resource.data.players))
+
+                      // (A live game for a discount has no branch here: its result is written by
+                      // the server after it replays the game — app/api/live/settle.)
                       ||
                       // The host withdraws an unfinished game
                       (resource.data.hostId == uid() &&

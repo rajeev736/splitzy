@@ -26,8 +26,15 @@ import { createLiveDiscountChallenge, newChallengeId } from "@/services/challeng
 import { createRoom, deleteRoom } from "@/services/live-rooms"
 import { GameHero, GameOptionsPicker, LiveGameGrid, StepDots } from "./pieces"
 
-/** Games that work one-on-one. */
-const DUEL_GAMES = LIVE_GAME_IDS.filter((id) => LIVE_GAMES[id].minPlayers <= 2 && LIVE_GAMES[id].maxPlayers >= 2)
+/**
+ * Games for a discount: one-on-one, and checked move by move by the server
+ * before the result counts (lib/live/verify) — so Scribble (guesses) and
+ * Sudoku (a solver app could fill it) aren't offered.
+ */
+const VERIFIED_DUELS: readonly string[] = ["ludo", "chess", "checkers", "tictactoe", "snakes", "snakes3d"]
+const DUEL_GAMES = LIVE_GAME_IDS.filter(
+  (id) => VERIFIED_DUELS.includes(id) && LIVE_GAMES[id].minPlayers <= 2 && LIVE_GAMES[id].maxPlayers >= 2
+)
 
 type Step = 0 | 1 | 2
 
@@ -221,7 +228,7 @@ export function DiscountFlow() {
                   game={game}
                   picks={picks}
                   onChange={setPicks}
-                  hide={["teams"]}
+                  hide={["teams", "mode"]}
                 />
               </GamePanel>
             ) : null}

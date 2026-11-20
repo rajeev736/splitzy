@@ -106,6 +106,8 @@ const markKicked = (code: string, on: boolean) => {
 const leavingRooms = new Set<string>()
 /** Finished rooms shed their drawing / chat this long after the end. */
 const CLEANUP_AFTER_MS = 60 * 1000
+/** …or, when the server never settled it, this long (its moves are what it checks). */
+const UNSETTLED_CLEANUP_MS = 30 * 60 * 1000
 
 /** Someone watching a game they have no seat in (the group's game room). */
 function spectatorOf(uid: string, name: string): RoomPlayer {
@@ -229,13 +231,16 @@ export function RoomShell({ code, lounge }: { code: string; lounge?: LoungeLink 
     }
   }, [isReferee, meta, me, players, now, code, serverNow])
 
-  // Referee: a minute after the end, drop the heavy parts of the room
+  // Referee: a minute after the end, drop the heavy parts of the room — once the
+  // server has checked the game (it replays the moves kept in the state), or
+  // half an hour on if nobody ever asked it to
+  const settled = meta?.settled === true
   React.useEffect(() => {
     if (!isReferee || meta?.status !== "ended" || !meta.endedAt) return
-    const wait = Math.max(0, meta.endedAt + CLEANUP_AFTER_MS - serverNow())
+    const wait = Math.max(0, meta.endedAt + (settled ? CLEANUP_AFTER_MS : UNSETTLED_CLEANUP_MS) - serverNow())
     const id = window.setTimeout(() => void cleanupRoom(code), wait)
     return () => window.clearTimeout(id)
-  }, [isReferee, meta?.status, meta?.endedAt, code, serverNow])
+  }, [isReferee, meta?.status, meta?.endedAt, settled, code, serverNow])
 
   if (kicked && !me && meta && isJoinable(meta)) {
     return (

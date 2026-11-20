@@ -1,9 +1,8 @@
 import { getAuth } from "firebase-admin/auth"
 import { FieldValue, getFirestore } from "firebase-admin/firestore"
-import { getMessaging } from "firebase-admin/messaging"
 
 import { adminApp } from "@/lib/server/firebase-admin"
-import { notificationHref } from "@/lib/system-notifications"
+import { pushToPhones } from "@/lib/server/push"
 import type { AppNotification } from "@/lib/types"
 
 /**
@@ -46,35 +45,6 @@ export async function POST(request: Request) {
   })
   if (!notif) return Response.json({ ok: false }, { status: 409 })
 
-  const tokensSnap = await db.collection(`users/${notif.userId}/pushTokens`).limit(20).get()
-  const phones = tokensSnap.docs
-    .map((d) => ({ ref: d.ref, token: d.get("token") as string | undefined }))
-    .filter((p): p is { ref: typeof p.ref; token: string } => !!p.token)
-  if (phones.length === 0) return Response.json({ ok: true, sent: 0 })
-
-  const res = await getMessaging(app).sendEachForMulticast({
-    tokens: phones.map((p) => p.token),
-    // Data only: the app's own service worker (public/sw.js) shows it
-    data: {
-      title: notif.title.slice(0, 200),
-      body: notif.message.slice(0, 1000),
-      url: notificationHref(notif),
-      tag: notif.id,
-    },
-    webpush: { headers: { Urgency: "high", TTL: String(24 * 60 * 60) } },
-    android: { priority: "high" },
-  })
-
-  // Forget phones that uninstalled or revoked notifications
-  const dead = res.responses
-    .map((r, i) =>
-      !r.success &&
-      ["messaging/registration-token-not-registered", "messaging/invalid-registration-token"].includes(r.error?.code ?? "")
-        ? phones[i].ref
-        : null
-    )
-    .filter((r) => r !== null)
-  await Promise.all(dead.map((r) => r.delete().catch(() => undefined)))
-
-  return Response.json({ ok: true, sent: res.successCount })
+  const sent = await pushToPhones(app, notif)
+  return Response.json({ ok: true, sent })
 }

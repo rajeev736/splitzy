@@ -278,7 +278,10 @@ export function BoardThemePicker({ game }: { game: ThemeGame }) {
                   using && "border-primary ring-1 ring-primary"
                 )}
               >
-                <BoardThemeThumb theme={t} />
+                {/* Not yours yet: soft and muted until bought */}
+                <div className={cn("transition-[filter,opacity]", !ownsTheme(t, wallet?.themes) && "opacity-60 saturate-[.35]")}>
+                  <BoardThemeThumb theme={t} />
+                </div>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold">{t.name}</p>
                   <p className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">{t.blurb}</p>

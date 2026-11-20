@@ -2,7 +2,7 @@
 
 import { GameScreen, GameTopBar } from "@/components/game-ui/kit"
 import { GameCoinChip } from "@/components/game-nav/coin-chip"
-import { GameBottomNav, useGameTabBack } from "@/components/game-nav/game-bottom-nav"
+import { GameNavSpacer, useGameTabBack } from "@/components/game-nav/game-bottom-nav"
 import { useSession } from "@/components/providers/session-provider"
 import { useBadges, useFriendships, useWallet } from "@/hooks/use-fun"
 import { Inventory } from "./_components/inventory"
@@ -28,7 +28,7 @@ export default function GameInventoryPage() {
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 px-4 pt-1 pb-4">
         <Inventory user={user} wallet={wallet} badges={badges?.summary} earlyBird={badges?.earlyBird} />
       </div>
-      <GameBottomNav />
+      <GameNavSpacer />
     </GameScreen>
   )
 }

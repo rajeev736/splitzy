@@ -6,12 +6,30 @@
  */
 
 .gn-wrap {
-  position: sticky;
+  /* Mounted once by the app shell and fixed: switching Games tabs never rebuilds it */
+  position: fixed;
+  left: 0;
+  right: 0;
   bottom: 0;
   z-index: 30;
-  margin-top: auto;
   padding: 0.85rem 0.75rem calc(0.6rem + env(safe-area-inset-bottom, 0px));
   pointer-events: none;
+}
+/* Beside the sidebar on big screens (components/layout/app-sidebar: w-64, lg:w-72) */
+@media (min-width: 48rem) {
+  .gn-wrap {
+    left: 16rem;
+  }
+}
+@media (min-width: 64rem) {
+  .gn-wrap {
+    left: 18rem;
+  }
+}
+/* What a Games tab page leaves free at its bottom for the bar */
+.gn-spacer {
+  flex-shrink: 0;
+  height: calc(6.4rem + env(safe-area-inset-bottom, 0px));
 }
 
 .gn-tray {

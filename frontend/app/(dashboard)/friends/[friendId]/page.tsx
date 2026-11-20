@@ -15,7 +15,6 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
-import { Coins } from "@/components/fun/coin"
 import { BadgeGrid } from "@/components/fun/badge-grid"
 import { MoodFace } from "@/components/fun/mood-face"
 import { AppHeader } from "@/components/layout/app-header"
@@ -183,7 +182,7 @@ function FriendProfileContent() {
         {/* Who they are, for splitting: photo (no frame), name, JoySplit ID */}
         <section className="flex flex-col items-center gap-3 text-center">
           <h1 className="sr-only">{friend.displayName}</h1>
-          <ProfilePair friend={friend} />
+          <ProfilePair friend={friend} wallet={wallet} />
           {mood && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/70 py-1 pr-3 pl-1 text-xs font-medium">
               <MoodFace
@@ -202,15 +201,7 @@ function FriendProfileContent() {
         </section>
 
         {/* At a glance */}
-        <div className="grid grid-cols-3 divide-x rounded-xl border border-card-stroke bg-card py-3 text-center shadow-xs">
-          <div className="flex min-w-0 flex-col items-center gap-0.5 px-2">
-            {wallet ? (
-              <Coins amount={wallet.balance} className="text-base" />
-            ) : (
-              <span className="text-base font-semibold">—</span>
-            )}
-            <span className="text-[11px] text-muted-foreground">Coins</span>
-          </div>
+        <div className="grid grid-cols-2 divide-x rounded-xl border border-card-stroke bg-card py-3 text-center shadow-xs">
           <div className="flex min-w-0 flex-col items-center gap-0.5 px-2">
             <span className="text-base font-semibold tabular-nums">
               {badges ? champ : "—"}

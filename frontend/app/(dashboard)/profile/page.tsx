@@ -46,8 +46,7 @@ import { useUpdateProfile } from "@/hooks/mutations"
 import { useFriends, useUnreadCount } from "@/hooks/queries"
 import { cn } from "@/lib/utils"
 import { BadgeGrid } from "@/components/fun/badge-grid"
-import { Coins } from "@/components/fun/coin"
-import { useBadges, useFriendships, useWallet } from "@/hooks/use-fun"
+import { useBadges, useFriendships } from "@/hooks/use-fun"
 import { BirthdayDialog, MoodPicker } from "./_components/profile-fun"
 import { PartyPopperIcon } from "@/components/fun/party-popper"
 import { useMyBirthdayCheers } from "@/hooks/use-fun"
@@ -83,7 +82,6 @@ export default function ProfilePage() {
   if (isPhotoOpen && !photoDialogLoaded) setPhotoDialogLoaded(true)
   const [isLogoutOpen, setIsLogoutOpen] = React.useState(false)
   const [isBirthdayOpen, setIsBirthdayOpen] = React.useState(false)
-  const wallet = useWallet()
   const { data: friendships } = useFriendships()
   const loveBonds = friendships.filter((f) => f.status === "ACTIVE" && f.bond?.type === "love").length
   const badges = useBadges(user?.uid, loveBonds)
@@ -189,19 +187,9 @@ export default function ProfilePage() {
           onScan={() => setIsScanning(true)}
         />
 
-        <section id="badges" data-tour="frame" className="flex scroll-mt-20 flex-col gap-3">
+        <section id="badges" data-tour="badges" className="flex scroll-mt-20 flex-col gap-3">
           <div className="flex items-center justify-between px-1">
             <h2 className="text-sm font-semibold">Your badges</h2>
-            {wallet && (
-              <Link
-                href="/profile/coins"
-                aria-label={`${wallet.balance} coins — see history`}
-                className="-mr-1 flex h-8 items-center gap-1 rounded-full border bg-card px-2.5 text-sm transition-colors hover:bg-muted"
-              >
-                <Coins amount={wallet.balance} iconClassName="size-4" />
-                <HugeiconsIcon icon={ArrowRight01Icon} className="size-3.5 text-muted-foreground" />
-              </Link>
-            )}
           </div>
           <BadgeGrid badges={badges?.summary} earlyBird={badges?.earlyBird} />
         </section>

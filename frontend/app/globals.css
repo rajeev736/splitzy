@@ -416,6 +416,21 @@ input:autofill {
 .driver-popover.joysplit-tour .driver-popover-arrow-side-bottom { border-bottom-color: var(--popover); }
 .driver-popover.joysplit-tour .driver-popover-arrow-side-left { border-left-color: var(--popover); }
 .driver-popover.joysplit-tour .driver-popover-arrow-side-right { border-right-color: var(--popover); }
+/* Each step eases in (transform + opacity only) */
+.driver-fade .driver-popover.joysplit-tour {
+  animation: joysplit-tour-in 0.24s ease-out both;
+}
+@keyframes joysplit-tour-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .driver-fade .driver-popover.joysplit-tour {
+    animation: none;
+  }
+}
 
 /* Toasts: the close cross on the right corner (sonner puts it on the left).
    `auto`, not `unset`: a custom property set to unset inherits the toaster's 0. */
@@ -431,4 +446,10 @@ input:autofill {
 }
 :not([data-scrolling]) > * > section > .chat-daychip[data-stuck] {
   opacity: 0;
+}
+
+/* Profile frames on small avatars rest in their drawn pose (components/fun/frame-art `still`):
+   dozens of animated frames in a scrolling list would repaint every frame. */
+svg[data-frame-still] * {
+  animation: none !important;
 }

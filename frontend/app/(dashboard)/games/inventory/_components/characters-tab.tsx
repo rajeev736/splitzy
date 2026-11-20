@@ -166,7 +166,12 @@ function CharacterCard({
       )}
     >
       <div className="relative p-1.5 pb-0">
-        <CharacterFill def={def} mode={def.tier === "basic" ? "still" : "idle"} className="rounded-[10px]" />
+        {/* Not yours yet: soft and muted (tap for the full-colour preview) */}
+        <CharacterFill
+          def={def}
+          mode={owned && def.tier !== "basic" ? "idle" : "still"}
+          className={cn("rounded-[10px] transition-[filter,opacity]", !owned && "opacity-60 saturate-[.35]")}
+        />
         {wearing && (
           <span className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground shadow-sm">
             <HugeiconsIcon icon={Tick02Icon} className="size-3" />

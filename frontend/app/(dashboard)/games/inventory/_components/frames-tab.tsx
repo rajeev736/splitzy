@@ -153,18 +153,20 @@ function FrameCard({
   onClick: () => void
 }) {
   const info = FRAMES[id]
+  const has = ownsFrame(id, wallet?.frames)
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={`${info.name} frame`}
+      aria-label={`${info.name} frame${has ? "" : ", not owned"}`}
       className={cn(
         // Off screen, a card (and its frame's animation) isn't rendered: keeps a long, animated grid smooth to scroll
         "relative flex min-w-0 flex-col items-center gap-1 rounded-xl border border-card-stroke bg-card px-1 pt-1 pb-2.5 shadow-xs transition-[background-color,transform] [contain-intrinsic-height:auto_8.5rem] [content-visibility:auto] hover:bg-subtle-hover active:scale-[0.97]",
         (wearing || selected) && "border-primary ring-2 ring-primary/20"
       )}
     >
-      <div className="p-4">
+      {/* Not yours yet: soft and muted (tap for the full-colour preview) */}
+      <div className={cn("p-4 transition-[filter,opacity]", !has && "opacity-60 saturate-[.35]")}>
         <FramedAvatar src={user.photoURL} name={user.displayName} frame={id} size={52} />
       </div>
       <span className="-mt-2 w-full truncate text-center text-xs font-medium">{info.name}</span>

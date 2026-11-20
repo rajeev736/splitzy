@@ -13,10 +13,22 @@ import { cn } from "@/lib/utils"
 import { AppSidebar } from "./app-sidebar"
 import { ModeBar } from "./mode-switch"
 import { BottomNav } from "./bottom-nav"
+import { GameBottomNav, isGameTabPage } from "@/components/game-nav/game-bottom-nav"
 import { isBottomNavPage, NAV_ITEMS, showsAddExpenseFab } from "./nav-items"
 
 /** Screens opened often from the tabs, warmed up along with the tabs themselves. */
-const WARM_ROUTES = ["/expenses/new", "/friends/add", "/friends/requests", "/groups/new", "/history"]
+const WARM_ROUTES = [
+  "/expenses/new",
+  "/friends/add",
+  "/friends/requests",
+  "/groups/new",
+  "/history",
+  "/games/profile",
+  "/games/levels",
+  "/games/inventory",
+  "/games/coins",
+  "/game-notifications",
+]
 
 const REDIRECT_KEY = "joysplit_redirect_to"
 
@@ -95,6 +107,8 @@ export function AppShell({ children, hideNav = false }: { children: React.ReactN
           {children}
         </main>
         {showBottomNav && <BottomNav />}
+        {/* The Games tabs' bar, once for all four: it stays put while the pages change */}
+        {!hideNav && isGameTabPage(pathname) && <GameBottomNav />}
       </div>
     </ChatInboxProvider>
   )

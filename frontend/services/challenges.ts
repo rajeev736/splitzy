@@ -533,29 +533,6 @@ export async function createLiveDiscountChallenge(user: UserProfile, input: Live
   return challenge
 }
 
-/**
- * The live game is over: the host records who won (the friend, or nobody).
- * Once only — a second device or a second try is turned down by the rules
- * and simply returns what's there.
- */
-export async function recordLiveResult(user: UserProfile, challenge: Challenge, winnerIds: string[]): Promise<Challenge> {
-  if (challenge.game !== "live" || challenge.status !== "OPEN" || challenge.hostId !== user.uid) return challenge
-  const firestore = getDb()
-  if (!firestore) return challenge
-  const result = { winners: challenge.players.filter((p) => winnerIds.includes(p)) }
-  const ref = doc(firestore, "challenges", challenge.id)
-  try {
-    await updateDoc(ref, { status: "DONE", result, resolvedAt: serverTimestamp() })
-  } catch (e) {
-    if ((e as { code?: string })?.code === "permission-denied") {
-      const latest = await getDoc(ref).catch(() => null)
-      if (latest?.exists() && latest.data().status !== "OPEN") return toChallenge(latest.data())
-    }
-    throw e
-  }
-  await notifyResult(user, challenge, result)
-  return { ...challenge, status: "DONE", result, resolvedAt: nowIso() }
-}
 
 /** Reads one challenge (for the room to find the discount game it belongs to). */
 export async function fetchChallenge(id: string): Promise<Challenge | null> {

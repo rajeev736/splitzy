@@ -1,10 +1,7 @@
 "use client"
 
-import { FrameArt, hasFrame } from "@/components/fun/frame-art"
 import { PEEK_CLASS, peekTriggerProps } from "@/components/profile-peek/peek"
-import { useSession } from "@/components/providers/session-provider"
 import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { useFriends } from "@/hooks/queries"
 import { cn } from "@/lib/utils"
 
 const SIZES = {
@@ -37,15 +34,6 @@ function colorFor(name: string) {
   return PALETTE[Math.abs(hash) % PALETTE.length]
 }
 
-/** The frame someone wears, when we know them: you, or one of your friends. */
-function useKnownFrame(uid: string | undefined) {
-  const { user } = useSession()
-  const { data: friends } = useFriends()
-  if (!uid) return undefined
-  if (uid === user?.uid) return user.frame
-  return friends.find((f) => f.uid === uid)?.frame
-}
-
 export interface UserAvatarProps {
   src?: string | null
   name: string
@@ -53,20 +41,19 @@ export interface UserAvatarProps {
   className?: string
   /** Small status dot / icon rendered at the bottom-right. */
   badge?: React.ReactNode
-  /**
-   * Whose avatar it is: shows their profile frame (yours or a friend's), and a
-   * tap opens their profile peek (components/profile-peek).
-   */
+  /** Whose avatar it is: a tap opens their profile peek (components/profile-peek). */
   uid?: string
-  /** A frame to show regardless of who it is. */
+  /** Ignored: the Split side shows photos plain — frames are for the Games side (GameAvatar). */
   frame?: string
   /** `false`: a tap doesn't open the profile peek (the avatar has its own job here). */
   peek?: boolean
 }
 
-export function UserAvatar({ src, name, size = "md", className, badge, uid, frame, peek = true }: UserAvatarProps) {
-  const known = useKnownFrame(uid)
-  const worn = frame ?? known
+/**
+ * A person's photo (or initials) on the Split side: always plain — no profile
+ * frame anywhere here (frames are a Games thing: components/game-avatar).
+ */
+export function UserAvatar({ src, name, size = "md", className, badge, uid, peek = true }: UserAvatarProps) {
   const tap = peek && uid ? peekTriggerProps({ uid, look: "app", hint: { name, photo: src } }, name) : null
   const photo = (
     <>
@@ -77,25 +64,10 @@ export function UserAvatar({ src, name, size = "md", className, badge, uid, fram
     </>
   )
 
-  if (!hasFrame(worn)) {
-    return (
-      <Avatar {...tap} className={cn(SIZES[size], tap && PEEK_CLASS, className)}>
-        {photo}
-        {badge ? <AvatarBadge className="size-auto! bg-transparent ring-0">{badge}</AvatarBadge> : null}
-      </Avatar>
-    )
-  }
-
-  // Framed: the photo shrinks a little so the frame fits the same box (spilling
-  // just 10% around it), so rows and headers keep their layout.
   return (
-    <span
-      {...tap}
-      className={cn("relative inline-flex shrink-0 items-center justify-center rounded-full", SIZES[size], tap && PEEK_CLASS, className)}
-    >
-      <Avatar className="size-[72%] text-[0.8em]">{photo}</Avatar>
-      <FrameArt frame={worn} className="absolute" style={{ inset: "-10%" }} />
-      {badge ? <span className="absolute right-0 bottom-0 z-10">{badge}</span> : null}
-    </span>
+    <Avatar {...tap} className={cn(SIZES[size], tap && PEEK_CLASS, className)}>
+      {photo}
+      {badge ? <AvatarBadge className="size-auto! bg-transparent ring-0">{badge}</AvatarBadge> : null}
+    </Avatar>
   )
 }

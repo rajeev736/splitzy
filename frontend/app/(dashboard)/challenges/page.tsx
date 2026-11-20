@@ -10,7 +10,7 @@ import { Coins } from "@/components/fun/coin"
 import { GameAvatar } from "@/components/game-avatar/game-avatar"
 import { LevelBadge, XpBar } from "@/components/game-avatar/level-badge"
 import { GameButton, GameIconButton, GameNote, GameScreen, GameSectionTitle, GameTabs } from "@/components/game-ui/kit"
-import { GameBottomNav } from "@/components/game-nav/game-bottom-nav"
+import { GameNavSpacer } from "@/components/game-nav/game-bottom-nav"
 import { GAME_ROUTES } from "@/components/game-nav/items"
 import { GameGlyph } from "@/components/games/game-glyph"
 import { ModeBar } from "@/components/layout/mode-switch"
@@ -88,7 +88,7 @@ export default function ChallengesPage() {
           <div className="flex flex-1 items-center justify-center pb-24">
             <Spinner className="size-9 text-white" />
           </div>
-          <GameBottomNav />
+          <GameNavSpacer />
         </GameScreen>
       }
     >
@@ -152,7 +152,7 @@ function ChallengesContent() {
           </div>
         ) : null}
       </div>
-      <GameBottomNav />
+      <GameNavSpacer />
     </GameScreen>
   )
 }
@@ -172,6 +172,7 @@ function HubTopBar() {
             label={unread > 0 ? `Game notifications, ${unread} unread` : "Game notifications"}
             tone="cream"
             size="sm"
+            data-tour="game-bell"
             badge={unread > 0 ? (unread > 9 ? "9+" : unread) : undefined}
             onClick={() => router.push("/game-notifications")}
           />
@@ -188,11 +189,12 @@ function PlayerCard() {
   if (!user) return null
   const info = levelInfo(wallet)
   return (
-    <div className="gu-panel-flat relative">
+    <div className="gu-panel-flat relative" data-tour="player-card">
       {/* Your coins: to the coin history and shop. Claimed coins fly into it (data-coin-target) */}
       <Link
-        href="/profile/coins"
+        href="/games/coins"
         data-coin-target
+        data-tour="coin-chip"
         aria-label={wallet ? `${wallet.balance} coins` : "Coins"}
         className="gu-chip absolute top-3 right-3 z-10 h-8 !px-3 text-sm active:translate-y-px"
       >

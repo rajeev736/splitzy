@@ -8,20 +8,21 @@ import { useRoomNode } from "@/hooks/use-live-room"
 import { isLiveConfigured } from "@/lib/firebase/config"
 import type { RoomMeta } from "@/lib/live/types"
 import type { Challenge } from "@/lib/types"
-import { recordLiveResult } from "@/services/challenges"
+import { settleOnServer } from "@/services/live-server"
 
 /**
- * Discount games played live (Challenge game "live"): the host — the one being
- * paid — is the only one allowed to record who won (firestore.rules). This
- * watches the room of each such game the host has open, on any screen, and
- * records the result the moment the room says the game is over. From there
- * the discount works like any other: the friend has 10 minutes to pay.
+ * Discount games played live (Challenge game "live"): only the server records
+ * who won, after replaying the game's moves (app/api/live/settle) — neither
+ * side can write it. This watches the room of each such game you're in, on
+ * any screen, and asks the server to settle it the moment the room says the
+ * game is over (the result screen asks too; whichever comes first). From
+ * there the discount works like any other: the friend has 10 minutes to pay.
  */
 export function LiveChallengeReferee() {
   const { user } = useSession()
   const { data: challenges } = useChallenges()
   if (!user || !isLiveConfigured) return null
-  const mine = challenges.filter((c) => c.game === "live" && c.status === "OPEN" && c.hostId === user.uid && c.roomCode)
+  const mine = challenges.filter((c) => c.game === "live" && c.status === "OPEN" && c.participants.includes(user.uid) && c.roomCode)
   return (
     <>
       {mine.map((c) => (
@@ -38,8 +39,7 @@ function RoomWatch({ challenge }: { challenge: Challenge }) {
   React.useEffect(() => {
     if (!user || done.current || !meta || meta.status !== "ended" || meta.challengeId !== challenge.id) return
     done.current = true
-    // RTDB drops an empty winnerIds list: no winners means nobody beat the host
-    void recordLiveResult(user, challenge, meta.result?.winnerIds ?? []).catch(() => {
+    void settleOnServer(challenge.roomCode ?? "").catch(() => {
       done.current = false
     })
   }, [user, meta, challenge])

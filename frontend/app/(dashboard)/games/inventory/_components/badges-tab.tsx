@@ -88,7 +88,7 @@ function BadgeRow({ badge, earlyBird, onClick }: { badge: BadgeSummary; earlyBir
       onClick={onClick}
       className="flex items-center gap-3 rounded-xl border border-card-stroke bg-card px-3 py-2.5 text-left shadow-xs transition-colors hover:bg-subtle-hover"
     >
-      <BadgeArt badge={badge.id} tier={badge.tier} className={cn("size-12 shrink-0", !earned && "opacity-50 grayscale")} />
+      <BadgeArt badge={badge.id} tier={badge.tier} className={cn("size-12 shrink-0", !earned && "opacity-60 saturate-[.35]")} />
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="flex items-center gap-2">
           <span className={cn("truncate text-sm font-semibold", !earned && "text-muted-foreground")}>{info.name}</span>

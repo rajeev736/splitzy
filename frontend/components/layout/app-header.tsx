@@ -10,12 +10,10 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { useChatUnreadCount } from "@/components/chat/chat-inbox"
-import { Coins } from "@/components/fun/coin"
 import { useSession } from "@/components/providers/session-provider"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Button } from "@/components/ui/button"
 import { useUnreadCount } from "@/hooks/queries"
-import { useWallet } from "@/hooks/use-fun"
 import { cn } from "@/lib/utils"
 
 /** Time-of-day greeting for the home header. */
@@ -112,7 +110,6 @@ export function AppHeader({
         </div>
 
         <div className="flex items-center gap-2">
-          {!rightAction && <CoinChip />}
           {!rightAction && (
             <Button
               variant="ghost"
@@ -153,18 +150,3 @@ export function AppHeader({
   )
 }
 
-/** Your coins, top right; opens the frame shop. */
-function CoinChip() {
-  const wallet = useWallet()
-  if (!wallet) return null
-  return (
-    <Link
-      href="/profile/coins"
-      data-tour="coins"
-      aria-label={`${wallet.balance} coins`}
-      className="flex h-8 items-center rounded-full border border-card-stroke bg-card px-2.5 text-xs font-semibold shadow-xs transition-colors hover:bg-subtle-hover active:bg-subtle-pressed"
-    >
-      <Coins amount={wallet.balance} iconClassName="size-4" />
-    </Link>
-  )
-}

@@ -54,7 +54,7 @@ export function LiveGamesPanel({ invite }: { invite?: string | null }) {
       {user && <ActiveRooms rooms={rooms.active} uid={user.uid} />}
       <RoomInvites invites={rooms.invites} now={rooms.now} />
 
-      <section className="flex flex-col gap-3">
+      <section className="flex flex-col gap-3" data-tour="pick-game">
         <GameSectionTitle>Pick a game</GameSectionTitle>
         <LiveGameGrid recent={recent} games={ordered} onPick={(id) => router.push(`/play/new/${id}${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`)} />
       </section>
@@ -86,7 +86,7 @@ function GroupRooms({ groups }: { groups: Group[] }) {
   const hidden = busy.length + quiet.length - shown.length
 
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex flex-col gap-3" data-tour="group-rooms">
       <GameSectionTitle count={busy.length || undefined}>Group game rooms</GameSectionTitle>
       <div className="gu-panel-flat flex flex-col divide-y divide-[var(--gu-line)] px-1">
         {shown.map((g) => (

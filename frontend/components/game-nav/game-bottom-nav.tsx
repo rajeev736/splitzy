@@ -45,11 +45,20 @@ export function useGameTabBack() {
   }, [router])
 }
 
+/** A Games tab page's room for the bar at its bottom (the bar itself is the app shell's). */
+export function GameNavSpacer() {
+  return <div aria-hidden className="gn-spacer" />
+}
+
+/** The four pages with the Games bar. */
+export const isGameTabPage = (pathname: string) => (Object.values(GAME_ROUTES) as string[]).includes(pathname)
+
 /**
  * The Games side's bottom bar: Play (the hub), Levels, Inventory, Profile.
- * Only on those four pages — never inside a room or a game. Render it as the
- * last child of a GameScreen: it sticks to the bottom of the screen and takes
- * its own room in the flow, so nothing on the page ends up under it.
+ * Only on those four pages — never inside a room or a game. Mounted once by
+ * the app shell (components/layout/app-shell) and fixed at the bottom, so it
+ * stays put while the tabs change under it; each tab page ends with a
+ * GameNavSpacer so nothing ends up under it.
  *
  * Like the Split tabs, it doesn't pile up history: hub → a tab adds one entry,
  * tab → tab replaces it, tab → Play steps back. So Back from any tab lands on
@@ -85,7 +94,7 @@ export function GameBottomNav() {
 
   return (
     <nav aria-label="Games" className="gn-wrap">
-      <div className="gn-tray">
+      <div className="gn-tray" data-tour="game-nav">
         {GAME_NAV_ITEMS.map((item) => {
           const active = pathname === item.href
           const badge = badges[item.id] ?? 0

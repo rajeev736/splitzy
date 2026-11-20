@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { MomentBurst } from "@/components/fun/moment-burst"
+import { GamesWelcome } from "@/components/fun/games-welcome"
 import { WelcomeTour } from "@/components/fun/welcome-tour"
 import { useSession } from "@/components/providers/session-provider"
 import { flyCoins } from "@/components/rewards/coin-burst"
@@ -249,10 +250,12 @@ export function FunSync() {
 
   return (
     <>
-      {/* First time: the feature tour, then the welcome coins and frame */}
+      {/* First time on Split: its tour (then the Early Bird badge). First time on
+          Games: the welcome coins and frame, then the Games tour. */}
       {/* Reads the URL, so it stays out of prerendering */}
       <React.Suspense fallback={null}>
         <WelcomeTour />
+        <GamesWelcome />
       </React.Suspense>
       {/* One overlay for every hug / kiss / wish / gift animation in the app */}
       <MomentBurst

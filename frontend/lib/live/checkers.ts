@@ -431,3 +431,41 @@ export function toLiveResult(result: CheckersResult): LiveResult {
     reason: result.reason,
   }
 }
+
+/* ── Move log ────────────────────────────────────────────────────────── */
+
+/**
+ * What goes in the move log (lib/live/log) for each write, replayed by
+ * lib/live/verify/checkers. A move is logged in its standard notation
+ * (`notation`: "22-18", "15x22x29"), which names every square it lands on.
+ * None starts with "r" (kept for the server's dice).
+ */
+export const CHECKERS_LOG = {
+  drawOffer: "draw:offer",
+  drawAccept: "draw:accept",
+  drawDecline: "draw:decline",
+  resign: "end:resign",
+  /** The other side walked away: the writer wins. */
+  left: "end:left",
+} as const
+
+/** The move a logged notation names, among `side`'s legal moves on `board` (null: none). */
+export function moveFromNotation(
+  board: Board,
+  side: Side,
+  code: string
+): CheckersMove | null {
+  if (!/^\d{1,2}(?:-\d{1,2}|(?:x\d{1,2})+)$/.test(code)) return null
+  const numbers = code.split(/[-x]/).map(Number)
+  if (numbers.some((n) => n < 1 || n > 32)) return null
+  const path = numbers.map(cellOfNumber)
+  const jump = code.includes("x")
+  return (
+    legalMoves(board, side).find(
+      (m) =>
+        m.captured.length > 0 === jump &&
+        m.path.length === path.length &&
+        m.path.every((sq, i) => sq === path[i])
+    ) ?? null
+  )
+}

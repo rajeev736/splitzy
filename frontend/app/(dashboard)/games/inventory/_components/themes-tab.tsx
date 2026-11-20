@@ -124,7 +124,10 @@ function ThemeCard({
       )}
     >
       <div className="relative p-1.5 pb-0">
-        <BoardThemeThumb theme={theme} />
+        {/* Not yours yet: soft and muted (tap for the full-colour preview) */}
+        <div className={cn("transition-[filter,opacity]", !owned && "opacity-60 saturate-[.35]")}>
+          <BoardThemeThumb theme={theme} />
+        </div>
         {using && (
           <span className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground shadow-sm">
             <HugeiconsIcon icon={Tick02Icon} className="size-3" />

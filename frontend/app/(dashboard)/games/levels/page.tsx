@@ -3,7 +3,7 @@
 import { LevelMap, LevelSummary, claimableLevelRewards } from "@/components/game-avatar/level-road"
 import { GameScreen, GameTopBar } from "@/components/game-ui/kit"
 import { GameCoinChip } from "@/components/game-nav/coin-chip"
-import { GameBottomNav, useGameTabBack } from "@/components/game-nav/game-bottom-nav"
+import { GameNavSpacer, useGameTabBack } from "@/components/game-nav/game-bottom-nav"
 import { useSession } from "@/components/providers/session-provider"
 import { Spinner } from "@/components/ui/spinner"
 import { useWallet } from "@/hooks/use-fun"
@@ -41,7 +41,7 @@ export default function LevelsPage() {
           </div>
         )}
       </div>
-      <GameBottomNav />
+      <GameNavSpacer />
     </GameScreen>
   )
 }

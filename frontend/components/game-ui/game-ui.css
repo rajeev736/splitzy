@@ -453,3 +453,189 @@
     transition: none;
   }
 }
+
+/*
+ * The Games tour (driver.js, components/fun/games-welcome): its popover as a
+ * cream panel in the blue frame, the game font, chunky buttons and a red ✕ —
+ * all under .gt-tour, so the Split tour (.joysplit-tour, app/globals.css)
+ * keeps its own look. It pops in on transform + opacity only.
+ */
+.driver-popover.gt-tour {
+  box-sizing: border-box;
+  min-width: min(260px, calc(100vw - 48px));
+  max-width: min(330px, calc(100vw - 48px));
+  padding: 16px 18px;
+  border-radius: 24px;
+  background: var(--gu-cream);
+  color: var(--gu-ink);
+  font-family: var(--gu-font);
+  box-shadow:
+    0 0 0 4px var(--gu-frame),
+    0 6px 0 3px var(--gu-frame-deep),
+    0 14px 28px rgba(20, 30, 90, 0.35);
+}
+.driver-fade .driver-popover.gt-tour {
+  animation: gt-tour-pop 0.3s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+}
+@keyframes gt-tour-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.92);
+  }
+}
+.driver-popover.gt-tour .driver-popover-title {
+  font-family: inherit;
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  color: var(--gu-ink);
+}
+.driver-popover.gt-tour .driver-popover-description {
+  margin-top: 6px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--gu-ink-soft);
+}
+.driver-popover.gt-tour .driver-popover-footer {
+  margin-top: 16px;
+  gap: 8px;
+  align-items: center;
+}
+.driver-popover.gt-tour .driver-popover-progress-text {
+  margin-right: auto;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--gu-brown);
+}
+.driver-popover.gt-tour .gt-tour-skip {
+  all: unset;
+  order: -1;
+  padding: 6px 2px;
+  cursor: pointer;
+  font-family: var(--gu-font);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--gu-ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.driver-popover.gt-tour .gt-tour-skip:focus-visible {
+  outline: 2px solid var(--gu-frame);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.driver-popover.gt-tour .driver-popover-navigation-btns {
+  flex-grow: 0;
+  gap: 8px;
+}
+.driver-popover.gt-tour .driver-popover-navigation-btns button + button {
+  margin-left: 0;
+}
+/* The game's chunky 3D button (as .gu-btn-sm): a lighter face on a deeper base */
+.driver-popover.gt-tour .driver-popover-footer .driver-popover-footer-btn {
+  --c: var(--gu-blue);
+  --d: var(--gu-blue-deep);
+  box-sizing: border-box;
+  height: 2.4rem;
+  padding: 0 1rem;
+  border: 0;
+  border-radius: 999px;
+  font-family: var(--gu-font);
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 2.4rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #fff;
+  text-shadow: 0 1.5px 0 var(--d);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--c) 82%, white) 0%, var(--c) 55%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -3px 0 color-mix(in oklab, var(--d) 60%, var(--c)),
+    0 4px 0 var(--d),
+    0 6px 10px rgba(20, 30, 90, 0.2);
+  transition:
+    transform 90ms ease-out,
+    box-shadow 90ms ease-out;
+}
+.driver-popover.gt-tour .driver-popover-footer .driver-popover-footer-btn:active {
+  transform: translateY(3px);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -3px 0 color-mix(in oklab, var(--d) 60%, var(--c)),
+    0 1px 0 var(--d);
+}
+.driver-popover.gt-tour .driver-popover-footer .driver-popover-footer-btn:focus-visible {
+  outline: 3px solid var(--gu-frame);
+  outline-offset: 2px;
+}
+.driver-popover.gt-tour .driver-popover-footer .driver-popover-prev-btn {
+  --c: #fffaf0;
+  --d: #e3cfa8;
+  color: var(--gu-ink);
+  text-shadow: none;
+}
+.driver-popover.gt-tour .driver-popover-footer .driver-popover-next-btn {
+  --c: var(--gu-green);
+  --d: var(--gu-green-deep);
+}
+/* No "Back" on the first step (driver.js would only grey it out) */
+.driver-popover.gt-tour .driver-popover-footer .driver-popover-prev-btn.driver-popover-btn-disabled {
+  display: none !important;
+}
+/* The ✕: the red round button on a panel's corner, like GamePanel's close */
+.driver-popover.gt-tour .driver-popover-close-btn {
+  top: -13px;
+  right: -13px;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 32px;
+  color: #fff;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--gu-red) 82%, white) 0%, var(--gu-red) 55%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.45),
+    0 3px 0 var(--gu-red-deep),
+    0 0 0 3px #fff;
+  transition: transform 90ms ease-out;
+}
+.driver-popover.gt-tour .driver-popover-close-btn:hover,
+.driver-popover.gt-tour .driver-popover-close-btn:focus-visible {
+  color: #fff;
+}
+.driver-popover.gt-tour .driver-popover-close-btn:active {
+  transform: translateY(2px);
+}
+/* The arrow in the frame's blue, sized and set off to clear the frame */
+.driver-popover.gt-tour .driver-popover-arrow {
+  border-width: 9px;
+}
+.driver-popover.gt-tour .driver-popover-arrow-side-top {
+  top: calc(100% + 3px);
+  border-top-color: var(--gu-frame);
+}
+.driver-popover.gt-tour .driver-popover-arrow-side-bottom {
+  bottom: calc(100% + 3px);
+  border-bottom-color: var(--gu-frame);
+}
+.driver-popover.gt-tour .driver-popover-arrow-side-left {
+  left: calc(100% + 3px);
+  border-left-color: var(--gu-frame);
+}
+.driver-popover.gt-tour .driver-popover-arrow-side-right {
+  right: calc(100% + 3px);
+  border-right-color: var(--gu-frame);
+}
+@media (prefers-reduced-motion: reduce) {
+  .driver-fade .driver-popover.gt-tour {
+    animation: none;
+  }
+}

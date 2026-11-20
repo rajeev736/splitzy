@@ -59,6 +59,8 @@ export interface RoomMeta {
   only?: string[]
   /** A game started in a group's game room (services/lounges): its group. Skips the lobby. */
   lounge?: string
+  /** The server has checked and counted the finished game (app/api/live/settle); only it writes this. */
+  settled?: boolean
 }
 
 export interface RoomPlayer {

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { rollOnServer } from "@/services/live-server"
 import { GameBackdrop, TABLE_CLASS } from "../game-backdrop"
 import { serverTimestamp } from "firebase/database"
 import { toast } from "sonner"
@@ -11,7 +12,6 @@ import { useRoomNode } from "@/hooks/use-live-room"
 import { getErrorMessage } from "@/lib/errors"
 import {
   applyMove,
-  applyRoll,
   describeLast,
   distinctMoves,
   HOME,
@@ -40,10 +40,11 @@ import {
   winningTeam,
   pieceKey,
   POWER_INFO,
-  rollFor,
   type PowerKind,
   type LudoColour,
+  type LudoContext,
   geoOf,
+  seededRandom,
   PENTA_COLOURS,
   SQUARE_GEO,
   type LudoGeo,
@@ -52,7 +53,9 @@ import {
   type LudoSkipReason,
   type LudoState,
 } from "@/lib/live/ludo"
+import { withLog } from "@/lib/live/log"
 import { ABANDON_MS } from "@/lib/live/room"
+import { encodeLudoAction } from "@/lib/live/verify/ludo"
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import { stateTransaction } from "@/services/live-rooms"
@@ -78,12 +81,6 @@ import { playSound, useOnChange } from "@/lib/live/sound"
 const NO_MOVES: number[] = []
 const NO_TARGETS: string[] = []
 
-/** A fair [0, 1) from the browser's CSPRNG, for the dice. */
-const cryptoRand = () => {
-  const buf = new Uint32Array(1)
-  crypto.getRandomValues(buf)
-  return buf[0] / 4294967296
-}
 /**
  * Height a phone keeps for everything but the (square) board: the two rows of
  * seats, the status line, and the table's padding. The board gets the rest.
@@ -169,10 +166,11 @@ function moveLabel(pos: number, dice: number) {
 }
 
 /**
- * Ludo for 2–4 players. The current player's device rolls and moves (the
- * rules require the roller to write the dice); the referee passes the turn
- * of anyone idle, offline or gone, and declares the end. Every change is a
- * transaction on the whole state, so racing devices can't disagree.
+ * Ludo for 2–5 players. The server rolls the dice (app/api/live/roll); the
+ * current player's device moves; the referee passes the turn of anyone idle,
+ * offline or gone, and declares the end. Every change is a transaction on the
+ * whole state that also appends its step to the move log, so racing devices
+ * can't disagree and the server can replay the game (lib/live/verify/ludo).
  */
 export function LudoGame({
   code,
@@ -244,17 +242,20 @@ export function LudoGame({
   /* ── Writes ──────────────────────────────────────────────────────── */
 
   // Callers check `seq` inside `fn` and throw when the state moved on, so a
-  // duplicate (double tap, two referees, a retry) simply aborts.
+  // duplicate (double tap, two referees, a retry) simply aborts. Each step goes
+  // into the move log in the same write (lib/live/log; its code: lib/live/verify/ludo),
+  // so the server can replay the game before it counts.
   const commit = React.useCallback(
     async (
-      fn: (s: LudoState) => LudoState,
+      fn: (s: LudoState) => { next: LudoState; action: string },
       quiet = false
     ): Promise<boolean> => {
       try {
         const res = await stateTransaction<LudoState>(code, (current) => {
           if (!current) return undefined
           try {
-            return stamp(fn(current), current)
+            const { next, action } = fn(current)
+            return withLog(stamp(next, current), current, uid, action, ts())
           } catch {
             // Stale: the game moved on under us (someone else's write landed first)
             return undefined
@@ -266,7 +267,21 @@ export function LudoGame({
         return false
       }
     },
-    [code]
+    [code, uid]
+  )
+
+  /**
+   * The engine context for a step on `s`: the clock as a whole number (it goes
+   * into the log too), and random draws seeded by the step — the same ones the
+   * server draws when it replays the game.
+   */
+  const ctxFor = React.useCallback(
+    (s: LudoState): LudoContext => ({
+      now: Math.round(serverNow()),
+      gone,
+      rand: seededRandom(`${code}:${s.seq}`),
+    }),
+    [serverNow, gone, code]
   )
 
   const myTurn =
@@ -285,19 +300,14 @@ export function LudoGame({
   const [rollLock, setRollLock] = React.useState(-1)
   const roll = () => {
     if (!state || !myTurn || state.phase !== "roll") return
-    // Fair at heart, with Ludo King style drama (see rollFor in lib/live/ludo)
-    const value = rollFor(state, uid, cryptoRand)
+    // The server rolls (app/api/live/roll): nobody can pick their number. Fair at
+    // heart, with Ludo King style drama (rollFor in lib/live/ludo). The dice
+    // tumbles from the tap; the board moves when the roll lands in the room.
     const at = state.seq
     setRollLock(at)
-    void commit((s) => {
-      if (!isCurrent(s, at)) throw new Error("stale")
-      return applyRoll(s, uid, value, {
-        now: serverNow(),
-        gone,
-        rand: Math.random,
-      })
-    }).then((ok) => {
-      if (!ok) setRollLock(-1)
+    void rollOnServer(code, at).catch((e) => {
+      setRollLock(-1)
+      if (!/stale|not your roll/.test(String((e as Error)?.message))) toast.error(getErrorMessage(e, "Couldn't roll — tap again"))
     })
   }
 
@@ -305,13 +315,13 @@ export function LudoGame({
     (token: number, expectSeq: number, value: number) =>
       commit((s) => {
         if (!isCurrent(s, expectSeq)) throw new Error("stale")
-        return applyMove(s, uid, token, value, {
-          now: serverNow(),
-          gone,
-          rand: Math.random,
-        })
+        const ctx = ctxFor(s)
+        return {
+          next: applyMove(s, uid, token, value, ctx),
+          action: encodeLudoAction(s, { type: "move", token }, ctx),
+        }
       }),
-    [commit, uid, serverNow, gone]
+    [commit, uid, ctxFor]
   )
   const onToken = (token: number) => {
     if (!state?.dice || !movable.includes(token)) return
@@ -344,10 +354,16 @@ export function LudoGame({
     setAiming(null)
     void commit((s) => {
       if (s.seq !== at) throw new Error("stale")
-      const ctx = { now: serverNow(), gone, rand: Math.random }
+      const ctx = ctxFor(s)
       return sig
-        ? applySignature(s, uid, target, ctx)
-        : applyPower(s, uid, kind, target, ctx)
+        ? {
+            next: applySignature(s, uid, target, ctx),
+            action: encodeLudoAction(s, { type: "signature", target }, ctx),
+          }
+        : {
+            next: applyPower(s, uid, kind, target, ctx),
+            action: encodeLudoAction(s, { type: "power", kind, target }, ctx),
+          }
     })
   }
   const pickPower = (kind: PowerKind, sig: boolean) => {
@@ -397,9 +413,10 @@ export function LudoGame({
     const at = state.seq
     void commit((s) => {
       if (s.seq !== at) throw new Error("stale")
-      return applyExpiry(s, { now: serverNow(), gone })
+      const ctx = ctxFor(s)
+      return { next: applyExpiry(s, ctx), action: encodeLudoAction(s, { type: "expire" }, ctx) }
     }, true)
-  }, [isReferee, state, expiresAt, now, gone, commit, serverNow])
+  }, [isReferee, state, expiresAt, now, commit, ctxFor])
 
   // Ludo King style: a roll with only one possible move plays itself after a beat
   React.useEffect(() => {
@@ -424,13 +441,14 @@ export function LudoGame({
     const { turn, seq: at } = state
     void commit((s) => {
       if (s.seq !== at) throw new Error("stale")
-      return passTurn(s, turn, reason, {
-        now: serverNow(),
-        gone,
-        rand: Math.random,
-      })
+      const ctx = ctxFor(s)
+      // Logged by the referee (b = its uid); the code names the player skipped and why
+      return {
+        next: passTurn(s, turn, reason, ctx),
+        action: encodeLudoAction(s, { type: "skip", reason, who: turn }, ctx),
+      }
     }, true)
-  }, [isReferee, state, byId, now, gone, meta.startedAt, commit, serverNow])
+  }, [isReferee, state, byId, now, gone, meta.startedAt, commit, ctxFor])
 
   // Declare the end: the engine marked it over, or everyone else has left
   const ended = React.useRef(false)

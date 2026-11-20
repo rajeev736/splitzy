@@ -14,12 +14,14 @@ import { useRoomNode } from "@/hooks/use-live-room"
 import { getErrorMessage } from "@/lib/errors"
 import {
   applyMove,
+  CHECKERS_LOG,
   historyOf,
   legalMoves,
   MEN_PER_SIDE,
   movePiece,
   movesAlong,
   normaliseBoard,
+  notation,
   opponentOf,
   otherSide,
   pieceCounts,
@@ -32,11 +34,12 @@ import {
   type CheckersState,
   type Side,
 } from "@/lib/live/checkers"
+import { withLog } from "@/lib/live/log"
 import { ABANDON_MS } from "@/lib/live/room"
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import { playSound, useOnChange } from "@/lib/live/sound"
-import { stateTransaction, updateState } from "@/services/live-rooms"
+import { stateTransaction } from "@/services/live-rooms"
 import { PlayerAvatar } from "../player-avatar"
 import {
   CheckersBoard,
@@ -147,19 +150,23 @@ export function CheckersGame({
 
   /* ── Writes ──────────────────────────────────────────────────────────── */
 
-  /** Writes a result (once) and ends the room. */
+  /**
+   * Writes a result (once) and ends the room. Every write to the state also
+   * adds its line to the move log (`action`, see CHECKERS_LOG), which the
+   * server replays before the result counts.
+   */
   const decide = React.useCallback(
-    async (make: (s: CheckersState) => CheckersResult | null) => {
+    async (make: (s: CheckersState) => CheckersResult | null, action: string) => {
       const res = await stateTransaction<CheckersState>(code, (cur) => {
         if (!cur || cur.result) return undefined
         const result = make(cur)
         if (!result) return undefined
-        return { ...cur, result, drawOffer: null }
+        return withLog({ ...cur, result, drawOffer: null }, cur, uid, action, ts())
       })
       const after = res.snapshot.val() as CheckersState | null
       if (after?.result) await endGame(toLiveResult(after.result))
     },
-    [code, endGame]
+    [code, uid, endGame]
   )
 
   const play = async (move: CheckersMove) => {
@@ -170,7 +177,9 @@ export function CheckersGame({
       const res = await stateTransaction<CheckersState>(code, (cur) => {
         if (!cur) return undefined
         const next = applyMove(cur, uid, move, serverNow())
-        return next ? { ...next, lastMoveAt: ts() } : undefined
+        return next
+          ? withLog({ ...next, lastMoveAt: ts() }, cur, uid, notation(move), ts())
+          : undefined
       })
       const after = res.snapshot.val() as CheckersState | null
       if (!res.committed) toast.message("That move isn't possible any more")
@@ -209,7 +218,10 @@ export function CheckersGame({
     if (!ready || !opponentId) return
     setBusy(true)
     try {
-      await decide(() => ({ winner: opponentId, reason: "resign" }))
+      await decide(
+        () => ({ winner: opponentId, reason: "resign" }),
+        CHECKERS_LOG.resign
+      )
     } catch (e) {
       toast.error(getErrorMessage(e, "Couldn't resign"))
     } finally {
@@ -225,12 +237,18 @@ export function CheckersGame({
       const res = await stateTransaction<CheckersState>(code, (cur) => {
         if (!cur || cur.result || cur.drawOffer === uid) return undefined
         if (cur.drawOffer === opponentId)
-          return {
-            ...cur,
-            drawOffer: null,
-            result: { winner: null, reason: "draw_agreed" },
-          }
-        return { ...cur, drawOffer: uid }
+          return withLog<CheckersState>(
+            {
+              ...cur,
+              drawOffer: null,
+              result: { winner: null, reason: "draw_agreed" },
+            },
+            cur,
+            uid,
+            CHECKERS_LOG.drawAccept,
+            ts()
+          )
+        return withLog({ ...cur, drawOffer: uid }, cur, uid, CHECKERS_LOG.drawOffer, ts())
       })
       const after = res.snapshot.val() as CheckersState | null
       if (res.committed && after?.result)
@@ -241,16 +259,21 @@ export function CheckersGame({
   }
 
   const acceptDraw = () =>
-    decide((s) =>
-      s.drawOffer === opponentId
-        ? { winner: null, reason: "draw_agreed" }
-        : null
+    decide(
+      (s) =>
+        s.drawOffer === opponentId
+          ? { winner: null, reason: "draw_agreed" }
+          : null,
+      CHECKERS_LOG.drawAccept
     ).catch((e) => toast.error(getErrorMessage(e, "Couldn't accept")))
 
+  /** A transaction (not a patch), so the answer and its log line go in together — and only while the offer stands. */
   const declineDraw = () =>
-    updateState(code, { drawOffer: null }).catch(() =>
-      toast.error("Couldn't decline")
-    )
+    stateTransaction<CheckersState>(code, (cur) => {
+      if (!cur || cur.result || !opponentId || cur.drawOffer !== opponentId)
+        return undefined
+      return withLog({ ...cur, drawOffer: null }, cur, uid, CHECKERS_LOG.drawDecline, ts())
+    }).catch(() => toast.error("Couldn't decline"))
 
   /* ── The referee ─────────────────────────────────────────────────────── */
 
@@ -266,10 +289,12 @@ export function CheckersGame({
     if (!(oppLeft || (oppTimedOut && isReferee))) return
     if (refereeBusy.current) return
     refereeBusy.current = true
-    decide((cur) =>
-      cur.light === uid || cur.dark === uid
-        ? { winner: uid, reason: "abandoned" }
-        : null
+    decide(
+      (cur) =>
+        cur.light === uid || cur.dark === uid
+          ? { winner: uid, reason: "abandoned" }
+          : null,
+      CHECKERS_LOG.left
     )
       .catch(() => undefined)
       .finally(() => {

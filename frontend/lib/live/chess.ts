@@ -240,10 +240,12 @@ export function applyMove(
   state: ChessState,
   uid: string,
   input: ChessMoveInput,
-  now: number
+  now: number,
+  /** The game as it stands (a replay keeps one going); rebuilt from the state when left out. Played on when the move is legal. */
+  game?: Chess
 ): { state: ChessState; move: Move } | null {
   if (state.result) return null
-  const chess = rebuild(state)
+  const chess = game ?? rebuild(state)
   const side = chess.turn()
   if (colourOf(state, uid) !== side) return null
 
@@ -316,6 +318,33 @@ export function toLiveResult(result: ChessResult): LiveResult {
     reason: result.reason,
   }
 }
+
+/* ── Move log ────────────────────────────────────────────────────────── */
+
+/**
+ * What goes in the move log (lib/live/log) for each write, replayed by
+ * lib/live/verify/chess. None starts with "r" (kept for the server's dice).
+ */
+export const CHESS_LOG = {
+  drawOffer: "draw:offer",
+  drawAccept: "draw:accept",
+  drawDecline: "draw:decline",
+  resign: "end:resign",
+  /** The side to move ran out of time (checked against the clock at the entry's server time). */
+  flag: "end:flag",
+  /** The other side walked away: the writer wins. */
+  left: "end:left",
+} as const
+
+/**
+ * A move as logged: UCI ("e2e4", "e7e8q"), plus — in a timed game — the
+ * server time the mover's device played it at ("e2e4@1763650000000"): the
+ * clock it wrote was worked out from that.
+ */
+export const moveCode = (
+  move: { from: string; to: string; promotion?: string },
+  at: number | null
+) => `${move.from}${move.to}${move.promotion ?? ""}${at === null ? "" : `@${at}`}`
 
 /* ── Material ────────────────────────────────────────────────────────── */
 

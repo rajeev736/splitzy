@@ -6,6 +6,7 @@ import { serverTimestamp } from "firebase/database"
 import { Spinner } from "@/components/ui/spinner"
 import { useWallet } from "@/hooks/use-fun"
 import { useRoomNode } from "@/hooks/use-live-room"
+import { withLog } from "@/lib/live/log"
 import { ABANDON_MS } from "@/lib/live/room"
 import {
   applyMark,
@@ -14,6 +15,7 @@ import {
   matchResult,
   nextRound,
   toWin,
+  TTT_LOG,
   uidOf,
   type TicTacToeState,
 } from "@/lib/live/tictactoe"
@@ -24,12 +26,19 @@ import { stateTransaction } from "@/services/live-rooms"
 import { TTT_SKINS } from "./skins"
 import type { TttSeat } from "./skins/types"
 
+/** Write-time placeholder for the server clock. */
+const ts = () => serverTimestamp() as unknown as number
 /** How long a finished round's board stays up before the next one. */
 const ROUND_PAUSE_MS = 2500
 
-/** Tic Tac Toe, a short match of rounds; X and O swap so the loser starts next. */
+/**
+ * Tic Tac Toe, a short match of rounds; X and O swap so the loser starts next.
+ * Every write to the state adds its line to the move log (TTT_LOG), which the
+ * server replays before the result counts.
+ */
 export function TicTacToeGame({
   code,
+  meta,
   players,
   uid,
   isReferee,
@@ -46,6 +55,8 @@ export function TicTacToeGame({
     [players]
   )
   const [busy, setBusy] = React.useState(false)
+  // One forfeit write at a time (the check runs every second while someone is away)
+  const forfeiting = React.useRef(false)
   // The table is drawn by the skin of this device's chosen (and owned) theme
   const wallet = useWallet()
   const theme = useBoardTheme("tictactoe", wallet?.themes)
@@ -73,12 +84,9 @@ export function TicTacToeGame({
     if (!isReferee || !roundOver) return
     const id = window.setTimeout(() => {
       void stateTransaction<TicTacToeState>(code, (cur) => {
-        if (!cur || cur.seq !== seq || !cur.roundOver || matchOver(cur))
+        if (!cur || cur.seq !== seq || !cur.roundOver || cur.forfeit || matchOver(cur))
           return undefined
-        return {
-          ...nextRound(cur),
-          turnAt: serverTimestamp() as unknown as number,
-        }
+        return withLog({ ...nextRound(cur), turnAt: ts() }, cur, uid, TTT_LOG.next, ts())
       }).then((res) => {
         const cur = res.snapshot.val() as TicTacToeState | null
         if (cur && cur.roundOver && matchOver(cur))
@@ -86,26 +94,43 @@ export function TicTacToeGame({
       })
     }, ROUND_PAUSE_MS)
     return () => window.clearTimeout(id)
-  }, [isReferee, roundOver, seq, code, endGame])
+  }, [isReferee, roundOver, seq, code, uid, endGame])
 
-  // Someone walked away: they forfeit (left now, offline after ABANDON_MS)
+  // Someone walked away: they forfeit (left now, offline after ABANDON_MS). The
+  // forfeit goes in the state (and the log) first, so the server can check it
   React.useEffect(() => {
-    if (!s || !isReferee) return
-    for (const pid of s.players) {
+    if (!s || !isReferee || meta.status !== "playing" || forfeiting.current) return
+    const index = s.players.findIndex((pid) => {
       const p = byId[pid]
-      const gone = !p || p.left || (!p.online && now - p.lastSeen > ABANDON_MS)
-      if (gone) {
-        const other = s.players.find((x) => x !== pid)
-        if (other)
-          void endGame({
-            winnerIds: [other],
-            ranking: [other, pid],
-            reason: "abandoned",
-          })
-        return
-      }
-    }
-  }, [s, byId, now, isReferee, endGame])
+      return !p || p.left || (!p.online && now - p.lastSeen > ABANDON_MS)
+    })
+    if (index < 0 || s.players.length < 2) return
+    forfeiting.current = true
+    stateTransaction<TicTacToeState>(code, (cur) => {
+      // Already forfeited, or the match was decided on the board first
+      if (!cur || cur.forfeit || matchOver(cur)) return undefined
+      const pid = cur.players[index]
+      if (!pid) return undefined
+      return withLog({ ...cur, forfeit: pid, seq: cur.seq + 1 }, cur, uid, TTT_LOG.left(index), ts())
+    })
+      .then(async (res) => {
+        const cur = res.snapshot.val() as TicTacToeState | null
+        if (!cur) return
+        if (cur.forfeit) {
+          const other = cur.players.find((x) => x !== cur.forfeit)
+          if (other)
+            await endGame({
+              winnerIds: [other],
+              ranking: [other, cur.forfeit],
+              reason: "abandoned",
+            })
+        } else if (matchOver(cur)) await endGame(matchResult(cur))
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        forfeiting.current = false
+      })
+  }, [s, byId, now, isReferee, meta.status, code, uid, endGame])
 
   if (!s) {
     return (
@@ -124,7 +149,7 @@ export function TicTacToeGame({
         if (!cur || cur.seq !== s.seq) return undefined
         const next = applyMark(cur, uid, cell)
         return next
-          ? { ...next, turnAt: serverTimestamp() as unknown as number }
+          ? withLog({ ...next, turnAt: ts() }, cur, uid, TTT_LOG.mark(cell), ts())
           : undefined
       })
     } finally {

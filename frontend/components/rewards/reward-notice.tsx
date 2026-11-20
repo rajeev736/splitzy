@@ -58,6 +58,14 @@ type PopupItem = {
   art?: RewardArt
   okLabel?: string
   onOk?: () => void
+  /**
+   * A claim button instead of a plain OK: runs with where the button is (for
+   * flyCoins), shows it busy meanwhile, and closes the popup once it resolves.
+   * If it throws, the popup stays open for another try.
+   */
+  claim?: (from: DOMRect | undefined) => Promise<void>
+  /** false: the scrim and Esc don't close it — only the button does. */
+  dismissible?: boolean
 }
 type State = { toasts: ToastItem[]; popups: PopupItem[] }
 
@@ -116,6 +124,24 @@ function closePopup(id: number) {
   const p = state.popups.find((x) => x.id === id)
   set({ ...state, popups: state.popups.filter((x) => x.id !== id) })
   p?.onOk?.()
+}
+
+/** Takes a popup away without running its `onOk` (e.g. the screen it belonged to was left). */
+export function dismissRewardPopup(id: number) {
+  if (!state.popups.some((x) => x.id === id)) return
+  set({ ...state, popups: state.popups.filter((x) => x.id !== id) })
+}
+
+/** Resolves once no reward popup is showing or queued (right away if none is). */
+export function whenRewardPopupsClear(): Promise<void> {
+  if (state.popups.length === 0) return Promise.resolve()
+  return new Promise((resolve) => {
+    const off = subscribe(() => {
+      if (state.popups.length > 0) return
+      off()
+      resolve()
+    })
+  })
 }
 
 /**
@@ -222,15 +248,32 @@ function Toast({ item }: { item: ToastItem }) {
 
 function Popup({ item, more }: { item: PopupItem; more: number }) {
   const ok = React.useRef<HTMLButtonElement>(null)
+  const [busy, setBusy] = React.useState(false)
+  const dismissible = item.dismissible !== false
   React.useEffect(() => {
     ok.current?.focus({ preventScroll: true })
+    if (!dismissible) return
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && closePopup(item.id)
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [item.id])
+  }, [item.id, dismissible])
+
+  const press = async () => {
+    if (!item.claim) return closePopup(item.id)
+    if (busy) return
+    setBusy(true)
+    try {
+      await item.claim(ok.current?.getBoundingClientRect())
+      closePopup(item.id)
+    } catch {
+      // The caller says what went wrong; the button is there for another go
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="gu rwn-popup" role="dialog" aria-modal="true" aria-labelledby={`rwn-${item.id}`}>
-      <span className="gu-scrim rwn-scrim" aria-hidden onClick={() => closePopup(item.id)} />
+      <span className="gu-scrim rwn-scrim" aria-hidden onClick={dismissible ? () => closePopup(item.id) : undefined} />
       <div className="gu-pop relative w-full max-w-[340px]">
         <GamePanel title={item.kicker} bodyClassName="flex flex-col items-center text-center">
           <div className="rwn-stage" aria-hidden>
@@ -246,8 +289,8 @@ function Popup({ item, more }: { item: PopupItem; more: number }) {
             {item.title}
           </h2>
           {item.line && <p className="rwn-line">{item.line}</p>}
-          <GameButton ref={ok} tone="yellow" size="lg" className="mt-4 w-full" onClick={() => closePopup(item.id)}>
-            {item.okLabel ?? "OK"}
+          <GameButton ref={ok} tone="yellow" size="lg" className="mt-4 w-full" disabled={busy} onClick={press} data-no-tap-sound={item.claim ? true : undefined}>
+            {busy ? "Claiming…" : (item.okLabel ?? "OK")}
           </GameButton>
           {more > 0 && <p className="rwn-more">+{more} more</p>}
         </GamePanel>

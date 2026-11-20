@@ -15,10 +15,12 @@ import { useRoomNode } from "@/hooks/use-live-room"
 import { getErrorMessage } from "@/lib/errors"
 import {
   applyMove,
+  CHESS_LOG,
   colourOf,
   flaggedSide,
   formatClock,
   material,
+  moveCode,
   movesOf,
   opponentOf,
   remainingMs,
@@ -30,13 +32,14 @@ import {
   type ChessResult,
   type ChessState,
 } from "@/lib/live/chess"
+import { withLog } from "@/lib/live/log"
 import { ABANDON_MS } from "@/lib/live/room"
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import { playSound, useOnChange } from "@/lib/live/sound"
 import { useBoardTheme, usePreloadImage } from "@/lib/live/themes"
 import { useWallet } from "@/hooks/use-fun"
-import { stateTransaction, updateState } from "@/services/live-rooms"
+import { stateTransaction } from "@/services/live-rooms"
 import { PlayerAvatar } from "../player-avatar"
 import {
   ChessBoard,
@@ -135,19 +138,23 @@ export function ChessGame({
 
   /* ── Writes ──────────────────────────────────────────────────────────── */
 
-  /** Writes a result (once) and ends the room. */
+  /**
+   * Writes a result (once) and ends the room. Every write to the state also
+   * adds its line to the move log (`action`, see CHESS_LOG), which the server
+   * replays before the result counts.
+   */
   const decide = React.useCallback(
-    async (make: (s: ChessState) => ChessResult | null) => {
+    async (make: (s: ChessState) => ChessResult | null, action: string) => {
       const res = await stateTransaction<ChessState>(code, (cur) => {
         if (!cur || cur.result) return undefined
         const result = make(cur)
         if (!result) return undefined
-        return { ...cur, result, drawOffer: null }
+        return withLog({ ...cur, result, drawOffer: null }, cur, uid, action, ts())
       })
       const after = res.snapshot.val() as ChessState | null
       if (after?.result) await endGame(toLiveResult(after.result))
     },
-    [code, endGame]
+    [code, uid, endGame]
   )
 
   const play = async (input: ChessMoveInput) => {
@@ -158,8 +165,12 @@ export function ChessGame({
     try {
       const res = await stateTransaction<ChessState>(code, (cur) => {
         if (!cur) return undefined
-        const next = applyMove(cur, uid, input, serverNow())
-        return next ? { ...next.state, lastMoveAt: ts() } : undefined
+        // One reading of the clock for the move and its log line: the server replays the clocks from it
+        const at = Math.round(serverNow())
+        const next = applyMove(cur, uid, input, at)
+        if (!next) return undefined
+        const action = moveCode(next.move, cur.clock ? at : null)
+        return withLog({ ...next.state, lastMoveAt: ts() }, cur, uid, action, ts())
       })
       const after = res.snapshot.val() as ChessState | null
       if (res.committed && after?.result)
@@ -183,7 +194,7 @@ export function ChessGame({
     if (!ready || !opponentId) return
     setBusy(true)
     try {
-      await decide(() => ({ winner: opponentId, reason: "resign" }))
+      await decide(() => ({ winner: opponentId, reason: "resign" }), CHESS_LOG.resign)
     } catch (e) {
       toast.error(getErrorMessage(e, "Couldn't resign"))
     } finally {
@@ -199,12 +210,18 @@ export function ChessGame({
       const res = await stateTransaction<ChessState>(code, (cur) => {
         if (!cur || cur.result || cur.drawOffer === uid) return undefined
         if (cur.drawOffer === opponentId)
-          return {
-            ...cur,
-            drawOffer: null,
-            result: { winner: null, reason: "draw_agreed" },
-          }
-        return { ...cur, drawOffer: uid }
+          return withLog<ChessState>(
+            {
+              ...cur,
+              drawOffer: null,
+              result: { winner: null, reason: "draw_agreed" },
+            },
+            cur,
+            uid,
+            CHESS_LOG.drawAccept,
+            ts()
+          )
+        return withLog({ ...cur, drawOffer: uid }, cur, uid, CHESS_LOG.drawOffer, ts())
       })
       const after = res.snapshot.val() as ChessState | null
       if (res.committed && after?.result)
@@ -215,16 +232,21 @@ export function ChessGame({
   }
 
   const acceptDraw = () =>
-    decide((s) =>
-      s.drawOffer === opponentId
-        ? { winner: null, reason: "draw_agreed" }
-        : null
+    decide(
+      (s) =>
+        s.drawOffer === opponentId
+          ? { winner: null, reason: "draw_agreed" }
+          : null,
+      CHESS_LOG.drawAccept
     ).catch((e) => toast.error(getErrorMessage(e, "Couldn't accept")))
 
+  /** A transaction (not a patch), so the answer and its log line go in together — and only while the offer stands. */
   const declineDraw = () =>
-    updateState(code, { drawOffer: null }).catch(() =>
-      toast.error("Couldn't decline")
-    )
+    stateTransaction<ChessState>(code, (cur) => {
+      if (!cur || cur.result || !opponentId || cur.drawOffer !== opponentId)
+        return undefined
+      return withLog({ ...cur, drawOffer: null }, cur, uid, CHESS_LOG.drawDecline, ts())
+    }).catch(() => toast.error("Couldn't decline"))
 
   /* ── Clocks & the referee ────────────────────────────────────────────── */
 
@@ -246,7 +268,7 @@ export function ChessGame({
       decide((cur) => {
         const side = flaggedSide(cur, serverNow())
         return side ? timeoutResult(cur, side) : null
-      })
+      }, CHESS_LOG.flag)
         .catch(() => undefined)
         .finally(() => {
           refereeBusy.current = false
@@ -268,10 +290,12 @@ export function ChessGame({
     if (!(oppLeft || (oppTimedOut && isReferee))) return
     if (refereeBusy.current) return
     refereeBusy.current = true
-    decide((cur) =>
-      cur.white === uid || cur.black === uid
-        ? { winner: uid, reason: "abandoned" }
-        : null
+    decide(
+      (cur) =>
+        cur.white === uid || cur.black === uid
+          ? { winner: uid, reason: "abandoned" }
+          : null,
+      CHESS_LOG.left
     )
       .catch(() => undefined)
       .finally(() => {

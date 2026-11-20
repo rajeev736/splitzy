@@ -7,14 +7,27 @@ import { HugeiconsIcon } from "@hugeicons/react"
 
 import { Spinner } from "@/components/ui/spinner"
 import { useRoomNode } from "@/hooks/use-live-room"
+import { withLog } from "@/lib/live/log"
 import { playSound } from "@/lib/live/sound"
-import { allDone, blanksOf, conflicts, filledCount, isSolved, PEERS, rankingOf, resultOf, type SudokuState } from "@/lib/live/sudoku"
+import {
+  allDone,
+  blanksOf,
+  conflicts,
+  filledCount,
+  isSolved,
+  packAnswer,
+  PEERS,
+  rankingOf,
+  resultOf,
+  type SudokuState,
+} from "@/lib/live/sudoku"
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
-import { updateState } from "@/services/live-rooms"
+import { stateTransaction, updateState } from "@/services/live-rooms"
 import { PlayerAvatar } from "../player-avatar"
 import { useStageFit } from "../use-stage-fit"
 
+const ts = () => serverTimestamp() as unknown as number
 const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`)
 const storeKey = (code: string, uid: string) => `joysplit_sudoku_${code}_${uid}`
 /** Height a phone keeps for everything but the (square) grid: players, timer, keypad, gaps. */
@@ -102,12 +115,23 @@ export function SudokuView({ code, meta, players, uid, me, isReferee, now, endGa
       /* storage unavailable */
     }
     if (d !== ".") playSound("place")
-    const patch: Record<string, unknown> = { [`progress/${uid}`]: filledCount(next, puzzle) }
-    if (isSolved(next, puzzle)) {
-      patch[`finished/${uid}`] = serverTimestamp()
-      playSound("correct")
+    const filled = filledCount(next, puzzle)
+    if (!isSolved(next, puzzle)) {
+      void updateState(code, { [`progress/${uid}`]: filled }).catch(() => undefined)
+      return
     }
-    void updateState(code, patch).catch(() => undefined)
+    playSound("correct")
+    // Solved: your time (the server's clock) and your grid go into the move log
+    // (lib/live/log) — the server checks the grid against the puzzle at the end
+    void stateTransaction<SudokuState>(code, (cur) => {
+      if (!cur || cur.finished?.[uid] !== undefined) return undefined
+      const done: SudokuState = {
+        ...cur,
+        progress: { ...cur.progress, [uid]: filled },
+        finished: { ...cur.finished, [uid]: ts() },
+      }
+      return withLog(done, cur, uid, `f:${packAnswer(next, cur.puzzle)}`, ts())
+    }).catch(() => undefined)
   }
   const moveBy = (dx: number, dy: number) => {
     const cur = selected ?? 40

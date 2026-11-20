@@ -11,8 +11,8 @@ import { playCoinTing } from "./ui-sounds"
  * re-lays out and React never re-renders for it. With reduced motion it's a
  * quick "+N" fade at the counter and a single ting.
  *
- * Use it for every coin claim (level rewards, game winnings…) — not for the
- * welcome bonus, which has its own moment.
+ * Use it for every coin claim (level rewards, game winnings, the welcome
+ * gift on first opening Games — components/fun/games-welcome).
  */
 
 export type CoinOrigin = DOMRect | { x: number; y: number } | Element | null | undefined

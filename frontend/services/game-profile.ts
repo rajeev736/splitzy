@@ -1,4 +1,4 @@
-import { doc, runTransaction, serverTimestamp, updateDoc } from "firebase/firestore"
+import { doc, runTransaction, updateDoc } from "firebase/firestore"
 
 import { canWear, earnKey } from "@/components/game-avatar/ownership"
 import { characterById } from "@/components/game-avatar/registry"
@@ -7,8 +7,6 @@ import { FRAMES } from "@/lib/fun/catalog"
 import {
   achievementById,
   achievementProgress,
-  countLiveGame,
-  liveGameId,
   newlyReached,
   type Achievement,
   type LiveOutcome,
@@ -16,6 +14,7 @@ import {
 import type { LiveGameId } from "@/lib/live/types"
 import type { Wallet } from "@/lib/types"
 import { coinTx } from "./fun"
+import { settleOnServer } from "./live-server"
 import { getDb, nowIso } from "./shared"
 
 /*
@@ -124,32 +123,18 @@ export interface LiveCounted {
 }
 
 /**
- * Counts a live game you played on your wallet, once (its record
- * users/{uid}/live/{code}_{startedAt} is written in the same transaction), and
- * returns the achievements it reached. `null` when it was already counted
- * (the result reopened), there's no wallet yet, or the rules refused it.
+ * A live game you played, counted on your wallet — by the server, which
+ * first checks the game (app/api/live/settle: replays its moves) and counts
+ * it for every player once. Returns what it brought you: the wallet before
+ * and after, and the achievements reached. `null` when it was already
+ * counted (the result reopened), there's no wallet yet, or it didn't count.
  */
 export async function countLiveResult(
-  uid: string,
+  _uid: string,
   game: { code: string; startedAt: number; game: LiveGameId; outcome: LiveOutcome }
 ): Promise<LiveCounted | null> {
-  const firestore = getDb()
-  if (!firestore) return null
-  const id = liveGameId(game.code, game.startedAt)
-  const walletRef = doc(firestore, "wallets", uid)
-  const recordRef = doc(firestore, "users", uid, "live", id)
-  try {
-    return await runTransaction(firestore, async (tx) => {
-      const [w, r] = await Promise.all([tx.get(walletRef), tx.get(recordRef)])
-      if (!w.exists() || r.exists()) return null
-      const before = w.data() as Wallet
-      const next = countLiveGame(before, game.outcome)
-      tx.set(recordRef, { game: game.game, result: game.outcome, at: nowIso() })
-      tx.update(walletRef, { ...next, liveAt: serverTimestamp(), lastTx: `live:${id}:${game.outcome}` })
-      const after: Wallet = { ...before, ...next }
-      return { reached: newlyReached(before, after), before, wallet: after }
-    })
-  } catch {
-    return null
-  }
+  const res = await settleOnServer(game.code).catch(() => null)
+  if (!res?.counted) return null
+  const { before, wallet } = res.counted
+  return { reached: newlyReached(before, wallet), before, wallet }
 }

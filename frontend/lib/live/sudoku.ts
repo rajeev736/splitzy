@@ -159,6 +159,39 @@ export const filledCount = (grid: string, puzzle: string) => {
 
 export const blanksOf = (puzzle: string) => puzzle.split("").filter((c) => c === ".").length
 
+/**
+ * A finished grid in a few characters, for the move log (entries are at most
+ * 40 characters): the digits in the puzzle's blanks, read as one base-9
+ * number (first blank lowest), written in base 36 — 34 characters at most
+ * (54 blanks). Only the blanks: the givens are the puzzle's.
+ */
+export function packAnswer(grid: string, puzzle: string): string {
+  const nine = BigInt(9)
+  let n = BigInt(0)
+  for (let i = 80; i >= 0; i--) {
+    if (puzzle[i] !== ".") continue
+    const d = Number(grid[i])
+    n = n * nine + BigInt(d >= 1 && d <= 9 ? d - 1 : 0)
+  }
+  return n.toString(36)
+}
+
+/** The grid a packAnswer stands for on `puzzle` — or null when it isn't one. */
+export function unpackAnswer(packed: string, puzzle: string): string | null {
+  if (!/^[0-9a-z]{1,40}$/.test(packed) || puzzle.length !== 81) return null
+  const nine = BigInt(9)
+  const base = BigInt(36)
+  let n = BigInt(0)
+  for (const ch of packed) n = n * base + BigInt(parseInt(ch, 36))
+  const out = puzzle.split("")
+  for (let i = 0; i < 81; i++) {
+    if (puzzle[i] !== ".") continue
+    out[i] = String(Number(n % nine) + 1)
+    n = n / nine
+  }
+  return n === BigInt(0) ? out.join("") : null
+}
+
 /* ── The race ─────────────────────────────────────────────────────────── */
 
 export function initialSudokuState(players: RoomPlayer[], options: RoomOptions, seed: string): SudokuState {

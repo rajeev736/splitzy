@@ -45,6 +45,8 @@ export function FramedAvatar({
           className="absolute"
           // centred on the photo, overflowing it evenly
           style={{ width: box, height: box, left: (size - box) / 2, top: (size - box) / 2 }}
+          // Grids of small previews rest in their pose; the big one you're looking at animates
+          still={size < 96}
         />
       )}
     </span>

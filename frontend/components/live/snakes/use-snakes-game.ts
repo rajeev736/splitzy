@@ -1,20 +1,20 @@
 "use client"
 
 import * as React from "react"
+import { rollOnServer } from "@/services/live-server"
 import { serverTimestamp } from "firebase/database"
 import { toast } from "sonner"
 
 import { useRoomNode } from "@/hooks/use-live-room"
 import { getErrorMessage } from "@/lib/errors"
-import { ABANDON_MS } from "@/lib/live/room"
+import { withLog } from "@/lib/live/log"
 import {
-  applyRoll,
   isOver,
   passTurn,
   resultOf,
-  rollFor,
+  skipAction,
+  skipReason,
   SNAKES_IDLE_MS,
-  type SnakesSkipReason,
   type SnakesState,
 } from "@/lib/live/snakes"
 import { playSound, useOnChange } from "@/lib/live/sound"
@@ -24,20 +24,6 @@ import { stateTransaction } from "@/services/live-rooms"
 const ts = () => serverTimestamp() as unknown as number
 /** Let the last move play out before the results screen takes over. */
 const END_DELAY_MS = 2200
-
-/** A uniform [0, 1) from the browser's CSPRNG, for the dice (weighted in lib/live/snakes rollFor). */
-function cryptoRand(): number {
-  const buf = new Uint32Array(1)
-  crypto.getRandomValues(buf)
-  return buf[0] / 4294967296
-}
-
-function skipReason(p: RoomPlayer, since: number, now: number): SnakesSkipReason | null {
-  if (p.left) return "left"
-  if (!p.online && now - p.lastSeen >= ABANDON_MS) return "offline"
-  if (since > 0 && now - since >= SNAKES_IDLE_MS) return p.online ? "idle" : "offline"
-  return null
-}
 
 /**
  * Everything a Snakes & Ladders screen needs, shared by the flat board and
@@ -50,13 +36,15 @@ export function useSnakesGame({ code, meta, players, uid, me, isReferee, now, se
   const byId = React.useMemo(() => Object.fromEntries(players.map((p) => [p.uid, p])) as Record<string, RoomPlayer>, [players])
   const nameOf = React.useCallback((id: string) => (byId[id]?.name ?? "Someone").split(" ")[0], [byId])
 
+  /** A change to the board by this device, logged as `action` (lib/live/log): the server replays the log at the end. */
   const commit = React.useCallback(
-    async (fn: (s: SnakesState) => SnakesState, quiet = false) => {
+    async (fn: (s: SnakesState) => SnakesState, action: string, quiet = false) => {
       try {
         const res = await stateTransaction<SnakesState>(code, (cur) => {
           if (!cur) return undefined
           try {
-            return { ...fn(cur), turnAt: ts() }
+            // `turnAt` and the entry's time are the same server clock: a skip is timed from the turn's start
+            return withLog({ ...fn(cur), turnAt: ts() }, cur, uid, action, ts())
           } catch {
             return undefined
           }
@@ -67,7 +55,7 @@ export function useSnakesGame({ code, meta, players, uid, me, isReferee, now, se
         return false
       }
     },
-    [code]
+    [code, uid]
   )
 
   const myTurn = !!state && state.phase !== "over" && state.turn === uid && !me.left && !state.players[uid]?.out
@@ -78,14 +66,12 @@ export function useSnakesGame({ code, meta, players, uid, me, isReferee, now, se
   const canRoll = myTurn && state?.phase === "roll" && !rolling
   const roll = () => {
     if (!state || !canRoll) return
-    const value = rollFor(state, uid, cryptoRand)
+    // The server rolls (app/api/live/roll) and moves the piece: nobody can pick their number
     const at = state.seq
     setRollLock(at)
-    void commit((s) => {
-      if (s.seq !== at) throw new Error("stale")
-      return applyRoll(s, uid, value, { now: serverNow(), gone })
-    }).then((ok) => {
-      if (!ok) setRollLock(-1)
+    void rollOnServer(code, at).catch((e) => {
+      setRollLock(-1)
+      if (!/stale|not your roll/.test(String((e as Error)?.message))) toast.error(getErrorMessage(e, "Couldn't roll — tap again"))
     })
   }
 
@@ -97,10 +83,14 @@ export function useSnakesGame({ code, meta, players, uid, me, isReferee, now, se
     const reason = skipReason(cur, state.turnAt || meta.startedAt || 0, now)
     if (!reason) return
     const { turn, seq: at } = state
-    void commit((s) => {
-      if (s.seq !== at) throw new Error("stale")
-      return passTurn(s, turn, reason, { now: serverNow(), gone })
-    }, true)
+    void commit(
+      (s) => {
+        if (s.seq !== at) throw new Error("stale")
+        return passTurn(s, turn, reason, { now: serverNow(), gone })
+      },
+      skipAction(reason, turn),
+      true
+    )
   }, [isReferee, state, byId, now, gone, meta.startedAt, commit, serverNow])
 
   // The end: the engine said so, or everyone else left

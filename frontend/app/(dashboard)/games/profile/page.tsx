@@ -16,7 +16,7 @@ import { CHARACTERS, characterById } from "@/components/game-avatar/registry"
 import type { CharacterDef } from "@/components/game-avatar/types"
 import { GameChoice, GameIconButton, GameScreen, GameSectionTitle, GameTopBar } from "@/components/game-ui/kit"
 import { GameCoinChip } from "@/components/game-nav/coin-chip"
-import { GameBottomNav, useGameTabBack } from "@/components/game-nav/game-bottom-nav"
+import { GameNavSpacer, useGameTabBack } from "@/components/game-nav/game-bottom-nav"
 import { GAME_ROUTES } from "@/components/game-nav/items"
 import { useSession } from "@/components/providers/session-provider"
 import { gameToast } from "@/components/rewards/reward-notice"
@@ -61,7 +61,7 @@ export default function GameProfilePage() {
         <CharacterPicker user={user} wallet={wallet} onOpen={openCharacter} />
         <FramePicker user={user} wallet={wallet} />
       </div>
-      <GameBottomNav />
+      <GameNavSpacer />
 
       <GameNameDialog open={naming} onClose={() => setNaming(false)} user={user} />
       {sheet && (
@@ -364,7 +364,7 @@ function Tile({
       className={cn("flex min-w-0 flex-col items-center gap-1 px-1 pt-2 pb-1.5", locked && "!bg-[#f1ece2]")}
     >
       <span className={cn("relative flex items-center justify-center", padded && "p-3")}>
-        <span className={cn(locked && "opacity-55 grayscale-[.7]")}>{children}</span>
+        <span className={cn("transition-[filter,opacity]", locked && "opacity-60 saturate-[.35]")}>{children}</span>
         {locked && (
           <span className="absolute -right-1 -bottom-1 flex size-5 items-center justify-center rounded-full bg-[#7d77b0] text-white shadow-[0_0_0_2px_#fff]">
             <HugeiconsIcon icon={LockIcon} className="size-3" strokeWidth={2.4} />

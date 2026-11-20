@@ -14,6 +14,8 @@ import type { LiveResult, RoomOptions, RoomPlayer } from "./types"
  *   roundOver null, or the round's result ("x" | "o" | "draw") until the next round starts
  *   winLine   the three winning cells, for the highlight
  *   seq       bumps on every write (stale writes abort)
+ *   forfeit   who walked away (the other player wins the match); missing while both play
+ *   log       the move log (lib/live/log, TTT_LOG), replayed by lib/live/verify/tictactoe
  */
 export interface TicTacToeState {
   players: string[]
@@ -28,6 +30,8 @@ export interface TicTacToeState {
   /** Server ms the current round's last move (or start) happened. */
   turnAt: number
   seq: number
+  /** The player who walked away: the match is over, the other one wins it. */
+  forfeit?: string | null
 }
 
 export const EMPTY_BOARD = "........."
@@ -98,6 +102,7 @@ export function applyMark(
   const mark = markOf(s, uid)
   if (
     !mark ||
+    s.forfeit ||
     s.roundOver ||
     s.turn !== mark ||
     cell < 0 ||
@@ -123,6 +128,19 @@ export function applyMark(
   }
   return next
 }
+
+/**
+ * What goes in the move log (lib/live/log) for each write. None starts with
+ * "r" (kept for the server's dice).
+ *   m<cell>      a mark on cell 0–8 (by the player making it)
+ *   n            the next round starts (by the referee)
+ *   end:left:<i> players[i] walked away and forfeits the match (by the referee)
+ */
+export const TTT_LOG = {
+  mark: (cell: number) => `m${cell}`,
+  next: "n",
+  left: (index: number) => `end:left:${index}`,
+} as const
 
 /** The match is decided (someone reached toWin, or every round has been played). */
 export function matchOver(s: TicTacToeState): boolean {

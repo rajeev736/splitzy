@@ -32,7 +32,7 @@ import type {
 } from "@/lib/live/types"
 import { gameNameOf } from "@/lib/game-name"
 import type { UserProfile } from "@/lib/types"
-import { countLiveResult } from "./game-profile"
+import { settleOnServer } from "./live-server"
 
 /**
  * Everything the app writes to a live room. Reads happen through the hooks in
@@ -147,8 +147,8 @@ async function openRoom(
   duel?: { challengeId: string; with: string },
   round?: { groupId: string; only: string[] }
 ): Promise<string> {
-  // A duel is one-on-one: never teams
-  const options = defaultOptions(game, duel ? { ...picked, ...(game === "ludo" ? { teams: "solo" } : {}) } : picked)
+  // A duel is one-on-one: never teams; and classic Ludo (the server replays its moves to check the result)
+  const options = defaultOptions(game, duel ? { ...picked, ...(game === "ludo" ? { teams: "solo", mode: "classic" } : {}) } : picked)
   // Team Ludo is always four seats (lib/live/seats); a duel two
   const { minPlayers, maxPlayers } = duel ? { minPlayers: 2, maxPlayers: 2 } : seatsFor(game, options)
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -305,8 +305,7 @@ export async function leaveRoom(uid: string, code: string): Promise<void> {
     })
     if (finished) return
     // Giving up counts as a loss on your live record (and ends a win streak)
-    if (meta.startedAt)
-      void countLiveResult(uid, { code, startedAt: meta.startedAt, game: meta.game, outcome: "lose" })
+    if (meta.startedAt) void settleOnServer(code, true).catch(() => undefined)
     // You're out of it for good: it isn't "your game in progress" any more
     await remove(ref(liveDb(), `userRooms/${uid}/${code}`)).catch(() => undefined)
     return

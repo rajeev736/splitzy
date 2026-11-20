@@ -17,12 +17,29 @@ const ART = { ...CLASSIC_GAMES_FRAMES, ...CUTE_LOVE_FRAMES, ...MORE_FRAMES_A, ..
  * A profile frame, drawn in a 200×200 box around a photo of radius 60 at its
  * centre. Sized by the parent (see FramedAvatar).
  */
-export function FrameArt({ frame, className, style }: { frame: FrameId; className?: string; style?: React.CSSProperties }) {
+export function FrameArt({
+  frame,
+  className,
+  style,
+  still = false,
+}: {
+  frame: FrameId
+  className?: string
+  style?: React.CSSProperties
+  /** Rest in the drawn pose: small avatars in lists don't animate (scrolling stays smooth). */
+  still?: boolean
+}) {
   const prefix = React.useId().replace(/:/g, "")
   const Draw = ART[frame]
   if (!Draw) return null
   return (
-    <svg viewBox="0 0 200 200" aria-hidden style={style} className={cn("pointer-events-none overflow-visible", className)}>
+    <svg
+      viewBox="0 0 200 200"
+      aria-hidden
+      style={style}
+      data-frame-still={still ? "" : undefined}
+      className={cn("pointer-events-none overflow-visible", className)}
+    >
       {Draw({ id: (name) => `${prefix}-${name}` })}
     </svg>
   )

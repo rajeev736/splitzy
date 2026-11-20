@@ -16,6 +16,9 @@ import type { CharacterMode } from "./types"
  * With a `uid`, a tap opens their game profile peek (components/profile-peek),
  * except on game boards and pickers, or with `peek={false}`.
  */
+/** Frames on avatars smaller than this rest in their pose (rows and grids scroll smoothly); bigger ones animate. */
+const STILL_BELOW = 72
+
 export function GameAvatar({
   character,
   photo,
@@ -71,6 +74,7 @@ export function GameAvatar({
           frame={frame as Parameters<typeof FrameArt>[0]["frame"]}
           className="absolute"
           style={{ width: box, height: box, left: (size - box) / 2, top: (size - box) / 2 }}
+          still={size < STILL_BELOW}
         />
       )}
     </span>

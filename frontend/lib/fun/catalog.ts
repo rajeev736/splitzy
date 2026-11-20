@@ -297,7 +297,7 @@ export const BADGES: Record<BadgeId, { name: string; how: string; detail: string
   earlybird: {
     name: "Early Bird",
     how: "One of the first 1,000 on JoySplit",
-    detail: "For the first 1,000 people to join JoySplit — claimed once, right after the welcome gifts. Your member number stays with it.",
+    detail: "For the first 1,000 people to join JoySplit — claimed once, right after the welcome tour. Your member number stays with it.",
     tiers: [1, 1, 1],
   },
   swift: {

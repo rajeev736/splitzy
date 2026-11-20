@@ -105,6 +105,8 @@ export function ModeSwitch({ look = "app", className }: { look?: "app" | "game";
     <div
       role="tablist"
       aria-label="App section"
+      // The Split tour ends here ("Games are here")
+      data-tour={game ? undefined : "mode-switch"}
       className={cn(
         "relative grid h-10 w-[13.5rem] shrink-0 grid-cols-2 rounded-full p-1",
         game ? "bg-white/30 shadow-[inset_0_2px_0_rgba(20,40,110,.15)]" : "bg-muted",
@@ -152,7 +154,7 @@ export function ModeSwitch({ look = "app", className }: { look?: "app" | "game";
 /**
  * The bar the switch lives in, identical on both sides: same height, same
  * top inset, the switch dead centre (side slots are laid over the edges, so
- * they never push it). Split shows it bare; Games adds coins and the bell.
+ * they never push it). Split shows it bare; Games adds its bell.
  */
 export function ModeBar({
   look = "app",
