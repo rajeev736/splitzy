@@ -23,6 +23,8 @@ export type GameId =
   | "penalty"
   | "hilo"
   | "number_hunt"
+  /** A live game played for a discount (see Challenge.liveGame); not in the picker. */
+  | "live"
 
 export interface GameInfo {
   name: string
@@ -145,9 +147,20 @@ export const GAMES: Record<GameId, GameInfo> = {
     setup: "pick",
     groupDiscount: false,
   },
+  live: {
+    name: "Live game",
+    tagline: "Ludo, Chess, Tic Tac Toe and more — live, 1-on-1",
+    emoji: "🎮",
+    howToWin: {
+      friend: "Beat them in the live game",
+      group: "Beat them in the live game",
+    },
+    setup: "pick",
+    groupDiscount: false,
+  },
 }
 
-/** Display order. */
+/** Display order (the classic challenge games; live games have their own picker). */
 export const GAME_IDS: GameId[] = [
   "rps",
   "penalty",
@@ -597,6 +610,9 @@ export function newSecretFor(game: GameId, host: GameSecret = {}): GameSecret {
       if (host.number === undefined) return { number: randomHuntNumber() }
       if (!isHuntNumber(host.number)) throw new Error("Pick a number from 1 to 60")
       return { number: host.number }
+    case "live":
+      // Played in a live room; there is no secret
+      throw new Error("Live games are set up from the Games tab")
   }
 }
 

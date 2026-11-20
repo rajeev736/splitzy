@@ -1,15 +1,11 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
-import { ArrowRight01Icon } from "@hugeicons/core-free-icons"
-import { HugeiconsIcon } from "@hugeicons/react"
 
-import { Coins } from "@/components/fun/coin"
-import { FramedAvatar } from "@/components/fun/framed-avatar"
+import { GameAvatar } from "@/components/game-avatar/game-avatar"
 import { ownsCharacter } from "@/components/game-avatar/ownership"
 import { CHARACTERS } from "@/components/game-avatar/registry"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { GamePanel, GameTabs } from "@/components/game-ui/kit"
 import type { BadgeSummary } from "@/hooks/use-fun"
 import { FRAME_IDS, ownsFrame } from "@/lib/fun/catalog"
 import { ALL_THEMES, ownsTheme } from "@/lib/live/themes"
@@ -81,11 +77,11 @@ export function Inventory({
   return (
     <div className="flex flex-col gap-4">
       {/* Your collection at a glance */}
-      <section className="flex items-center gap-3 rounded-2xl border border-card-stroke bg-card px-3 py-2.5 shadow-xs">
+      <section className="gu-panel-flat flex items-center gap-3 px-3 py-2.5">
         <span className="shrink-0 p-2.5">
-          <FramedAvatar src={user.photoURL} name={user.displayName} frame={user.frame} size={44} />
+          <GameAvatar character={user.gameAvatar} photo={user.photoURL} name={user.displayName} frame={user.frame} size={44} mode="idle" />
         </span>
-        <div className="grid min-w-0 flex-1 grid-cols-4 divide-x">
+        <div className="grid min-w-0 flex-1 grid-cols-4 divide-x divide-[var(--gu-line)]">
           <Stat value={counts.frames} total={FRAME_IDS.length} label="Frames" />
           <Stat value={counts.characters} total={CHARACTERS.length} label="Characters" />
           <Stat value={counts.boards} total={ALL_THEMES.length} label="Boards" />
@@ -93,24 +89,27 @@ export function Inventory({
         </div>
       </section>
 
-      <Tabs value={tab} onValueChange={(v) => goTo(v as Tab)} className="gap-4">
-        <TabsList className="sticky top-[3.75rem] z-10 grid w-full grid-cols-5 bg-background/95">
-          {TABS.map((t) => (
-            <TabsTrigger key={t.id} value={t.id} className="px-0.5 max-[359px]:text-[11px]">
-              {t.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        <TabsContent value="frames">
+      <GameTabs
+        label="Inventory"
+        value={tab}
+        onChange={goTo}
+        className="[&>button]:!px-0 [&>button]:!text-[13px] max-[400px]:[&>button]:!text-[11px]"
+        tabs={TABS.map((t) => ({ value: t.id, label: t.label }))}
+      />
+
+      {/* The open tab in a framed window; cards inside are white on its cream */}
+      <GamePanel
+        title={TABS.find((t) => t.id === tab)?.label}
+        className="[--card-stroke:var(--gu-line)] [--card:#fff]"
+        bodyClassName="px-3 pb-4"
+      >
+        {tab === "frames" ? (
           <FramesTab user={user} wallet={wallet} filter={frames} onFilter={setPickedFrames} />
-        </TabsContent>
-        <TabsContent value="characters">
+        ) : tab === "characters" ? (
           <CharactersTab user={user} wallet={wallet} filter={characters} onFilter={setPickedCharacters} />
-        </TabsContent>
-        <TabsContent value="boards">
+        ) : tab === "boards" ? (
           <ThemesTab wallet={wallet} filter={boards} onFilter={setBoards} />
-        </TabsContent>
-        <TabsContent value="badges">
+        ) : tab === "badges" ? (
           <BadgesTab
             user={user}
             wallet={wallet}
@@ -122,11 +121,10 @@ export function Inventory({
               window.scrollTo({ top: 0, behavior: "smooth" })
             }}
           />
-        </TabsContent>
-        <TabsContent value="more">
+        ) : (
           <MoreTab />
-        </TabsContent>
-      </Tabs>
+        )}
+      </GamePanel>
     </div>
   )
 }
@@ -134,25 +132,11 @@ export function Inventory({
 function Stat({ value, total, label }: { value: number | undefined; total: number | undefined; label: string }) {
   return (
     <div className="flex min-w-0 flex-col items-center px-1">
-      <span className="text-base leading-tight font-semibold tabular-nums">
+      <span className="text-base leading-tight font-bold tabular-nums">
         {value ?? "–"}
-        {total !== undefined && <span className="text-xs font-normal text-muted-foreground">/{total}</span>}
+        {total !== undefined && <span className="text-xs font-semibold text-[var(--gu-ink-soft)]">/{total}</span>}
       </span>
-      <span className="max-w-full truncate text-[11px] text-muted-foreground">{label}</span>
+      <span className="max-w-full truncate text-[10px] font-bold tracking-wide text-[var(--gu-brown)] uppercase">{label}</span>
     </div>
-  )
-}
-
-/** Your coins, for the header: opens the coin history. */
-export function CoinsLink({ balance }: { balance: number }) {
-  return (
-    <Link
-      href="/profile/coins"
-      aria-label={`${balance} coins, see history`}
-      className="flex h-8 items-center gap-1 rounded-full border border-card-stroke bg-card px-2.5 text-sm shadow-xs transition-colors hover:bg-subtle-hover active:bg-subtle-pressed"
-    >
-      <Coins amount={balance} iconClassName="size-4" />
-      <HugeiconsIcon icon={ArrowRight01Icon} className="size-3.5 text-muted-foreground" />
-    </Link>
   )
 }

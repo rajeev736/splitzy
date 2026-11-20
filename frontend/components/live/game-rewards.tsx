@@ -5,7 +5,6 @@ import { createPortal } from "react-dom"
 import { Nunito } from "next/font/google"
 import { Cancel01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { toast } from "sonner"
 
 import { CoinIcon } from "@/components/fun/coin"
 import { FramedAvatar } from "@/components/fun/framed-avatar"
@@ -14,6 +13,7 @@ import { LevelBadge } from "@/components/game-avatar/level-badge"
 import { RewardThumb } from "@/components/game-avatar/level-road"
 import { rewardId, rewardName, rewardsOf, unclaimed, type Reward } from "@/components/game-avatar/ownership"
 import { useSession } from "@/components/providers/session-provider"
+import { announceReward, gameToast } from "@/components/rewards/reward-notice"
 import { Spinner } from "@/components/ui/spinner"
 import { useWallet } from "@/hooks/use-fun"
 import { useClaimReward } from "@/hooks/use-fun-mutations"
@@ -249,14 +249,15 @@ export function RewardPopup({
   if (!step) return null
   const next = () => (i + 1 < steps.length ? setI(i + 1) : onClose())
 
-  const act = async (r: Reward, equip: boolean) => {
+  // The card already shows it big: coins fly from the button into the counter, an item gets a game toast
+  const act = async (r: Reward, equip: boolean, from: HTMLElement) => {
     setBusy(equip ? "equip" : "claim")
     try {
       await onClaim(r, equip)
-      toast.success(equip ? `${rewardName(r)} — equipped` : `${rewardName(r)} — yours`)
+      announceReward(r, { from: from.getBoundingClientRect(), equip, quiet: true })
       next()
     } catch (e) {
-      toast.error(getErrorMessage(e, "Couldn't claim it — try again from your Inventory"))
+      gameToast({ title: "Couldn't claim it", description: getErrorMessage(e, "Try again from your Inventory") })
     } finally {
       setBusy(null)
     }
@@ -352,15 +353,15 @@ export function RewardPopup({
 
               <div className={cn("rw-btns", r.kind === "coins" && "rw-btns-one")}>
                 {r.kind === "coins" ? (
-                  <button type="button" className="rw-btn rw-btn-gold" disabled={!!busy} onClick={() => act(r, false)}>
+                  <button type="button" className="rw-btn rw-btn-gold" disabled={!!busy} onClick={(e) => act(r, false, e.currentTarget)}>
                     {busy ? <Spinner className="size-5" /> : `Claim +${fmt.format(r.coins)}`}
                   </button>
                 ) : (
                   <>
-                    <button type="button" className="rw-btn rw-btn-glass" disabled={!!busy} onClick={() => act(r, false)}>
+                    <button type="button" className="rw-btn rw-btn-glass" disabled={!!busy} onClick={(e) => act(r, false, e.currentTarget)}>
                       {busy === "claim" ? <Spinner className="size-5" /> : "Claim"}
                     </button>
-                    <button type="button" className="rw-btn rw-btn-gold" disabled={!!busy} onClick={() => act(r, true)}>
+                    <button type="button" className="rw-btn rw-btn-gold" disabled={!!busy} onClick={(e) => act(r, true, e.currentTarget)}>
                       {busy === "equip" ? <Spinner className="size-5" /> : "Equip"}
                     </button>
                   </>

@@ -8,7 +8,7 @@ import type { RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 
 /** What a seat needs to draw a player's game profile. */
-export type PlayerLook = Pick<RoomPlayer, "name" | "photo" | "avatar" | "frame">
+export type PlayerLook = Pick<RoomPlayer, "name" | "photo" | "avatar" | "frame"> & { uid?: string }
 
 /**
  * A player inside a live game: their game character and frame (photo or
@@ -20,6 +20,7 @@ export function PlayerAvatar({
   mode,
   frame = true,
   className,
+  peek,
 }: {
   player: Partial<PlayerLook> | null | undefined
   size: number
@@ -27,6 +28,8 @@ export function PlayerAvatar({
   /** Leave the frame off where its ornaments would be cut off. */
   frame?: boolean
   className?: string
+  /** `false`: a tap doesn't open the player's profile peek. */
+  peek?: boolean
 }) {
   return (
     <GameAvatar
@@ -37,6 +40,8 @@ export function PlayerAvatar({
       size={size}
       mode={mode}
       className={className}
+      uid={player?.uid}
+      peek={peek}
     />
   )
 }
@@ -50,11 +55,13 @@ export function PlayerAvatarFill({
   mode,
   frame = true,
   className,
+  peek,
 }: {
   player: Partial<PlayerLook> | null | undefined
   mode?: CharacterMode
   frame?: boolean
   className?: string
+  peek?: boolean
 }) {
   const box = React.useRef<HTMLSpanElement>(null)
   const [size, setSize] = React.useState(0)
@@ -67,7 +74,7 @@ export function PlayerAvatarFill({
   }, [])
   return (
     <span ref={box} className={cn("relative flex items-center justify-center", className)}>
-      {size > 0 && <PlayerAvatar player={player} size={size} mode={mode} frame={frame} className="absolute" />}
+      {size > 0 && <PlayerAvatar player={player} size={size} mode={mode} frame={frame} peek={peek} className="absolute" />}
     </span>
   )
 }

@@ -2,12 +2,12 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { useRouter } from "nextjs-toploader/app"
 import dynamic from "next/dynamic"
 import { useTheme } from "next-themes"
 import {
   ArrowRight01Icon,
   AtIcon,
-  Backpack01Icon,
   BirthdayCakeIcon,
   Camera01Icon,
   Copy01Icon,
@@ -47,9 +47,7 @@ import { useFriends, useUnreadCount } from "@/hooks/queries"
 import { cn } from "@/lib/utils"
 import { BadgeGrid } from "@/components/fun/badge-grid"
 import { Coins } from "@/components/fun/coin"
-import { FramedAvatar } from "@/components/fun/framed-avatar"
 import { useBadges, useFriendships, useWallet } from "@/hooks/use-fun"
-import { GameProfileCard } from "./_components/game-profile"
 import { BirthdayDialog, MoodPicker } from "./_components/profile-fun"
 import { PartyPopperIcon } from "@/components/fun/party-popper"
 import { useMyBirthdayCheers } from "@/hooks/use-fun"
@@ -93,6 +91,12 @@ export default function ProfilePage() {
   const now = useNow(0)
   const cheerYear = user?.birthday && now ? nextBirthday(user.birthday, new Date(now)).getFullYear() : undefined
   const cheers = useMyBirthdayCheers(cheerYear)
+
+  // The game profile moved to the Games side: old /profile#game links go there
+  const router = useRouter()
+  React.useEffect(() => {
+    if (window.location.hash === "#game") router.replace("/games/profile")
+  }, [router])
 
   // From a "badge unlocked" notification: bring the badges into view
   React.useEffect(() => {
@@ -145,9 +149,10 @@ export default function ProfilePage() {
       <PageContainer className="max-w-xl min-h-[calc(100svh-8.875rem-env(safe-area-inset-bottom,0px))] gap-4 py-4 md:min-h-0 md:py-6">
         {/* You: photo, name, email, UPI — one edit button for all of it */}
         <section className="flex items-center gap-3.5 px-1">
-          <Link href="/profile/inventory#frames" data-tour="frame" aria-label="Profile frames" className="shrink-0 p-2.5">
-            <FramedAvatar src={user.photoURL} name={user.displayName} frame={user.frame} size={60} />
-          </Link>
+          {/* Plain photo: frames, characters and levels live on the Games side (/games/profile) */}
+          <button type="button" onClick={openEdit} aria-label="Edit profile" className="shrink-0 rounded-full transition-transform active:scale-95">
+            <UserAvatar src={user.photoURL} name={user.displayName} size="xl" className="size-16" />
+          </button>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-lg leading-tight font-semibold">{user.displayName}</h1>
             <p className="truncate text-xs text-muted-foreground">{user.email}</p>
@@ -177,9 +182,6 @@ export default function ProfilePage() {
         {/* How you're feeling: friends see it on your profile */}
         <MoodPicker mood={user.mood?.id} />
 
-        {/* Who you are in live games (your photo stays for everything else) */}
-        <GameProfileCard user={user} wallet={wallet} />
-
         {/* Your JoySplit ID and QR: tap the code to show it big */}
         <IdCard
           user={user}
@@ -187,7 +189,7 @@ export default function ProfilePage() {
           onScan={() => setIsScanning(true)}
         />
 
-        <section id="badges" className="flex scroll-mt-20 flex-col gap-3">
+        <section id="badges" data-tour="frame" className="flex scroll-mt-20 flex-col gap-3">
           <div className="flex items-center justify-between px-1">
             <h2 className="text-sm font-semibold">Your badges</h2>
             {wallet && (
@@ -207,12 +209,6 @@ export default function ProfilePage() {
         <section className="flex flex-col gap-2">
           <h2 className="px-1 text-sm font-semibold">Make it yours</h2>
           <Card className="gap-0 divide-y py-0">
-            <MenuRow
-              icon={Backpack01Icon}
-              label="Inventory"
-              hint="Characters, frames, boards"
-              render={<Link href="/profile/inventory" />}
-            />
             <MenuRow
               icon={BirthdayCakeIcon}
               label="Birthday"
@@ -281,7 +277,7 @@ export default function ProfilePage() {
             <DialogTitle>Edit profile</DialogTitle>
           </DialogHeader>
           <div className="flex items-center gap-3.5">
-            <UserAvatar uid={user.uid} src={user.photoURL} name={user.displayName} size="lg" className="size-14 border" />
+            <UserAvatar uid={user.uid} src={user.photoURL} name={user.displayName} size="lg" className="size-14 border" peek={false} />
             <Button variant="outline" size="sm" onClick={() => setIsPhotoOpen(true)}>
               <HugeiconsIcon icon={Camera01Icon} data-icon="inline-start" />
               Change photo

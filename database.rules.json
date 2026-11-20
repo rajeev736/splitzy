@@ -78,6 +78,14 @@
           }
         },
 
+        "invited": {
+          ".read": "auth != null",
+          "$uid": {
+            ".write": "auth != null && !data.exists() && root.child('rooms/' + $code + '/players/' + auth.uid).exists()",
+            ".validate": "newData.hasChildren(['by', 'at']) && newData.child('by').val() === auth.uid && newData.child('at').isNumber()"
+          }
+        },
+
         "voice": {
           ".read": "auth != null",
           "$uid": {
@@ -100,6 +108,18 @@
       }
     },
 
+    "status": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && $uid === auth.uid",
+        ".validate": "newData.hasChildren(['state', 'at']) && newData.child('state').isString() && newData.child('state').val().matches(/^(online|room|game|offline)$/) && newData.child('at').isNumber()",
+        "game": { ".validate": "newData.isString() && newData.val().matches(/^(scribble|ludo|chess|checkers|tictactoe|snakes|snakes3d|sudoku)$/)" },
+        "state": { ".validate": true },
+        "at": { ".validate": true },
+        "$other": { ".validate": false }
+      }
+    },
+
     "groupRooms": {
       "$groupId": {
         ".read": "auth != null",
@@ -117,9 +137,27 @@
           ".write": "auth != null",
           ".validate": "newData.isString() && newData.val().matches(/^[A-HJ-NP-Z2-9]{6}$/) && root.child('rooms/' + newData.val() + '/meta/hostId').val() === auth.uid"
         },
+        "leader": {
+          ".write": "auth != null && root.child('lounges/' + $groupId + '/here/' + auth.uid).exists() && (!data.exists() || data.val() === auth.uid || !root.child('lounges/' + $groupId + '/here/' + data.val()).exists())",
+          ".validate": "newData.isString() && root.child('lounges/' + $groupId + '/here/' + newData.val()).exists()"
+        },
         "game": {
-          ".write": "auth != null",
+          ".write": "auth != null && newData.parent().child('leader').val() === auth.uid",
           ".validate": "newData.isString() && newData.val().matches(/^(scribble|ludo|chess|checkers|tictactoe|snakes|snakes3d|sudoku)$/)"
+        },
+        "options": {
+          ".write": "auth != null && newData.parent().child('leader').val() === auth.uid",
+          "$key": { ".validate": "$key.matches(/^[a-zA-Z0-9_]{1,30}$/) && (newData.isBoolean() || newData.isNumber() || (newData.isString() && newData.val().length <= 30))" }
+        },
+        "round": {
+          ".write": "auth != null && newData.parent().child('leader').val() === auth.uid",
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "ready": {
+          "$uid": {
+            ".write": "auth != null && $uid === auth.uid",
+            ".validate": "newData.isNumber()"
+          }
         },
         "by": { ".write": "auth != null", ".validate": "newData.val() === auth.uid" },
         "byName": { ".write": "auth != null", ".validate": "newData.isString() && newData.val().length <= 60" },

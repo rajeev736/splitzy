@@ -12,8 +12,9 @@ export const systemNotificationsSupported = () =>
 export const systemNotificationPermission = (): NotificationPermission | "unsupported" =>
   systemNotificationsSupported() ? Notification.permission : "unsupported"
 
+/** Notifications, and the offline-fast cache of boards, sounds and app code (public/sw.js). */
 export function registerServiceWorker() {
-  if (!systemNotificationsSupported()) return
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) return
   navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch((e) => console.warn("Service worker:", e))
 }
 
@@ -34,7 +35,7 @@ export function notificationHref(n: AppNotification): string {
   if (d?.roomCode) return `/play/${d.roomCode}`
   if (d?.challengeId) return `/challenges/${d.challengeId}`
   if (n.type === "PAYMENT_REMINDER" && d?.awaitingConfirm && d.actorId) return `/friends/${d.actorId}`
-  if (n.type === "BADGE") return d?.frame ? "/profile/inventory#milestones" : "/profile#badges"
+  if (n.type === "BADGE") return d?.frame ? "/games/inventory#milestones" : "/profile#badges"
   if ((n.type === "MOMENT" || n.type.startsWith("PLAN") || n.type.startsWith("BOND")) && d?.actorId) return `/friends/${d.actorId}`
   if (n.type === "FRIEND_REQUEST") return "/friends/requests"
   if (n.type.startsWith("FRIEND")) return "/friends"

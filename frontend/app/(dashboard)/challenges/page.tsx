@@ -4,54 +4,44 @@ import * as React from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useRouter } from "nextjs-toploader/app"
-import { GameController03Icon, Notification01Icon } from "@hugeicons/core-free-icons"
+import { Notification01Icon, PercentCircleIcon } from "@hugeicons/core-free-icons"
 
 import { Coins } from "@/components/fun/coin"
 import { GameAvatar } from "@/components/game-avatar/game-avatar"
 import { LevelBadge, XpBar } from "@/components/game-avatar/level-badge"
 import { GameButton, GameIconButton, GameNote, GameScreen, GameSectionTitle, GameTabs } from "@/components/game-ui/kit"
+import { GameBottomNav } from "@/components/game-nav/game-bottom-nav"
+import { GAME_ROUTES } from "@/components/game-nav/items"
 import { GameGlyph } from "@/components/games/game-glyph"
-import { NewChallengeSheet } from "@/components/games/new-challenge-sheet"
-import { ModeSwitch } from "@/components/layout/mode-switch"
+import { ModeBar } from "@/components/layout/mode-switch"
+import { LiveGameLogo } from "@/components/live/live-game-logo"
 import { LiveGamesPanel } from "@/components/live/live-games-panel"
 import { useSession } from "@/components/providers/session-provider"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Spinner } from "@/components/ui/spinner"
-import { useChallenges, useFriends, useUnreadCount } from "@/hooks/queries"
+import { useChallenges, useFriends, useNotifications } from "@/hooks/queries"
 import { useWallet } from "@/hooks/use-fun"
-import { GAMES, isForFun, type GameId } from "@/lib/games"
+import { gameNameOf } from "@/lib/game-name"
+import { isGameNotification } from "@/lib/game-notifications"
+import { GAMES, isForFun } from "@/lib/games"
+import { LIVE_GAMES } from "@/lib/live/games"
 import { levelInfo } from "@/lib/live/levels"
 import { formatPaise } from "@/lib/money"
 import type { Challenge } from "@/lib/types"
-import { cn } from "@/lib/utils"
 
-/** A soft colour per game, so the catalogue reads at a glance. */
-const GAME_TONE: Record<GameId, string> = {
-  rps: "#dbeafe",
-  minefield: "#fee2e2",
-  gold_rush: "#fef3c7",
-  coin_toss: "#ffedd5",
-  treasure: "#ede9fe",
-  lucky_number: "#dcfce7",
-  penalty: "#d1fae5",
-  hilo: "#e0f2fe",
-  number_hunt: "#ffedd5",
-}
-
-/** Live: rooms with friends, right now. The other two are the turn-based challenges. */
-type Tab = "live" | "discount" | "fun"
-type ChallengeTab = Exclude<Tab, "live">
-const TAB_ORDER = ["live", "discount", "fun"] as const
-const TAB_LABELS: Record<Tab, string> = { live: "Live", discount: "Discounted", fun: "For fun" }
-const isTab = (v: string | null): v is Tab => v === "live" || v === "discount" || v === "fun"
-const CHALLENGE_TABS: Record<ChallengeTab, { blurb: string }> = {
-  discount: {
-    blurb: "Games for money you owe or are owed. Win to pay less — one discount game per person at a time.",
-  },
-  fun: {
-    blurb: "No money involved, just bragging rights. Friends can send as many as they like.",
-  },
-}
+/**
+ * Two tabs:
+ *  - For fun: the live games (Ludo, Chess, Scribble…), rooms with friends —
+ *    nothing to do with money;
+ *  - Discounted: a live game one-on-one with a friend who owes you; if they
+ *    win, they get a discount off what they owe (pay within 10 minutes).
+ */
+type Tab = "fun" | "discount"
+const TAB_ORDER = ["fun", "discount"] as const
+const TAB_LABELS: Record<Tab, string> = { fun: "For fun", discount: "Discounted" }
+/** ?tab=… — "live" is the old name of For fun. */
+const tabFromParam = (v: string | null): Tab | null =>
+  v === "discount" ? "discount" : v === "fun" || v === "live" ? "fun" : null
 
 const HISTORY_PAGE = 5
 /** Incoming challenges shown before "Show all", so history never gets pushed far down. */
@@ -70,26 +60,35 @@ function statusFor(c: Challenge, uid: string): { label: string; tone: string } {
       ? { label: "You won", tone: "var(--gu-green-deep)" }
       : { label: "You lost", tone: "var(--gu-ink-soft)" }
   }
+  if (c.game === "live")
+    return c.hostId === uid
+      ? { label: "Waiting to play", tone: "var(--gu-orange-deep)" }
+      : { label: "Your turn", tone: "var(--gu-blue-deep)" }
   if (c.hostId !== uid && c.moves[uid] === undefined) return { label: "Your turn", tone: "var(--gu-blue-deep)" }
   return { label: "Waiting", tone: "var(--gu-orange-deep)" }
 }
 
 const newestFirst = (a: Challenge, b: Challenge) => b.createdAt.localeCompare(a.createdAt)
-const tabOf = (c: Challenge): ChallengeTab => (isForFun(c) ? "fun" : "discount")
+/** The game's name: the live game's own for a live challenge. */
+const gameName = (c: Challenge) => (c.game === "live" && c.liveGame ? LIVE_GAMES[c.liveGame].name : GAMES[c.game].name)
 
 /**
  * The Games side of the app (switched to from the top, layout/mode-switch):
- * one themed world — your player card, then Live rooms or the turn-based
- * challenges. No bottom nav here; Split is one tap away at the top.
+ * one themed world — your player card, then For fun or Discounted. Split is
+ * one tap away at the top; the Games bottom bar (components/game-nav) leads
+ * to Levels, Inventory and your game profile.
  */
 export default function ChallengesPage() {
   return (
     <React.Suspense
       fallback={
         <GameScreen>
-          <div className="flex flex-1 items-center justify-center">
+          {/* The switch is there from the first frame, so it never pops in */}
+          <HubTopBar />
+          <div className="flex flex-1 items-center justify-center pb-24">
             <Spinner className="size-9 text-white" />
           </div>
+          <GameBottomNav />
         </GameScreen>
       }
     >
@@ -103,28 +102,31 @@ function ChallengesContent() {
   const challenges = useChallenges()
   const searchParams = useSearchParams()
   const uid = user?.uid ?? ""
-  const [sheet, setSheet] = React.useState<{ open: boolean; game: GameId }>({ open: false, game: "rps" })
 
-  const all = [...challenges.data].sort(newestFirst)
-  const isYourTurn = (c: Challenge) => c.status === "OPEN" && c.hostId !== uid && c.moves[uid] === undefined
-  const yourTurnCount = (t: Tab) => all.filter((c) => tabOf(c) === t && isYourTurn(c)).length
+  // Discount games only: games for fun are the live rooms now
+  const discounts = [...challenges.data].filter((c) => !isForFun(c)).sort(newestFirst)
+  const isYourTurn = (c: Challenge) =>
+    c.status === "OPEN" && c.hostId !== uid && (c.game === "live" || c.moves[uid] === undefined)
+  const waitingForYou = discounts.filter(isYourTurn).length
 
-  // ?tab=live|discount|fun wins (also when it changes while the page is open);
-  // otherwise Live, unless a challenge is waiting for you in one of the other tabs
-  const param = searchParams.get("tab")
-  const paramTab: Tab | null = isTab(param) ? param : null
+  // ?tab=fun|discount wins (also when it changes while the page is open);
+  // otherwise For fun, unless a discount game is waiting for you
+  const paramTab = tabFromParam(searchParams.get("tab"))
   const [picked, setPicked] = React.useState<Tab | null>(paramTab)
   const [syncedParam, setSyncedParam] = React.useState(paramTab)
   if (paramTab !== syncedParam) {
     setSyncedParam(paramTab)
     if (paramTab) setPicked(paramTab)
   }
-  const tab: Tab = picked ?? (yourTurnCount("discount") > 0 ? "discount" : yourTurnCount("fun") > 0 ? "fun" : "live")
+  const tab: Tab = picked ?? (waitingForYou > 0 ? "discount" : "fun")
+  // Discounted is only built once it's first opened, then kept
+  const [discountSeen, setDiscountSeen] = React.useState(tab === "discount")
+  if (tab === "discount" && !discountSeen) setDiscountSeen(true)
 
   return (
     <GameScreen>
       <HubTopBar />
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-5 px-4 pt-1 pb-16">
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-5 px-4 pt-1 pb-6">
         <PlayerCard />
 
         <div data-tour="game-tabs">
@@ -132,115 +134,107 @@ function ChallengesContent() {
             label="Kind of game"
             value={tab}
             onChange={setPicked}
-            tabs={TAB_ORDER.map((t) => ({ value: t, label: TAB_LABELS[t], badge: yourTurnCount(t) || undefined }))}
+            tabs={TAB_ORDER.map((t) => ({
+              value: t,
+              label: TAB_LABELS[t],
+              badge: t === "discount" ? waitingForYou || undefined : undefined,
+            }))}
           />
         </div>
 
-        {tab === "live" ? (
-          <LiveGamesPanel />
-        ) : (
-          <GamesPanel
-            key={tab}
-            tab={tab}
-            blurb={CHALLENGE_TABS[tab].blurb}
-            items={all.filter((c) => tabOf(c) === tab)}
-            uid={uid}
-            isYourTurn={isYourTurn}
-            challenges={challenges}
-            onNew={() => setSheet({ open: true, game: "rps" })}
-          />
-        )}
+        {/* Both panels stay mounted once opened: switching tabs is instant, nothing reloads */}
+        <div hidden={tab !== "fun"}>
+          <LiveGamesPanel invite={searchParams.get("invite")} />
+        </div>
+        {tab === "discount" || discountSeen ? (
+          <div hidden={tab !== "discount"}>
+            <DiscountPanel items={discounts} uid={uid} isYourTurn={isYourTurn} challenges={challenges} />
+          </div>
+        ) : null}
       </div>
-
-      <NewChallengeSheet
-        open={sheet.open}
-        onOpenChange={(open) => setSheet((s) => ({ ...s, open }))}
-        initialGame={sheet.game}
-        initialStake={tab === "live" ? "fun" : tab}
-      />
+      <GameBottomNav />
     </GameScreen>
   )
 }
 
-/** Split | Games in the middle, your coins and the bell around it. */
+/** Split | Games dead centre, exactly where it sits on the Split side; the games' own bell on the right. */
 function HubTopBar() {
   const router = useRouter()
-  const wallet = useWallet()
-  const unread = useUnreadCount()
+  const { data: notifications } = useNotifications()
+  const unread = notifications.filter((n) => !n.read && isGameNotification(n)).length
   return (
-    <header className="sticky top-0 z-30 bg-gradient-to-b from-[#3f95ee] via-[#3f95ee]/95 to-[#3f95ee]/0 px-3 pt-[calc(0.6rem+env(safe-area-inset-top,0px))] pb-3">
-      <div className="mx-auto flex max-w-2xl items-center gap-2">
-        <Link
-          href="/profile/coins"
-          aria-label={wallet ? `${wallet.balance} coins` : "Coins"}
-          className="gu-chip h-9 shrink-0 !px-3 text-sm"
-        >
-          <Coins amount={wallet?.balance ?? 0} iconClassName="size-4" />
-        </Link>
-        <div className="flex flex-1 justify-center">
-          <ModeSwitch look="game" />
-        </div>
-        <GameIconButton
-          icon={Notification01Icon}
-          label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
-          tone="cream"
-          size="sm"
-          badge={unread > 0 ? (unread > 9 ? "9+" : unread) : undefined}
-          onClick={() => router.push("/notifications")}
-        />
-      </div>
+    <header className="sticky top-0 z-30 bg-gradient-to-b from-[#3f95ee] via-[#3f95ee]/95 to-[#3f95ee]/0 pb-1">
+      <ModeBar
+        look="game"
+        right={
+          <GameIconButton
+            icon={Notification01Icon}
+            label={unread > 0 ? `Game notifications, ${unread} unread` : "Game notifications"}
+            tone="cream"
+            size="sm"
+            badge={unread > 0 ? (unread > 9 ? "9+" : unread) : undefined}
+            onClick={() => router.push("/game-notifications")}
+          />
+        }
+      />
     </header>
   )
 }
 
-/** You as a player: your character, level and XP; tap for the full game profile. */
+/** You as a player: your character, game name, level and XP; tap for the game profile. Your coins on top. */
 function PlayerCard() {
   const { user } = useSession()
   const wallet = useWallet()
   if (!user) return null
   const info = levelInfo(wallet)
   return (
-    <Link href="/profile#game" className="gu-panel-flat flex items-center gap-3.5 p-3 pr-4 active:translate-y-px">
-      <span className="relative shrink-0 p-1">
-        <GameAvatar character={user.gameAvatar} photo={user.photoURL} name={user.displayName} frame={user.frame} size={58} mode="idle" />
-        {wallet ? <LevelBadge level={info.level} size={24} className="absolute -bottom-1 left-1/2 -translate-x-1/2" /> : null}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-lg leading-tight font-bold">{user.displayName.split(" ")[0]}</span>
-        <span className="block truncate text-xs font-bold text-[var(--gu-brown)]">
-          {wallet ? `Level ${info.level} · ${info.title}` : "Player"}
+    <div className="gu-panel-flat relative">
+      {/* Your coins: to the coin history and shop. Claimed coins fly into it (data-coin-target) */}
+      <Link
+        href="/profile/coins"
+        data-coin-target
+        aria-label={wallet ? `${wallet.balance} coins` : "Coins"}
+        className="gu-chip absolute top-3 right-3 z-10 h-8 !px-3 text-sm active:translate-y-px"
+      >
+        <Coins amount={wallet?.balance ?? 0} iconClassName="size-4" />
+      </Link>
+      <Link href={GAME_ROUTES.profile} className="flex items-center gap-3.5 p-3 pr-4 active:translate-y-px">
+        <span className="relative shrink-0 p-1">
+          <GameAvatar character={user.gameAvatar} photo={user.photoURL} name={gameNameOf(user)} frame={user.frame} size={58} mode="idle" />
+          {wallet ? <LevelBadge level={info.level} size={24} className="absolute -bottom-1 left-1/2 -translate-x-1/2" /> : null}
         </span>
-        {wallet ? (
-          <span className="mt-1.5 flex items-center gap-2">
-            <XpBar value={info.progress} className="h-2.5 flex-1 bg-[var(--gu-cream-2)]" />
-            <span className="shrink-0 text-[11px] font-bold text-[var(--gu-ink-soft)] tabular-nums">
-              {info.max ? "MAX" : `${info.into}/${info.need} XP`}
-            </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate pr-24 text-lg leading-tight font-bold">{user.gameName?.trim() || user.displayName.split(" ")[0]}</span>
+          <span className="block truncate text-xs font-bold text-[var(--gu-brown)]">
+            {wallet ? `Level ${info.level} · ${info.title}` : "Player"}
           </span>
-        ) : null}
-      </span>
-    </Link>
+          {wallet ? (
+            <span className="mt-1.5 flex items-center gap-2">
+              <XpBar value={info.progress} className="h-2.5 flex-1 bg-[var(--gu-cream-2)]" />
+              <span className="shrink-0 text-[11px] font-bold text-[var(--gu-ink-soft)] tabular-nums">
+                {info.max ? "MAX" : `${info.into}/${info.need} XP`}
+              </span>
+            </span>
+          ) : null}
+        </span>
+      </Link>
+    </div>
   )
 }
 
-/** One tab's games: what's waiting for you, what's waiting on others, and history. */
-function GamesPanel({
-  tab,
-  blurb,
+/** Discounted: start one, what's waiting for you, what's waiting on them, and history. */
+function DiscountPanel({
   items,
   uid,
   isYourTurn,
   challenges,
-  onNew,
 }: {
-  tab: ChallengeTab
-  blurb: string
   items: Challenge[]
   uid: string
   isYourTurn: (c: Challenge) => boolean
   challenges: ReturnType<typeof useChallenges>
-  onNew: () => void
 }) {
+  const router = useRouter()
   const [historyShown, setHistoryShown] = React.useState(HISTORY_PAGE)
   const [incomingShown, setIncomingShown] = React.useState(INCOMING_PAGE)
   const yourTurn = items.filter(isYourTurn)
@@ -249,11 +243,13 @@ function GamesPanel({
 
   return (
     <div className="flex flex-col gap-6">
-      <p className="px-1 text-sm font-semibold text-white [text-shadow:0_1px_0_rgba(20,40,110,.35)]">{blurb}</p>
+      <p className="px-1 text-sm font-semibold text-white [text-shadow:0_1px_0_rgba(20,40,110,.35)]">
+        Play a live game one-on-one with a friend who owes you. If they win, they get a discount — if they pay you within
+        10 minutes.
+      </p>
 
-      {/* One way in: the sheet picks the game, who plays and the stakes */}
-      <GameButton tone={tab === "discount" ? "green" : "blue"} size="lg" icon={GameController03Icon} onClick={onNew} data-tour="new-challenge">
-        {tab === "discount" ? "Challenge for a discount" : "New challenge"}
+      <GameButton tone="green" size="lg" icon={PercentCircleIcon} onClick={() => router.push("/play/discount")} data-tour="new-challenge">
+        Challenge for a discount
       </GameButton>
 
       {challenges.isPending ? (
@@ -262,7 +258,7 @@ function GamesPanel({
         </div>
       ) : challenges.isError ? (
         <GameNote>
-          Couldn&apos;t load your challenges.{" "}
+          Couldn&apos;t load your games.{" "}
           <button type="button" className="font-bold text-[var(--gu-blue-deep)] underline" onClick={() => challenges.refetch()}>
             Try again
           </button>
@@ -272,11 +268,7 @@ function GamesPanel({
           <section className="flex flex-col gap-3">
             <GameSectionTitle count={yourTurn.length}>Challenges for you</GameSectionTitle>
             {yourTurn.length === 0 ? (
-              <GameNote>
-                {tab === "discount"
-                  ? "No discount challenges waiting. They come from people you owe."
-                  : "No fun challenges waiting. Send one to a friend!"}
-              </GameNote>
+              <GameNote>No discount games waiting. They come from friends you owe.</GameNote>
             ) : (
               <>
                 <div className="gu-panel-flat flex flex-col divide-y divide-[var(--gu-line)] px-1">
@@ -295,7 +287,7 @@ function GamesPanel({
 
           {waiting.length > 0 && (
             <section className="flex flex-col gap-3">
-              <GameSectionTitle count={waiting.length}>Waiting for others</GameSectionTitle>
+              <GameSectionTitle count={waiting.length}>Waiting for them</GameSectionTitle>
               <ChallengeList items={waiting} uid={uid} />
             </section>
           )}
@@ -303,7 +295,7 @@ function GamesPanel({
           <section className="flex flex-col gap-3">
             <GameSectionTitle count={history.length || undefined}>History</GameSectionTitle>
             {history.length === 0 ? (
-              <GameNote>Finished games will show up here.</GameNote>
+              <GameNote>Finished discount games will show up here.</GameNote>
             ) : (
               <>
                 <ChallengeList items={history.slice(0, historyShown)} uid={uid} />
@@ -321,13 +313,30 @@ function GamesPanel({
   )
 }
 
+/** The game's picture: the live game's logo, or the classic game's glyph. */
+function GameMark({ c, size }: { c: Challenge; size: "sm" | "md" }) {
+  if (c.game === "live" && c.liveGame)
+    return <LiveGameLogo game={c.liveGame} className={size === "sm" ? "size-7 rounded-lg" : "size-11 rounded-xl"} />
+  return (
+    <span
+      className={
+        size === "sm"
+          ? "flex size-7 items-center justify-center rounded-lg bg-[#fef3c7] text-sm"
+          : "flex size-11 items-center justify-center rounded-xl bg-[#fef3c7] text-xl shadow-[inset_0_-3px_0_rgba(0,0,0,.08)]"
+      }
+      aria-hidden
+    >
+      <GameGlyph game={c.game} />
+    </span>
+  )
+}
+
 /** Where the game was set up: the expense, the group, or nothing for one-on-one games. */
 const contextOf = (c: Challenge) => (c.expenseTitle ? ` · ${c.expenseTitle}` : c.groupName ? ` · ${c.groupName}` : "")
 
-/** A challenge someone sent you: who sent it, the game, what's at stake, and Play. */
+/** A discount game someone sent you: who, the game, what you can save, and Play. */
 function IncomingRow({ challenge: c, uid }: { challenge: Challenge; uid: string }) {
   const { data: friends } = useFriends()
-  const game = GAMES[c.game]
   const photo = friends.find((f) => f.uid === c.hostId)?.photoURL
   const base = c.bases?.[uid] ?? 0
   const save = Math.floor((base * c.discountPercent) / 100)
@@ -336,27 +345,24 @@ function IncomingRow({ challenge: c, uid }: { challenge: Challenge; uid: string 
     <div className="flex items-center gap-3 px-2 py-3">
       <span className="relative shrink-0">
         <UserAvatar uid={c.hostId} src={photo} name={c.hostName} size="md" />
-        <span
-          className="absolute -right-1.5 -bottom-1.5 flex size-7 items-center justify-center rounded-lg text-sm shadow-[0_0_0_2.5px_#fff]"
-          style={{ background: GAME_TONE[c.game] }}
-          aria-hidden
-        >
-          <GameGlyph game={c.game} />
+        <span className="absolute -right-1.5 -bottom-1.5 rounded-lg shadow-[0_0_0_2.5px_#fff]">
+          <GameMark c={c} size="sm" />
         </span>
       </span>
       <div className="min-w-0 flex-1">
         <p className="truncate font-bold">{c.hostName}</p>
         <p className="truncate text-xs font-semibold text-[var(--gu-ink-soft)]">
-          {game.name}
+          {gameName(c)}
           {contextOf(c)}
         </p>
-        {!isForFun(c) && (
-          <p className="truncate text-xs font-bold text-[var(--gu-green-deep)]">
-            Win to save {formatPaise(save)} ({c.discountPercent}% off)
-          </p>
-        )}
+        <p className="truncate text-xs font-bold text-[var(--gu-green-deep)]">
+          Win to save {formatPaise(save)} ({c.discountPercent}% off)
+        </p>
       </div>
-      <Link href={`/challenges/${c.id}`} className="gu-btn gu-green gu-btn-sm shrink-0">
+      <Link
+        href={c.game === "live" && c.roomCode ? `/play/${c.roomCode}` : `/challenges/${c.id}`}
+        className="gu-btn gu-green gu-btn-sm shrink-0"
+      >
         Play
       </Link>
     </div>
@@ -368,25 +374,17 @@ function ChallengeList({ items, uid }: { items: Challenge[]; uid: string }) {
     <div className="gu-panel-flat flex flex-col divide-y divide-[var(--gu-line)] px-1">
       {items.map((c) => {
         const status = statusFor(c, uid)
-        const game = GAMES[c.game]
         const opponents = c.hostId === uid ? c.players.map((p) => c.playerNames[p]).join(", ") : `${c.hostName} (host)`
         return (
           <Link key={c.id} href={`/challenges/${c.id}`} className="flex items-center gap-3 px-2 py-3">
-            <span
-              className={cn("flex size-11 shrink-0 items-center justify-center rounded-xl text-xl shadow-[inset_0_-3px_0_rgba(0,0,0,.08)]")}
-              style={{ background: GAME_TONE[c.game] }}
-              aria-hidden
-            >
-              <GameGlyph game={c.game} />
-            </span>
+            <GameMark c={c} size="md" />
             <div className="min-w-0 flex-1">
               <p className="truncate font-bold">
-                {game.name}
+                {gameName(c)}
                 <span className="font-semibold text-[var(--gu-ink-soft)]">{contextOf(c)}</span>
               </p>
               <p className="truncate text-xs font-semibold text-[var(--gu-ink-soft)]">
-                {isForFun(c) ? "" : `${c.discountPercent}% off · `}
-                {opponents}
+                {c.discountPercent}% off · {opponents}
               </p>
             </div>
             <span className="flex shrink-0 items-center gap-1.5 text-xs font-bold" style={{ color: status.tone }}>
@@ -399,4 +397,3 @@ function ChallengeList({ items, uid }: { items: Challenge[]; uid: string }) {
     </div>
   )
 }
-

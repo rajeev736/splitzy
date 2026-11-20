@@ -469,7 +469,7 @@ export function ConversationView({
                 {sections.map((s) => (
                   <section key={s.key} className="relative">
                     <div data-daychip className="chat-daychip pointer-events-none sticky top-2 z-[3] my-1.5 flex justify-center">
-                      <span className="rounded-lg bg-chat-in/95 px-2.5 py-1 text-[12px] leading-4 font-medium text-muted-foreground shadow-[0_1px_0.5px_rgb(0_0_0/0.1)] backdrop-blur-sm">
+                      <span className="rounded-lg bg-chat-in px-2.5 py-1 text-[12px] leading-4 font-medium text-muted-foreground shadow-[0_1px_0.5px_rgb(0_0_0/0.1)]">
                         {s.label}
                       </span>
                     </div>

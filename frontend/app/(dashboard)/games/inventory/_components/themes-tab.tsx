@@ -168,6 +168,7 @@ function ThemeSheet({
 
   return (
     <BottomSheet
+      className="gu"
       open={open}
       onOpenChange={onOpenChange}
       title={`${GAME_LABEL[theme.game]} boards`}

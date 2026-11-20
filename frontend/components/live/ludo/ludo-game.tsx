@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { GameBackdrop, TABLE_CLASS } from "../game-backdrop"
 import { serverTimestamp } from "firebase/database"
 import { toast } from "sonner"
 
@@ -666,7 +667,7 @@ export function LudoGame({
         "group/stage flex flex-col gap-2.5",
         // Phones: the whole table fits between the header and the dock — no scrolling;
         // the board takes whatever height the seats and the status line leave
-        "max-md:fixed max-md:inset-x-0 max-md:top-(--stage-top) max-md:z-20 max-md:h-(--stage-h) max-md:justify-center max-md:overflow-hidden max-md:bg-background max-md:p-2",
+        "max-md:fixed max-md:inset-x-0 max-md:top-(--stage-top) max-md:z-20 max-md:h-(--stage-h) max-md:justify-center max-md:overflow-hidden max-md:p-2",
         "max-md:[--board-w:min(100%,calc(var(--stage-h)_-_var(--board-reserve)))]",
         // Big screens: the board grows with the column and the measured height between the
         // header and the dock (tablets, desktops), so the game page never scrolls
@@ -678,17 +679,14 @@ export function LudoGame({
           "md:data-[stage-wide]:[--board-w:max(120px,min(calc(var(--stage-w)_-_var(--board-side)),calc(var(--stage-h)_-_var(--board-reserve-wide-desk))))]"
       )}
     >
-      {/* The table: players in their corners around the board, Ludo King style */}
+      {/* The table's colours fill the screen; players in their corners around the board, Ludo King style */}
+      <GameBackdrop background={look.table} />
       <div
         className={cn(
-          "rounded-2xl p-2 text-white shadow-lg ring-1 ring-black/10 sm:p-3",
+          TABLE_CLASS,
           !penta &&
             "group-data-[stage-wide]/stage:grid group-data-[stage-wide]/stage:grid-cols-[minmax(0,1fr)_var(--board-w)_minmax(0,1fr)] group-data-[stage-wide]/stage:gap-x-2"
         )}
-        style={{
-          background:
-            look.table,
-        }}
       >
         <div className={cn("grid gap-2 px-1 pb-2", rowCols(topRow.length), !penta && "group-data-[stage-wide]/stage:contents")}>
           {topRow.map((c, i) =>

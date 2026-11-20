@@ -982,10 +982,13 @@ function powerEffect(
  * The roll, weighted to keep games lively (Ludo King does much the same):
  * every face starts equal, then —
  *  - mercy six: stuck in base, each roll without a 6 makes a 6 likelier
- *    (up to about 1 in 3 after four misses);
+ *    (up to about 1 in 3 after four misses) — and more so the further the
+ *    others have got (still in base while they're nearly home: close to 1 in 2);
+ *  - catch-up: the further behind the best rival still racing, the likelier
+ *    the big numbers (6s most — and a 6 rolls again);
  *  - the hunt: a number that would land one of your pieces on a rival's
- *    (unsafe) square gets a little more likely;
- *  - comeback: well behind the leader, 5s and 6s get a little likelier;
+ *    (unsafe) square gets more likely — more so when you're behind;
+ *  - far in front: 6s get a little rarer, so the leader can be caught;
  *  - no déjà vu: the face you just rolled is a little less likely.
  * Never certain, never impossible — every face keeps a real chance.
  * `rand` is a uniform [0, 1) source (the component passes the CSPRNG).
@@ -995,8 +998,29 @@ export function rollFor(state: LudoState, uid: string, rand: () => number): numb
   const me = state.players[uid]
   const g = geoOf(state)
   if (me) {
+    // How far behind (or ahead of) the best rival still in the race, 0..1
+    const maxProgress = 4 * (g.home + 1)
+    const rivals = state.order.filter(
+      (id) => id !== uid && isRival(state, uid, id) && state.players[id] && !state.players[id].out && state.players[id].place === 0
+    )
+    const mine = progressOf(me)
+    const best = rivals.length ? Math.max(...rivals.map((id) => progressOf(state.players[id]))) : mine
+    const clamp01 = (x: number) => Math.max(0, Math.min(1, x))
+    const behind = rivals.length ? clamp01(((best - mine) / maxProgress - 0.08) / 0.35) : 0
+    const ahead = rivals.length ? clamp01(((mine - best) / maxProgress - 0.1) / 0.3) : 0
+
     const onBoard = me.tokens.some((t) => t >= 0 && t < g.home)
-    if (!onBoard) w[6] += Math.min(me.noSix ?? 0, 4) * 0.5
+    if (!onBoard) w[6] += Math.min(me.noSix ?? 0, 4) * 0.5 + behind * 0.8
+
+    // Catch-up: big numbers for whoever is trailing
+    w[6] += behind
+    w[5] += behind * 0.5
+    w[4] += behind * 0.25
+    // Far in front: a few less 6s (never fewer than most faces)
+    if (ahead > 0) {
+      w[6] = Math.max(0.65, w[6] - ahead * 0.35)
+      w[1] += ahead * 0.2
+    }
 
     // Rival pieces 1–6 squares ahead of one of mine on an unsafe square
     const bumped = new Set<number>()
@@ -1014,18 +1038,10 @@ export function rollFor(state: LudoState, uid: string, rand: () => number): numb
             state.players[id].tokens.some((p, j) => trackIndex(state.players[id].colour, p, g) === sq && !isShielded(state, id, j))
         )
         if (prey) {
-          w[d] += 0.5
+          w[d] += 0.5 + behind * 0.4
           bumped.add(d)
         }
       }
-    }
-
-    // Comeback
-    const mine = progressOf(me)
-    const leader = Math.max(...state.order.map((id) => (state.players[id] ? progressOf(state.players[id]) : 0)))
-    if (leader - mine >= 40) {
-      w[5] += 0.35
-      w[6] += 0.35
     }
 
     // Less of the same face twice in a row

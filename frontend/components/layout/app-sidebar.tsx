@@ -95,7 +95,8 @@ export function AppSidebar() {
       {user && (
         <div className="flex items-center justify-between gap-2 border-t border-sidebar-border px-4 py-3">
           <Link href="/profile" className="flex min-w-0 flex-1 items-center gap-3 hover:opacity-85">
-            <UserAvatar uid={user.uid} src={user.photoURL} name={user.displayName} size="sm" />
+            {/* A link to your profile already: no peek */}
+            <UserAvatar uid={user.uid} src={user.photoURL} name={user.displayName} size="sm" peek={false} />
             <div className="min-w-0">
               <div className="truncate text-sm font-medium">{user.displayName}</div>
               <div className="truncate font-mono text-[11px] text-muted-foreground">{user.splitzyId}</div>

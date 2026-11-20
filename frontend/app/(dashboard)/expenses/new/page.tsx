@@ -8,7 +8,6 @@ import { ReceiptIndianRupeeIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
 
-import { ExpenseGameOption } from "@/components/games/expense-game-option"
 import { AppHeader } from "@/components/layout/app-header"
 import { PageContainer } from "@/components/layout/app-shell"
 import { useSession } from "@/components/providers/session-provider"
@@ -16,7 +15,7 @@ import { ListSkeleton, QueryError } from "@/components/shared/query-state"
 import { Button } from "@/components/ui/button"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Spinner } from "@/components/ui/spinner"
-import { useCreateChallenge, useCreateExpense } from "@/hooks/mutations"
+import { useCreateExpense } from "@/hooks/mutations"
 import { useFriends, useGroups } from "@/hooks/queries"
 import { useUploadAttachments } from "@/hooks/use-attachments"
 import { getErrorMessage } from "@/lib/errors"
@@ -102,14 +101,7 @@ function NewExpenseFlow({
   const router = useRouter()
   const draft = useExpenseDraft({ user, groups, friends, preselectedGroupId, preselectedFriendId })
   const createExpense = useCreateExpense({ errorMessage: false })
-  const createChallenge = useCreateChallenge({ errorMessage: "Expense saved, but the game couldn't be started" })
   const isShared = draft.expenseMode !== "personal"
-
-  // Optional game: only on group expenses you paid, so you're the one owed
-  const [gameEnabled, setGameEnabled] = React.useState(false)
-  const [gameDiscount, setGameDiscount] = React.useState(20)
-  const canAddGame = draft.expenseMode === "group" && !!user && draft.payerId === user.uid
-  const gamePlayers = draft.splitShares.filter((s) => s.amountPaise > 0 && s.userId !== user?.uid)
 
   // Bills are picked (and compressed) now, uploaded once the expense exists
   const [bills, setBills] = React.useState<PreparedAttachment[]>([])
@@ -177,17 +169,6 @@ function NewExpenseFlow({
   }
 
   const afterSave = async (expense: Expense) => {
-    if (canAddGame && gameEnabled) {
-      createChallenge.mutate({
-        kind: "group",
-        game: "lucky_number",
-        discountPercent: gameDiscount,
-        players: expense.shares
-          .filter((s) => s.userId !== user?.uid && s.amountPaise > 0)
-          .map((s) => ({ uid: s.userId, name: s.userName, basePaise: s.amountPaise })),
-        expense: { id: expense.id, title: expense.title, groupId: expense.groupId, groupName: expense.groupName },
-      })
-    }
     await uploadBillsFor(expense)
     if (isShared) {
       void celebrate({ particleCount: 90, spread: 75, origin: { y: 0.6 }, colors: ["#0F6CBD", "#EAA300", "#107C10"] })
@@ -256,15 +237,6 @@ function NewExpenseFlow({
           {isShared && (
             <>
               <SplitSection draft={draft} />
-              {canAddGame && (
-                <ExpenseGameOption
-                  enabled={gameEnabled}
-                  onEnabledChange={setGameEnabled}
-                  discount={gameDiscount}
-                  onDiscountChange={setGameDiscount}
-                  playerCount={gamePlayers.length}
-                />
-              )}
             </>
           )}
 

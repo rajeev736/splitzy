@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { GameBackdrop, TABLE_CLASS } from "../game-backdrop"
 import dynamic from "next/dynamic"
 
 import { Card, CardContent } from "@/components/ui/card"
@@ -210,13 +211,12 @@ export function Snakes3DTable({ code, uid, me, state, myTurn, canRoll, rolling, 
       className={cn(
         "flex flex-col gap-2.5",
         // Phones: the whole table fits between the header and the dock; only the tower scrolls
-        "max-md:fixed max-md:inset-x-0 max-md:top-(--stage-top) max-md:z-20 max-md:h-(--stage-h) max-md:overflow-hidden max-md:bg-background max-md:p-2"
+        "max-md:fixed max-md:inset-x-0 max-md:top-(--stage-top) max-md:z-20 max-md:h-(--stage-h) max-md:overflow-hidden max-md:p-2"
       )}
     >
-      <div
-        className="flex min-h-0 flex-1 flex-col rounded-2xl p-2 text-white shadow-lg ring-1 ring-black/10 sm:p-3"
-        style={{ background: jungle ? theme.look.table : FALLBACK_TABLE }}
-      >
+      {/* The jungle's colours fill the screen: no card around the game */}
+      <GameBackdrop background={jungle ? theme.look.table : FALLBACK_TABLE} />
+      <div className={cn("flex min-h-0 flex-1 flex-col", TABLE_CLASS)}>
         <div className={cn("grid gap-2 px-1 pb-2", rowCols(topRow.length))}>
           {topRow.map((id, i) => seat(id, alignOf(i, topRow.length), topRow.length > 2))}
         </div>
@@ -265,7 +265,7 @@ export function Snakes3DTable({ code, uid, me, state, myTurn, canRoll, rolling, 
         </div>
       </div>
 
-      <p className="px-1 text-center text-[11px] text-muted-foreground max-md:hidden">
+      <p className="px-1 text-center text-[11px] text-white/75 max-md:hidden">
         Swipe the tower to look around · tap another player&apos;s photo to throw something at them
       </p>
 

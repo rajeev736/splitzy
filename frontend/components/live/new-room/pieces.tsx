@@ -56,7 +56,7 @@ export function LiveGameGrid({
             style={{ backgroundImage: `radial-gradient(90% 70% at 50% 0%, ${GAME_GLOW[id]}40, transparent 70%)` }}
           >
             {recent.includes(id) ? (
-              <span className="gu-chip absolute top-2 left-2 !px-2 !py-0.5 text-[10px] text-[var(--gu-blue-deep)]">Recent</span>
+              <span className="gu-chip absolute top-2 left-2 z-10 !px-2 !py-0.5 text-[10px] text-[var(--gu-blue-deep)]">Recent</span>
             ) : null}
             <LiveGameLogo game={id} className="size-[4.5rem] rounded-[1.4rem] drop-shadow-[0_4px_0_rgba(44,63,115,.18)]" />
             <span className="w-full truncate text-[1.05rem] leading-tight font-bold">{g.shortName ?? g.name}</span>
@@ -95,16 +95,19 @@ export function GameOptionsPicker({
   game,
   picks,
   onChange,
+  hide = [],
 }: {
   game: LiveGameId
   picks: RoomOptions
   onChange: (picks: RoomOptions) => void
+  /** Settings that don't apply here (a one-on-one game has no teams). */
+  hide?: string[]
 }) {
-  const info = LIVE_GAMES[game]
-  if (info.options.length === 0) return null
+  const options = LIVE_GAMES[game].options.filter((o) => !hide.includes(o.key))
+  if (options.length === 0) return null
   return (
     <div className="flex flex-col gap-5">
-      {info.options.map((o) => (
+      {options.map((o) => (
         <section key={o.key} className="flex flex-col gap-2.5" role="radiogroup" aria-label={o.label}>
           <h3 className="gu-label">{o.label}</h3>
           <div className={cn("grid gap-2.5", o.choices.length === 2 ? "grid-cols-2" : o.choices.length === 4 ? "grid-cols-2" : "grid-cols-3")}>
@@ -146,10 +149,3 @@ export function StepDots({ step, of }: { step: number; of: number }) {
 export const isLiveGameId = (v: string | null | undefined): v is LiveGameId =>
   !!v && (LIVE_GAME_IDS as readonly string[]).includes(v)
 
-export function useStableCallback<T extends (...args: never[]) => unknown>(fn: T) {
-  const ref = React.useRef(fn)
-  React.useEffect(() => {
-    ref.current = fn
-  })
-  return React.useCallback((...args: Parameters<T>) => ref.current(...args), []) as T
-}

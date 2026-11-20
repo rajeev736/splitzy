@@ -48,6 +48,9 @@ import { StakeGate, StakeOutcome } from "./_components/stake-parts"
 import { Coins } from "@/components/fun/coin"
 import { GameResult } from "./_components/results"
 import { GameGlyph } from "@/components/games/game-glyph"
+import Link from "next/link"
+import { LiveGameLogo } from "@/components/live/live-game-logo"
+import { LIVE_GAMES } from "@/lib/live/games"
 import { useGameExit } from "@/lib/games-nav"
 
 export default function ChallengePage() {
@@ -60,7 +63,7 @@ export default function ChallengePage() {
 
   return (
     <GameScreen>
-      <GameTopBar title={challenge ? GAMES[challenge.game].name : "Game"} subtitle="Challenge" onBack={exitGame} />
+      <GameTopBar title={challenge ? nameOf(challenge) : "Game"} subtitle="Challenge" onBack={exitGame} />
       <PageContainer className="max-w-xl gap-4 pt-2 pb-24">
         {challenges.isPending ? (
           <ListSkeleton rows={3} />
@@ -78,8 +81,11 @@ export default function ChallengePage() {
   )
 }
 
+/** The game's name: the live game's own for a live discount game. */
+const nameOf = (c: Challenge) => (c.game === "live" && c.liveGame ? LIVE_GAMES[c.liveGame].name : GAMES[c.game].name)
+
 function ChallengeBody({ challenge, uid }: { challenge: Challenge; uid: string }) {
-  const game = GAMES[challenge.game]
+  const game = { ...GAMES[challenge.game], name: nameOf(challenge) }
   const isHost = challenge.hostId === uid
   const resolve = useResolveChallenge({ errorMessage: false })
 
@@ -96,9 +102,13 @@ function ChallengeBody({ challenge, uid }: { challenge: Challenge; uid: string }
     <>
       <Card>
         <CardContent className="flex items-center gap-3">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-md border text-2xl" aria-hidden>
-            <GameGlyph game={challenge.game} />
-          </span>
+          {challenge.game === "live" && challenge.liveGame ? (
+            <LiveGameLogo game={challenge.liveGame} className="size-11 shrink-0 rounded-xl" />
+          ) : (
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-md border text-2xl" aria-hidden>
+              <GameGlyph game={challenge.game} />
+            </span>
+          )}
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold">{game.name}</p>
             <p className="text-xs text-muted-foreground">
@@ -130,6 +140,8 @@ function ChallengeBody({ challenge, uid }: { challenge: Challenge; uid: string }
         </Card>
       ) : challenge.status === "DONE" ? (
         <ResultSection challenge={challenge} uid={uid} />
+      ) : challenge.game === "live" ? (
+        <LivePlaySection challenge={challenge} uid={uid} />
       ) : isHost ? (
         <HostWaiting challenge={challenge} />
       ) : (challenge.stake ?? 0) > 0 && !challenge.staked?.includes(uid) ? (
@@ -257,6 +269,7 @@ function PlaySection({ challenge }: { challenge: Challenge }) {
     penalty: "",
     hilo: "",
     number_hunt: "",
+    live: "",
   }[challenge.game]
 
   return (
@@ -300,6 +313,57 @@ function PlaySection({ challenge }: { challenge: Challenge }) {
           {!forFun &&
             ` Take your time: the ${DISCOUNT_WINDOW_MS / 60000}-minute discount timer only starts once the result is out.`}
         </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * A live discount game that hasn't ended: into the room to play it. The host
+ * can call it off before it's played; the result is recorded by the host's
+ * app the moment the game ends (components/providers/live-challenge-referee).
+ */
+function LivePlaySection({ challenge, uid }: { challenge: Challenge; uid: string }) {
+  const isHost = challenge.hostId === uid
+  const cancel = useCancelChallenge()
+  const [confirm, setConfirm] = React.useState(false)
+  const name = nameOf(challenge)
+  const friend = challenge.playerNames[challenge.players[0]] ?? "your friend"
+  const base = challenge.bases[uid] ?? 0
+  return (
+    <Card>
+      <CardContent className="flex flex-col items-center gap-3 py-6 text-center">
+        {challenge.liveGame ? <LiveGameLogo game={challenge.liveGame} className="size-16 rounded-2xl" /> : null}
+        <p className="text-base font-semibold">
+          {isHost ? `${friend.split(" ")[0]} vs you at ${name}` : `${challenge.hostName.split(" ")[0]} challenged you to ${name}`}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {isHost
+            ? `If ${friend.split(" ")[0]} wins, they get ${challenge.discountPercent}% off what they owe you, for ${DISCOUNT_WINDOW_MS / 60000} minutes. Your app records the result as the game ends.`
+            : `Beat them to get ${challenge.discountPercent}% off the ${formatPaise(base)} you owe — pay within ${DISCOUNT_WINDOW_MS / 60000} minutes of the result to use it.`}
+        </p>
+        {challenge.roomCode ? (
+          <Button size="lg" variant="success" className="h-11 w-full" nativeButton={false} render={<Link href={`/play/${challenge.roomCode}`} />}>
+            {isHost ? "Open the room" : "Play now"}
+          </Button>
+        ) : null}
+        {isHost ? (
+          <>
+            <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setConfirm(true)}>
+              Call it off
+            </Button>
+            <ConfirmDialog
+              open={confirm}
+              onOpenChange={setConfirm}
+              title="Call off this game?"
+              description="No discount will be played for. You can challenge them again later."
+              confirmLabel="Call off"
+              destructive
+              isPending={cancel.isPending}
+              onConfirm={() => cancel.mutate(challenge, { onSuccess: () => setConfirm(false) })}
+            />
+          </>
+        ) : null}
       </CardContent>
     </Card>
   )
@@ -397,7 +461,15 @@ function ResultSection({ challenge, uid }: { challenge: Challenge; uid: string }
       <Card>
         <CardContent className="flex flex-col gap-4">
           <p className="text-center text-lg font-semibold">{headline}</p>
-          <GameResult challenge={challenge} viewerId={uid} />
+          {challenge.game === "live" ? (
+            challenge.roomCode ? (
+              <Button variant="outline" size="sm" className="self-center" nativeButton={false} render={<Link href={`/play/${challenge.roomCode}`} />}>
+                See the game
+              </Button>
+            ) : null
+          ) : (
+            <GameResult challenge={challenge} viewerId={uid} />
+          )}
         </CardContent>
       </Card>
 

@@ -4,10 +4,9 @@ import * as React from "react"
 import { useRouter } from "nextjs-toploader/app"
 import {
   ChatIcon,
-  Exchange01Icon,
+  Logout03Icon,
+  Settings02Icon,
   Home01Icon,
-  PauseIcon,
-  PlayIcon,
   StickerIcon,
   ViewIcon,
 } from "@hugeicons/core-free-icons"
@@ -41,6 +40,7 @@ import { cn } from "@/lib/utils"
 import {
   cancelCountdown,
   cleanupRoom,
+  deleteRoom,
   joinRoom,
   liveDb,
   leaveRoom,
@@ -51,6 +51,7 @@ import {
   startGame,
   type JoinOutcome,
 } from "@/services/live-rooms"
+import { claimActivity } from "@/services/presence"
 import { GameView } from "./game-view"
 import { LiveGameLogo } from "./live-game-logo"
 import { LobbyView } from "./lobby/lobby-view"
@@ -66,20 +67,20 @@ const GAMES_TAB = "/challenges?tab=live"
 
 /**
  * The group's game room (components/live/lounge) wraps a room: nobody is
- * turned away (a full or running game is watched), and when a game ends the
- * next one starts right there instead of a rematch room.
+ * turned away (a full or running game is watched), there's no lobby (the
+ * leader starts once everyone's ready, and the game begins as soon as
+ * they're seated), and after the result everyone goes back to the room.
  */
 export interface LoungeLink {
   groupName: string
-  /** Same game, same settings, everyone in the lounge comes along. */
-  playAgain: (meta: RoomMeta) => Promise<void>
-  /** Open the lounge's game picker. */
-  pickNext: () => void
+  /** From the result back to the group's room, where the leader picks the next game. */
+  backToRoom: () => void
   /** Out of the lounge, back to the group. */
   exit: () => void
-  /** In the lobby's top bar (the host: switch game). */
-  lobbyAction?: React.ReactNode
 }
+
+/** A group round still gathering its players after this long has failed to start. */
+const ROUND_GATHER_MS = 12_000
 
 /**
  * Removed by the host: remembered for this tab (session), so a refresh or the
@@ -185,10 +186,35 @@ export function RoomShell({ code, lounge }: { code: string; lounge?: LoungeLink 
     }, 1200)
   }, [me, meta, code, exitGame, user, join])
 
+  // What you're doing, for friends deciding whether to invite you: playing, or in a room
+  const seatedNow = !!me && !me.left
+  const playingNow = seatedNow && meta?.status === "playing"
+  const metaGame = meta?.game
+  React.useEffect(() => {
+    if (!loaded) return
+    return claimActivity(playingNow ? "game" : "room", playingNow ? metaGame : undefined)
+  }, [loaded, playingNow, metaGame])
+
   // Referee: start the countdown when full, cancel it when someone leaves, start the game on time
   const starting = React.useRef(false)
   React.useEffect(() => {
     if (!isReferee || !meta || !me || me.left) return
+    // A group round: no lobby, no countdown — straight in once everyone picked is seated
+    // (or, after a while, with whoever made it; if that's too few, the round is called off)
+    if (meta.lounge) {
+      if (meta.status !== "lobby" && meta.status !== "countdown") return
+      if (starting.current) return
+      const seated = new Set(players.filter((p) => !p.left).map((p) => p.uid))
+      const everyone = (meta.only ?? []).every((id) => seated.has(id))
+      const late = now - meta.createdAt > ROUND_GATHER_MS
+      if (!everyone && !late) return
+      starting.current = true
+      startGame(code, meta, players).catch(() => {
+        if (late && meta.hostId === me.uid) void deleteRoom(code).catch(() => undefined)
+        else starting.current = false
+      })
+      return
+    }
     // Every seat taken (team rooms: nobody waiting on the bench)
     const full = isFull(meta, players)
     if (meta.status === "lobby" && full) {
@@ -244,12 +270,24 @@ export function RoomShell({ code, lounge }: { code: string; lounge?: LoungeLink 
 
   if (meta.status === "ended") return <EndedView room={room} meta={meta} lounge={lounge} onExit={exitGame} />
 
+  // A group round being gathered: everyone (players and watchers) sees who's coming in
+  if (meta.lounge && meta.status !== "playing") return <GatheringView meta={meta} players={players} onBack={exitGame} />
+
   // No seat: the group's game room lets you watch; anywhere else you're turned away
   const spectator = !me && user ? spectatorOf(user.uid, user.displayName) : null
   if (!me) {
     if (lounge && spectator) {
       if (meta.status === "playing") return <PlayingView room={room} meta={meta} me={spectator} spectating lounge={lounge} onExit={exitGame} />
       return <WatchingLobby meta={meta} players={players} onBack={exitGame} />
+    }
+    if (join === "private") {
+      return (
+        <Blocked
+          title="Private game"
+          text={`This ${LIVE_GAMES[meta.game].name} game is a discount challenge between two friends — only they can play in it.`}
+          onBack={exitGame}
+        />
+      )
     }
     if (join === "full") {
       return (
@@ -272,7 +310,6 @@ export function RoomShell({ code, lounge }: { code: string; lounge?: LoungeLink 
       me={me}
       onLeft={exitGame}
       onLeaving={() => leavingRooms.add(code)}
-      topAction={lounge?.lobbyAction}
     />
   )
 }
@@ -280,6 +317,8 @@ export function RoomShell({ code, lounge }: { code: string; lounge?: LoungeLink 
 /* ── Playing ─────────────────────────────────────────────────────────── */
 
 const THEMED: LiveGameId[] = ["ludo", "chess", "snakes3d", "tictactoe"]
+/** Games drawn edge to edge on their own backdrop (components/live/game-backdrop). */
+const BACKDROP_GAMES: LiveGameId[] = ["ludo", "snakes", "snakes3d"]
 
 function PlayingView({
   room,
@@ -317,8 +356,8 @@ function PlayingView({
     }
   }, [])
   const [chat, setChat] = React.useState(false)
-  const [paused, setPaused] = React.useState(false)
-  const [confirmLeave, setConfirmLeave] = React.useState(false)
+  // The two top-right buttons' panels: settings (sound, board look) and the leave check
+  const [panel, setPanel] = React.useState<"settings" | "leave" | null>(null)
   const [leaving, setLeaving] = React.useState(false)
   const hasOwnChat = meta.game === "scribble"
   // Only seated players can talk, chat and throw stickers (database.rules.json)
@@ -349,10 +388,10 @@ function PlayingView({
   }, [latest])
   const preview = latest && hiddenPreview !== latest.key ? latest : null
 
-  // Phone Back while playing opens the pause panel instead of dropping you out
+  // Escape asks before leaving instead of dropping you out
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !chat) setPaused((p) => !p)
+      if (e.key === "Escape" && !chat) setPanel((p) => (p ? null : "leave"))
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
@@ -386,7 +425,6 @@ function PlayingView({
       <GameTopBar
         title={game.name}
         subtitle={lounge ? `${lounge.groupName} · game room` : `Room ${code}`}
-        onBack={() => setPaused(true)}
         right={
           <>
             {spectating ? (
@@ -395,10 +433,19 @@ function PlayingView({
                 Watching
               </span>
             ) : null}
-            <GameIconButton icon={PauseIcon} label="Pause" tone="yellow" size="sm" onClick={() => setPaused(true)} />
+            <GameIconButton icon={Settings02Icon} label="Settings" tone="cream" size="sm" onClick={() => setPanel("settings")} />
+            <GameIconButton
+              icon={Logout03Icon}
+              label={spectating ? "Stop watching" : "Leave game"}
+              tone="red"
+              size="sm"
+              className="ml-1.5"
+              onClick={() => setPanel("leave")}
+            />
           </>
         }
-        className="bg-gradient-to-b from-[#3f95ee] to-transparent"
+        // Board games fill the screen with their own colours: a soft shade keeps the bar readable on them
+        className={cn("bg-gradient-to-b to-transparent", BACKDROP_GAMES.includes(meta.game) ? "from-black/30" : "from-[#3f95ee]")}
       />
       <ReactionsOverlay code={code} />
       <div
@@ -502,45 +549,36 @@ function PlayingView({
         </div>
       ) : null}
 
-      {/* Pause: sounds, board look, home / resume (the pause dialog of a mobile game) */}
-      <GameDialog
-        open={paused}
-        onClose={() => {
-          setPaused(false)
-          setConfirmLeave(false)
-        }}
-        title={confirmLeave ? "Leave?" : "Pause"}
-      >
-        {confirmLeave ? (
-          <div className="flex flex-col gap-4 text-center">
-            <p className="text-[15px] font-semibold text-[var(--gu-ink-soft)]">{leaveText}</p>
-            <div className="grid grid-cols-2 gap-3">
-              <GameButton tone="cream" onClick={() => setConfirmLeave(false)} disabled={leaving}>
-                Stay
-              </GameButton>
-              <GameButton tone={risky ? "red" : "orange"} onClick={() => void leave()} disabled={leaving}>
-                {leaving ? <Spinner className="size-5" /> : null}
-                Leave
-              </GameButton>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4">
-            <SoundSettingsPanel />
+      {/* Settings: sounds and the board look */}
+      <GameDialog open={panel === "settings"} onClose={() => setPanel(null)} title="Settings">
+        <div className="flex flex-col gap-4">
+          <SoundSettingsPanel />
             {THEMED.includes(meta.game) && (
               <div className="flex items-center justify-between gap-3 border-t border-[var(--gu-line)] pt-3">
                 <span className="gu-label">Board look</span>
                 <BoardThemePicker game={meta.game as "ludo" | "chess" | "snakes3d" | "tictactoe"} />
               </div>
             )}
-            <div className="flex items-center gap-3 border-t border-[var(--gu-line)] pt-4">
-              <GameIconButton icon={Home01Icon} label={spectating ? "Stop watching" : "Leave game"} tone="orange" onClick={() => setConfirmLeave(true)} />
-              <GameButton tone="green" className="flex-1" icon={PlayIcon} onClick={() => setPaused(false)}>
-                Resume
-              </GameButton>
-            </div>
+          <GameButton tone="green" className="w-full" onClick={() => setPanel(null)}>
+            Done
+          </GameButton>
+        </div>
+      </GameDialog>
+
+      {/* Leave: the same check as before, in one tap from the red button */}
+      <GameDialog open={panel === "leave"} onClose={() => setPanel(null)} title="Leave?">
+        <div className="flex flex-col gap-4 text-center">
+          <p className="text-[15px] font-semibold text-[var(--gu-ink-soft)]">{leaveText}</p>
+          <div className="grid grid-cols-2 gap-3">
+            <GameButton tone="cream" onClick={() => setPanel(null)} disabled={leaving}>
+              Stay
+            </GameButton>
+            <GameButton tone={risky ? "red" : "orange"} onClick={() => void leave()} disabled={leaving}>
+              {leaving ? <Spinner className="size-5" /> : null}
+              Leave
+            </GameButton>
           </div>
-        )}
+        </div>
       </GameDialog>
     </GameScreen>
   )
@@ -564,7 +602,7 @@ function WatchingLobby({ meta, players, onBack }: { meta: RoomMeta; players: Roo
             <div className="flex flex-wrap justify-center gap-3">
               {seated.map((p) => (
                 <span key={p.uid} className="flex w-16 flex-col items-center gap-1">
-                  <GameAvatar character={p.avatar} photo={p.photo} name={p.name} frame={p.frame} size={48} />
+                  <GameAvatar uid={p.uid} character={p.avatar} photo={p.photo} name={p.name} frame={p.frame} size={48} />
                   <span className="w-full truncate text-xs font-bold">{p.name.split(" ")[0]}</span>
                 </span>
               ))}
@@ -574,6 +612,43 @@ function WatchingLobby({ meta, players, onBack }: { meta: RoomMeta; players: Roo
             </p>
           </div>
         </GamePanel>
+      </div>
+    </GameScreen>
+  )
+}
+
+/**
+ * A group round, the second between the leader's Start and the game: the
+ * players taking their seats. No lobby — it starts by itself as they land.
+ */
+function GatheringView({ meta, players, onBack }: { meta: RoomMeta; players: RoomPlayer[]; onBack: () => void }) {
+  const game = LIVE_GAMES[meta.game]
+  const seated = new Set(players.filter((p) => !p.left).map((p) => p.uid))
+  const byId = new Map(players.map((p) => [p.uid, p]))
+  const expected = meta.only ?? players.map((p) => p.uid)
+  return (
+    <GameScreen>
+      <GameTopBar title={game.name} subtitle="Group game room" onBack={onBack} />
+      <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-7 px-4 pb-16">
+        <LiveGameLogo game={meta.game} className="size-24 animate-[gu-pop_.4s_ease-out_both] rounded-[1.8rem] drop-shadow-[0_6px_0_rgba(44,63,115,.25)]" />
+        <p className="gu-title text-center text-3xl">Here we go!</p>
+        <div className="flex flex-wrap justify-center gap-3">
+          {expected.map((id) => {
+            const p = byId.get(id)
+            const inSeat = seated.has(id)
+            return (
+              <span key={id} className={cn("flex w-16 flex-col items-center gap-1 transition-opacity duration-300", !inSeat && "opacity-45")}>
+                <GameAvatar uid={id} character={p?.avatar} photo={p?.photo} name={p?.name ?? "Player"} frame={p?.frame} size={52} />
+                <span className="w-full truncate text-center text-xs font-bold text-white [text-shadow:0_1px_0_rgba(20,40,110,.4)]">
+                  {p?.name.split(" ")[0] ?? "…"}
+                </span>
+              </span>
+            )
+          })}
+        </div>
+        <p className="flex items-center gap-2 text-sm font-bold text-white [text-shadow:0_1px_0_rgba(20,40,110,.4)]">
+          <Spinner className="size-4" /> Taking seats…
+        </p>
       </div>
     </GameScreen>
   )
@@ -659,10 +734,6 @@ function EndedView({
     if (!user) return
     setPending(true)
     try {
-      if (lounge) {
-        await lounge.playAgain(meta)
-        return
-      }
       const next = await rematch(user, meta, wallet ? levelOf(liveXp(wallet)) : undefined)
       // Replace, not push: Back from the rematch goes to Games, not through old results
       router.replace(`/play/${next}`)
@@ -684,8 +755,11 @@ function EndedView({
         rows={rows}
         fresh={fresh}
         playAgain={
-          lounge
-            ? { kind: "rematch", onClick: startRematch, pending }
+          meta.challengeId
+            ? // A discount game: on to the discount (no rematch room — a new challenge is a new deal)
+              { kind: "link", href: `/challenges/${meta.challengeId}`, label: "See discount" }
+            : lounge
+            ? { kind: "rematch", onClick: lounge.backToRoom, pending: false, label: "Back to room" }
             : meta.rematchCode
               ? { kind: "join", href: `/play/${meta.rematchCode}` }
               : isHost
@@ -694,15 +768,6 @@ function EndedView({
         }
         onBack={onExit}
         backLabel={lounge ? "Leave" : "Back"}
-        extra={
-          lounge ? (
-            <div className="gu mt-3 flex justify-center">
-              <GameButton tone="purple" icon={Exchange01Icon} onClick={lounge.pickNext}>
-                Pick another game
-              </GameButton>
-            </div>
-          ) : undefined
-        }
         stickers={played ? <StickerBar code={code} /> : undefined}
       />
     </>

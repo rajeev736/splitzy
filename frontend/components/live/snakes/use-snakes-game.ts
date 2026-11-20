@@ -12,6 +12,7 @@ import {
   isOver,
   passTurn,
   resultOf,
+  rollFor,
   SNAKES_IDLE_MS,
   type SnakesSkipReason,
   type SnakesState,
@@ -24,11 +25,11 @@ const ts = () => serverTimestamp() as unknown as number
 /** Let the last move play out before the results screen takes over. */
 const END_DELAY_MS = 2200
 
-/** A fair 1–6 from the browser's CSPRNG. Call from an event handler. */
-function rollDice(): number {
+/** A uniform [0, 1) from the browser's CSPRNG, for the dice (weighted in lib/live/snakes rollFor). */
+function cryptoRand(): number {
   const buf = new Uint32Array(1)
   crypto.getRandomValues(buf)
-  return (buf[0] % 6) + 1
+  return buf[0] / 4294967296
 }
 
 function skipReason(p: RoomPlayer, since: number, now: number): SnakesSkipReason | null {
@@ -77,7 +78,7 @@ export function useSnakesGame({ code, meta, players, uid, me, isReferee, now, se
   const canRoll = myTurn && state?.phase === "roll" && !rolling
   const roll = () => {
     if (!state || !canRoll) return
-    const value = rollDice()
+    const value = rollFor(state, uid, cryptoRand)
     const at = state.seq
     setRollLock(at)
     void commit((s) => {

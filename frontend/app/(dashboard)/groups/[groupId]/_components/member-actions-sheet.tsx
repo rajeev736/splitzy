@@ -103,6 +103,8 @@ export function MemberActionsSheet({
                 src={info?.photoURL || friend?.photoURL}
                 name={name}
                 size="lg"
+                // This sheet is their card already, with View profile
+                peek={false}
               />
               <div className="flex min-w-0 flex-col items-start gap-1">
                 <RoleBadge

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { presenceOf, StatusChip, useFriendStatuses } from "./friend-status"
 import {
   Copy01Icon,
   SentIcon,
@@ -24,11 +25,18 @@ import { LIVE_GAMES } from "@/lib/live/games"
 import { roomLink } from "@/lib/live/room"
 import type { LiveGameId, RoomMeta, RoomPlayer } from "@/lib/live/types"
 import type { UserProfile } from "@/lib/types"
+import { get, serverTimestamp, set } from "firebase/database"
+import { roomRef } from "@/services/live-rooms"
 import { sendNotification } from "@/services/shared"
+
+/** Who has already been invited to a room (rooms/{code}/invited/{uid}). */
+export type InvitedMap = Record<string, { by: string; at: number }>
 
 /**
  * Tells each friend about the room: an in-app notification that also reaches
  * their phone. Best effort per friend — one failure doesn't stop the rest.
+ * Anyone already invited to this room (by anyone) isn't sent another: they
+ * come back in `already`. Each invite sent is noted on the room.
  */
 export async function sendRoomInvites(
   user: UserProfile,
@@ -37,11 +45,16 @@ export async function sendRoomInvites(
   friends: UserProfile[],
   /** The group it was started from, for the message. */
   groupName?: string
-): Promise<{ sent: number; failed: number }> {
+): Promise<{ sent: number; failed: number; already: UserProfile[] }> {
   const name = LIVE_GAMES[game].name
+  const invited = ((
+    await get(roomRef(code, "invited")).catch(() => null)
+  )?.val() ?? {}) as InvitedMap
+  const already = friends.filter((f) => invited[f.uid])
+  const fresh = friends.filter((f) => !invited[f.uid])
   const results = await Promise.allSettled(
-    friends.map((f) =>
-      sendNotification({
+    fresh.map(async (f) => {
+      await sendNotification({
         userId: f.uid,
         title: groupName
           ? `${user.displayName} started ${name} in ${groupName}`
@@ -54,10 +67,15 @@ export async function sendRoomInvites(
           actorName: user.displayName,
         },
       })
-    )
+      // Noted on the room, so nobody invites them again (best effort)
+      await set(roomRef(code, `invited/${f.uid}`), {
+        by: user.uid,
+        at: serverTimestamp(),
+      }).catch(() => undefined)
+    })
   )
   const sent = results.filter((r) => r.status === "fulfilled").length
-  return { sent, failed: friends.length - sent }
+  return { sent, failed: fresh.length - sent, already }
 }
 
 const firstName = (name: string) => name.split(" ")[0]
@@ -79,16 +97,29 @@ export function FriendPicker({
   selected,
   onChange,
   inRoom,
+  invited,
 }: {
   friends: UserProfile[]
   selected: string[]
   onChange: (ids: string[]) => void
   /** Uids already in the room. */
   inRoom?: ReadonlySet<string>
+  /** Uids already invited to the room: not offered again. */
+  invited?: ReadonlySet<string>
 }) {
   const [open, setOpen] = React.useState(false)
-  const available = inRoom ? friends.filter((f) => !inRoom.has(f.uid)) : friends
+  const statuses = useFriendStatuses(friends.map((f) => f.uid))
+  // Free to play first, then busy, then offline — everyone can still be invited
+  const rank = { online: 0, room: 1, game: 2, offline: 3 } as const
+  const available = friends
+    .filter((f) => !inRoom?.has(f.uid) && !invited?.has(f.uid))
+    .map((f, i) => ({ f, i, r: rank[presenceOf(statuses[f.uid])] }))
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map((x) => x.f)
   const seated = inRoom ? friends.filter((f) => inRoom.has(f.uid)) : []
+  const waiting = invited
+    ? friends.filter((f) => invited.has(f.uid) && !inRoom?.has(f.uid))
+    : []
   const chosen = available.filter((f) => selected.includes(f.uid))
   const toggle = (id: string) =>
     onChange(
@@ -112,6 +143,8 @@ export function FriendPicker({
                   name={f.displayName}
                   size="sm"
                   className="ring-2 ring-card"
+                  // Part of the picker's button: a tap opens the picker
+                  peek={false}
                 />
               ))}
             </span>
@@ -129,19 +162,24 @@ export function FriendPicker({
         open={open}
         onOpenChange={setOpen}
         title="Invite friends"
-        description="Each one gets a notification with the room code — on their phone too."
+        description="Each one gets a notification with the room code — on their phone too, even if they're busy or offline."
         multiple
         searchPlaceholder="Search name or JoySplit ID"
         emptyText={
-          seated.length > 0
-            ? "All your friends are already in the room."
+          seated.length > 0 || waiting.length > 0
+            ? "All your friends are already in the room or invited."
             : "Add friends to invite them by name — or share the link."
         }
         items={available.map((f) => ({
           id: f.uid,
           label: f.displayName,
           keywords: f.splitzyId,
-          sublabel: f.splitzyId,
+          sublabel: (
+            <span className="flex min-w-0 items-center gap-1.5">
+              <StatusChip status={statuses[f.uid]} className="shrink-0" />
+              <span className="truncate">{f.splitzyId}</span>
+            </span>
+          ),
           media: (
             <UserAvatar
               uid={f.uid}
@@ -154,24 +192,48 @@ export function FriendPicker({
         selected={selected}
         onSelect={toggle}
         bottom={
-          seated.length > 0 ? (
-            <div className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
-              <span className="flex shrink-0 -space-x-2">
-                {seated.slice(0, 4).map((f) => (
-                  <UserAvatar
-                    key={f.uid}
-                    uid={f.uid}
-                    src={f.photoURL}
-                    name={f.displayName}
-                    size="xs"
-                    className="ring-2 ring-card"
-                  />
-                ))}
-              </span>
-              <span className="min-w-0 flex-1 truncate">
-                Already in the room:{" "}
-                {seated.map((f) => firstName(f.displayName)).join(", ")}
-              </span>
+          seated.length > 0 || waiting.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {waiting.length > 0 ? (
+                <div className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+                  <span className="flex shrink-0 -space-x-2">
+                    {waiting.slice(0, 4).map((f) => (
+                      <UserAvatar
+                        key={f.uid}
+                        uid={f.uid}
+                        src={f.photoURL}
+                        name={f.displayName}
+                        size="xs"
+                        className="ring-2 ring-card"
+                      />
+                    ))}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">
+                    Already invited:{" "}
+                    {waiting.map((f) => firstName(f.displayName)).join(", ")}
+                  </span>
+                </div>
+              ) : null}
+              {seated.length > 0 ? (
+                <div className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+                  <span className="flex shrink-0 -space-x-2">
+                    {seated.slice(0, 4).map((f) => (
+                      <UserAvatar
+                        key={f.uid}
+                        uid={f.uid}
+                        src={f.photoURL}
+                        name={f.displayName}
+                        size="xs"
+                        className="ring-2 ring-card"
+                      />
+                    ))}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">
+                    Already in the room:{" "}
+                    {seated.map((f) => firstName(f.displayName)).join(", ")}
+                  </span>
+                </div>
+              ) : null}
             </div>
           ) : undefined
         }
@@ -215,6 +277,12 @@ export function InviteFriendsSheet({
       ),
     [players]
   )
+  // Who has been invited already (by anyone in the room): not offered again
+  const { data: invitedMap } = useRoomNode<InvitedMap>(meta.code, "invited")
+  const invited = React.useMemo(
+    () => new Set(Object.keys(invitedMap ?? {})),
+    [invitedMap]
+  )
   const freeSeats = Math.max(0, meta.maxPlayers - inRoom.size)
   // Friends who took a seat since being picked drop out of the send
   const picked = friends.filter(
@@ -225,16 +293,22 @@ export function InviteFriendsSheet({
     if (!user || picked.length === 0) return
     setSending(true)
     try {
-      const { sent, failed } = await sendRoomInvites(
+      const { sent, failed, already } = await sendRoomInvites(
         user,
         meta.game,
         meta.code,
         picked
       )
+      if (already.length > 0) {
+        toast(
+          `${already.map((f) => firstName(f.displayName)).join(", ")} ${already.length === 1 ? "is" : "are"} already invited`
+        )
+      }
       if (sent > 0) {
+        const fresh = picked.filter((f) => !already.includes(f))
         toast.success(
-          sent === 1
-            ? `Invited ${firstName(picked[0].displayName)}`
+          sent === 1 && fresh[0]
+            ? `Invited ${firstName(fresh[0].displayName)}`
             : `Invited ${sent} friends`
         )
       }
@@ -286,6 +360,7 @@ export function InviteFriendsSheet({
                 selected={selected}
                 onChange={setSelected}
                 inRoom={inRoom}
+                invited={invited}
               />
               {picked.length > freeSeats && (
                 <p className="text-[11px] text-warning">

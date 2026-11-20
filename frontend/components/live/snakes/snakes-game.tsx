@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { GameBackdrop, TABLE_CLASS } from "../game-backdrop"
 
 import { Spinner } from "@/components/ui/spinner"
 import { describeLast, LAST, ordinal, type SnakesState } from "@/lib/live/snakes"
@@ -119,6 +120,9 @@ export interface SnakesTableProps {
   countdown: number | null
 }
 
+/** The jungle-green felt the board sits on, over the whole screen. */
+const SNAKES_BACKDROP = "radial-gradient(130% 90% at 50% 0%, #16a34a 0%, #15803d 40%, #052e16 100%)"
+
 /** The table: seats around the board, the pieces walking square by square, the status line. */
 export function SnakesTable({ code, uid, me, state, canRoll, rolling, roll, byId, nameOf, gone, countdown }: SnakesTableProps) {
   const shown = useWalk(state, playSound)
@@ -180,8 +184,12 @@ export function SnakesTable({ code, uid, me, state, canRoll, rolling, roll, byId
       />
     )
   }
-  const top = state.order.slice(0, Math.ceil(state.order.length / 2))
-  const bottom = state.order.slice(Math.ceil(state.order.length / 2))
+  // You sit at the bottom, by your dice (like Ludo); the others across the board
+  const n = state.order.length
+  const others = state.order.includes(uid) ? state.order.filter((u) => u !== uid) : state.order
+  const below = state.order.includes(uid) ? Math.max(1, Math.floor(n / 2)) : Math.floor(n / 2)
+  const top = others.slice(0, n - below)
+  const bottom = state.order.includes(uid) ? [uid, ...others.slice(n - below)] : others.slice(n - below)
   const cols = (n: number) => (n === 3 ? "grid-cols-3" : "grid-cols-2")
   const align = (i: number, n: number): "left" | "right" => (i === n - 1 && n > 1 ? "right" : "left")
 
@@ -212,16 +220,14 @@ export function SnakesTable({ code, uid, me, state, canRoll, rolling, roll, byId
       style={{ "--board-reserve": "236px", "--board-reserve-desk": "310px" } as React.CSSProperties}
       className={cn(
         "flex flex-col gap-2.5",
-        "max-md:fixed max-md:inset-x-0 max-md:top-(--stage-top) max-md:z-20 max-md:h-(--stage-h) max-md:justify-center max-md:overflow-hidden max-md:bg-background max-md:p-2",
+        "max-md:fixed max-md:inset-x-0 max-md:top-(--stage-top) max-md:z-20 max-md:h-(--stage-h) max-md:justify-center max-md:overflow-hidden max-md:p-2",
         "max-md:[--board-w:min(100%,calc(var(--stage-h)_-_var(--board-reserve)))]",
         // Big screens: out of the measured height between the header and the dock
         "md:[--board-w:min(100%,calc(var(--stage-h,100svh)_-_var(--board-reserve-desk)))]"
       )}
     >
-      <div
-        className="rounded-2xl p-2 text-white shadow-lg ring-1 ring-black/10 sm:p-3"
-        style={{ background: "radial-gradient(130% 90% at 50% 0%, #16a34a 0%, #15803d 40%, #052e16 100%)" }}
-      >
+      <GameBackdrop background={SNAKES_BACKDROP} />
+      <div className={TABLE_CLASS}>
         <div className={cn("grid gap-2 px-1 pb-2", cols(top.length))}>{top.map((u, i) => seat(u, align(i, top.length), top.length > 2))}</div>
         <div className="mx-auto w-(--board-w) max-w-[min(94vw,32rem)] rounded-xl bg-white/15 md:max-w-full p-1 shadow-[0_12px_30px_rgb(0_0_0/0.4)]">
           <svg viewBox="-0.15 -0.8 10.3 12" className="block h-auto w-full select-none" role="img" aria-label="Snakes and ladders board">
@@ -257,7 +263,7 @@ export function SnakesTable({ code, uid, me, state, canRoll, rolling, roll, byId
           </p>
         </div>
       </div>
-      <p className="px-1 text-center text-[11px] text-muted-foreground max-md:hidden">Tap another player&apos;s photo to throw something at them</p>
+      <p className="px-1 text-center text-[11px] text-white/75 max-md:hidden">Tap another player&apos;s photo to throw something at them</p>
       {code && (
         <>
           <ThrowOverlay code={code} />

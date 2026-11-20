@@ -488,7 +488,7 @@ export function QuoteBlock({
 export function SystemNotice({ text }: { text: string }) {
   return (
     <div className="my-1.5 flex justify-center px-6">
-      <p className="max-w-full rounded-lg bg-chat-in/90 px-3 py-1 text-center text-[12.5px] leading-snug text-muted-foreground shadow-[0_1px_0.5px_rgb(0_0_0/0.08)] backdrop-blur-sm">
+      <p className="max-w-full rounded-lg bg-chat-in px-3 py-1 text-center text-[12.5px] leading-snug text-muted-foreground shadow-[0_1px_0.5px_rgb(0_0_0/0.08)]">
         {text}
       </p>
     </div>

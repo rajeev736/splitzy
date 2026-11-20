@@ -84,14 +84,14 @@ const STEPS: TourStep[] = [
     route: "/challenges",
     target: "game-tabs",
     title: "Games",
-    text: "Switch to Games at the very top. Live: play Scribble, Ludo, Chess and more with friends in real time — or drop into your group's always-open game room. Discounted: challenge someone who owes you — if they win, they pay less. Just for fun: play anyone, and put coins on it.",
+    text: "Switch to Games at the very top. For fun: Ludo, Chess, Scribble and more with friends, live — or drop into your group's always-open game room. Discounted: play a friend who owes you; if they win, they pay less.",
   },
   {
-    // Live is the default tab; the challenge button lives on the others
+    // For fun is the default tab; the discount button lives on Discounted
     route: "/challenges?tab=discount",
     target: "new-challenge",
-    title: "Challenge someone",
-    text: "Pick a game — Stone Paper Scissors, Penalty Shootout, Higher or Lower and more — then who plays and the stakes.",
+    title: "Challenge for a discount",
+    text: "Pick a friend who owes you, a live game and the discount they win — then play it out, one-on-one.",
   },
   {
     route: "/profile",
@@ -253,7 +253,7 @@ export function WelcomeTour() {
       needsFrame={!!wallet && !wallet.welcomeFrame && !wallet.frames.includes(WELCOME_FRAME)}
       needsEarly={needsEarly}
       onNext={(next) => setPhase(next ?? "idle")}
-      onFrameClaimed={() => router.push("/profile/inventory#frames")}
+      onFrameClaimed={() => router.push("/games/inventory#frames")}
       onEarlyDone={() => setSpotsLeft(false)}
     />
   )

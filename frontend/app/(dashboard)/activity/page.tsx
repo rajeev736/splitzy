@@ -53,6 +53,7 @@ function toActivity(n: AppNotification) {
   return {
     id: n.id,
     userName: n.data?.actorName || "JoySplit",
+    userId: n.data?.actorId,
     action: n.message,
     time: new Date(n.createdAt).toLocaleDateString([], {
       month: "short",
@@ -112,7 +113,7 @@ function ActivityContent() {
                       render={<Link href={act.link} />}
                     >
                       <ItemMedia>
-                        <UserAvatar name={act.userName} size="md" />
+                        <UserAvatar uid={act.userId} name={act.userName} size="md" />
                       </ItemMedia>
                       <ItemContent className="min-w-0">
                         <p className="text-sm leading-snug">

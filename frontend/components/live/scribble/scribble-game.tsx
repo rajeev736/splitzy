@@ -16,6 +16,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { useRoomChildren, useRoomNode, type Keyed } from "@/hooks/use-live-room"
 import { getErrorMessage } from "@/lib/errors"
 import {
+  activeGuessers,
   advanceTurn,
   applyTurnEnd,
   beginDrawing,
@@ -34,7 +35,12 @@ import {
   type ScribbleRoot,
   type ScribbleState,
 } from "@/lib/live/scribble"
-import { pickChoices, randomInt } from "@/lib/live/scribble-words"
+import {
+  guessCandidates,
+  pickChoices,
+  randomInt,
+  spellingsOf,
+} from "@/lib/live/scribble-words"
 import type { ChatMessage, LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import { roomRef, sendChat, updateState } from "@/services/live-rooms"
@@ -48,6 +54,19 @@ import { ScribbleCanvas } from "./scribble-canvas"
 type Msg = ChatMessage & { for?: string }
 
 const NO_CORRECT: CorrectMap = {}
+
+/* Rough heights (px) of what sits around the drawing, for sizing it to the screen */
+const BAR_H = 60
+const SCORES_H = 46
+/** The chat at its smallest: a line or two and the box (the drawer mostly watches). */
+const CHAT_MIN = 132
+const CHAT_MIN_DRAWER = 104
+const PHONE_GAPS = 40
+/** Big screens: the room's top padding, the gaps, a little air under the drawing. */
+const WIDE_GAPS = 36
+/** The drawing tools stacked (buttons over the colours) and in one row. */
+const TOOLS_H = 136
+const TOOLS_ROW_H = 84
 /** The text behind a "correct" notice; never the word itself, which others can't see yet. */
 const CORRECT_TEXT = "guessed the word"
 
@@ -278,7 +297,7 @@ export function ScribbleGame({
         msg.at < since
       )
         continue
-      if (isClose(msg.text, myWord)) {
+      if (spellingsOf(myWord).some((w) => isClose(msg.text, w))) {
         void sendChat(code, { uid, displayName: me.name }, msg.text, {
           kind: "close",
           for: msg.uid,
@@ -380,7 +399,11 @@ export function ScribbleGame({
       game.drawEndsAt != null &&
       serverNow() < game.drawEndsAt
     try {
-      if (canGuess && (await hashWord(code, text)) === game.wordHash) {
+      // The word, or another way of writing it ("patang" for kite, "golgappa" for pani puri…)
+      const hashes = canGuess
+        ? await Promise.all(guessCandidates(text).map((w) => hashWord(code, w)))
+        : []
+      if (canGuess && hashes.includes(game.wordHash ?? "")) {
         await set(roomRef(code, `state/correct/${uid}`), {
           at: serverTimestamp(),
         })
@@ -507,33 +530,65 @@ export function ScribbleGame({
       : "Type your guess…"
 
   const canDraw = isDrawer && phase === "drawing"
-  // Height the canvas leaves for the rest on a phone: word bar, scores, chat (at least
-  // a couple of lines + the box), gaps, and the drawing tools when it's your turn to draw
-  const canvasReserve = 56 + (typing ? 0 : 48) + 156 + 16 + (canDraw ? 100 : 0)
+  // The drawer on a phone gets the room the scores row would take (the word bar counts who got it)
+  const showScores = !typing && !canDraw
+  const gone = phase === "drawing" ? goneUids(players, now) : []
+  const guessers = phase === "drawing" ? activeGuessers(game, gone) : []
+  const guessedCount = guessers.filter((u) => !!correct[u]).length
+  // Height the drawing leaves for the rest, so it shrinks (4:3 kept) rather than push the
+  // guess box off a short screen. Phones: the word bar, the scores row, the chat (a line
+  // or two + the box), the gaps, and the tools when it's your turn to draw. Big screens:
+  // the word bar and the tools (one row beside the colours from lg up).
+  const reservePhone =
+    BAR_H +
+    (showScores ? SCORES_H : 0) +
+    (canDraw ? CHAT_MIN_DRAWER : CHAT_MIN) +
+    PHONE_GAPS +
+    (canDraw ? TOOLS_H : 0)
+  const reserveMd = BAR_H + WIDE_GAPS + (canDraw ? TOOLS_H : 0)
+  const reserveLg = BAR_H + WIDE_GAPS + (canDraw ? TOOLS_ROW_H : 0)
 
   return (
     <div
       ref={stageRef}
       onFocusCapture={(e) => isField(e.target) && setTyping(true)}
       onBlurCapture={(e) => isField(e.target) && setTyping(false)}
-      style={{ "--canvas-reserve": `${canvasReserve}px` } as React.CSSProperties}
+      style={
+        {
+          "--canvas-reserve": `${reservePhone}px`,
+          "--canvas-reserve-md": `${reserveMd}px`,
+          "--canvas-reserve-lg": `${reserveLg}px`,
+        } as React.CSSProperties
+      }
       className={cn(
         "flex min-h-0 flex-1 flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_18rem] md:items-start md:gap-4",
+        // Big screens: wider than the room's column (sized for a board with the dock under it), centred on it
+        "md:w-[min(68rem,calc(100vw-2.5rem))] md:self-center",
         // Phones: one screen, no page scroll — word, scores, drawing, then the chat taking what's left.
         // The drawing shrinks (keeping 4:3) when the screen is short, e.g. with the keyboard up.
         "max-md:fixed max-md:inset-x-0 max-md:top-(--stage-top) max-md:z-20 max-md:h-(--stage-h) max-md:bg-background max-md:px-2 max-md:pb-2",
-        "max-md:[--canvas-w:min(100%,calc((var(--stage-h)_-_var(--canvas-reserve))*4/3))]"
+        // The drawing's width: all there is, unless the height runs out first. Phones: edge to
+        // edge (the canvas reaches out over the side padding)
+        "max-md:[--canvas-w:min(100%,calc((var(--stage-h)_-_var(--canvas-reserve))*4/3))]",
+        "md:[--canvas-w:min(100%,calc((var(--stage-h)_-_var(--canvas-reserve-md))*4/3))]",
+        "lg:[--canvas-w:min(100%,calc((var(--stage-h)_-_var(--canvas-reserve-lg))*4/3))]"
       )}
     >
-      <div className="flex min-w-0 flex-col gap-2 max-md:flex-none md:max-w-[640px]">
+      <div className="flex min-w-0 flex-col gap-2 max-md:flex-none">
         {/* Round, the hint, the clock: pinned under the header, so the word stays in view while typing */}
-        <div className="sticky top-[calc(3.875rem+env(safe-area-inset-top,0px))] z-20 -mx-2 flex items-center gap-3 border-b bg-background/95 px-3 py-2 backdrop-blur-sm sm:mx-0 sm:rounded-xl sm:border sm:bg-card md:static">
+        <div className="sticky top-[calc(3.875rem+env(safe-area-inset-top,0px))] z-20 -mx-2 flex items-center gap-3 border-b bg-background px-3 py-2 sm:mx-0 sm:rounded-xl sm:border sm:bg-card md:static">
           <div className="min-w-0 flex-1">
             <p className="truncate text-[11px] text-muted-foreground">
               Round {game.round} of {game.rounds} ·{" "}
               {isDrawer
                 ? "You're drawing"
                 : `${firstName(drawerId)} is drawing`}
+              {phase === "drawing" && guessers.length > 0 && (
+                <>
+                  {" "}
+                  · {guessedCount}/{guessers.length} got it
+                </>
+              )}
             </p>
             <HintLine
               phase={game.phase}
@@ -568,18 +623,19 @@ export function ScribbleGame({
           correct={correct}
           uid={uid}
           layout="row"
-          className={typing ? "hidden" : "md:hidden"}
+          className={showScores ? "md:hidden" : "hidden"}
         />
 
         <ScribbleCanvas
           code={code}
           uid={uid}
           canDraw={canDraw}
+          turn={turn}
           overlay={overlay}
         />
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2 md:h-[calc(100svh-12rem)] md:max-h-[640px] md:min-h-[420px]">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 md:h-[calc(var(--stage-h)-2rem)] md:max-h-[760px] md:min-h-[400px]">
         <Scoreboard
           game={game}
           byId={byId}

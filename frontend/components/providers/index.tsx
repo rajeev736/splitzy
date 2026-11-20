@@ -5,6 +5,8 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools"
 import NextTopLoader from "nextjs-toploader"
 
+import { ProfilePeekHost } from "@/components/profile-peek/profile-peek-host"
+import { RewardsHost } from "@/components/rewards/reward-notice"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -12,6 +14,8 @@ import { GameDiscountProvider } from "@/hooks/use-game-discounts"
 import { makeQueryClient } from "@/lib/query/client"
 import { FunSync } from "./fun-sync"
 import { GameWinAutoSettle } from "./game-win-auto-settle"
+import { LiveChallengeReferee } from "./live-challenge-referee"
+import { PresenceSync } from "./presence-sync"
 import { RealtimeSync } from "./realtime-sync"
 import { SessionProvider } from "./session-provider"
 
@@ -73,11 +77,21 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <TooltipProvider>
             <NextTopLoader color="var(--primary)" height={3} showSpinner={false} shadow={false} />
             <RealtimeSync />
+            {/* Online / in a room / in a game, for friends inviting you */}
+            <PresenceSync />
             {/* One clock + list of live game discounts for every balance, pay button and countdown */}
             <GameWinAutoSettle />
+            {/* Discount games played live: the host records the result as the room ends */}
+            <LiveChallengeReferee />
             {/* Coins, badges, birthday reminders, hugs arriving */}
             <FunSync />
-            <GameDiscountProvider>{children}</GameDiscountProvider>
+            {/* Game-style reward toasts / popups, the coin collect's sounds, the Games side's tap sound */}
+            <RewardsHost />
+            <GameDiscountProvider>
+              {children}
+              {/* Tap anyone's avatar: who they are, in a small sheet (components/profile-peek) */}
+              <ProfilePeekHost />
+            </GameDiscountProvider>
             {/* Theme-coloured toasts (no rich colours), centred on top so phones see them whole */}
             <Toaster position="top-center" closeButton swipeDirections={["left", "right", "top"]} />
           </TooltipProvider>

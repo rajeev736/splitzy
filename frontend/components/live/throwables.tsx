@@ -251,7 +251,8 @@ export function ThrowPicker({
     >
       {shown && (
         <div className="mb-3 flex items-center gap-2.5">
-          <PlayerAvatar player={shown} size={32} />
+          {/* Part of the game (a throw): no profile peek */}
+          <PlayerAvatar player={shown} size={32} peek={false} />
           <p className="text-sm text-muted-foreground">
             Everyone in the room sees it fly from you to {first}.
           </p>

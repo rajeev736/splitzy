@@ -6,7 +6,11 @@ import { characterById } from "@/components/game-avatar/registry"
 import { isTeamRoom } from "@/lib/live/seats"
 import type { RoomMeta, RoomPlayer } from "@/lib/live/types"
 
-/** A start older than this (a refresh mid-game) doesn't replay the match splash. */
+/** The intro's fade out (and in, with reduced motion). */
+export const FADE_MS = 250
+/** Reduced motion: everyone in place at once, a fade in, a hold to read it, a fade out. */
+export const REDUCED_MS = 1800
+/** A start older than this (a refresh mid-game) doesn't replay the intro / match splash. */
 const FRESH_MS = 4000
 
 /** Disc colours for players without a character, by seat. */
@@ -51,6 +55,33 @@ export function shouldPlayIntro(code: string, meta: RoomMeta, serverNow: () => n
 }
 
 export const introKey = (code: string, startedAt: number) => `joysplit:intro:${code}:${startedAt}`
+
+/** How many of the (ascending) moments, in ms from mount, have passed. All of them when `instant`. */
+export function useMarks(marks: number[], instant: boolean) {
+  const key = marks.join(",")
+  const [passed, setPassed] = React.useState(instant ? marks.length : 0)
+  React.useEffect(() => {
+    if (instant) return
+    const ids = key
+      .split(",")
+      .map(Number)
+      .map((t, i) => window.setTimeout(() => setPassed((p) => Math.max(p, i + 1)), t))
+    return () => ids.forEach(window.clearTimeout)
+  }, [key, instant])
+  return passed
+}
+
+/** Tiny seeded PRNG, so the lightning has the same shape on every render. */
+export function seeded(seed: number) {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
 
 /** The window's size, kept up to date. */
 export function useViewport() {

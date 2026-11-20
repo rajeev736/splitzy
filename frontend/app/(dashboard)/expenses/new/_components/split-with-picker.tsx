@@ -137,6 +137,8 @@ function FriendChoice({ draft, friends }: { draft: ExpenseDraft; friends: UserPr
                   name={f.displayName}
                   size="sm"
                   className="size-8 ring-2 ring-card"
+                  // Part of the picker's button: a tap opens the picker
+                  peek={false}
                 />
               ))}
             </span>

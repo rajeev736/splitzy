@@ -3,9 +3,9 @@
 import * as React from "react"
 import { DashboardSquare01Icon, Tick02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { toast } from "sonner"
 
 import { Coins } from "@/components/fun/coin"
+import { announceUnlock } from "@/components/rewards/reward-notice"
 import { BottomSheet } from "@/components/shared/bottom-sheet"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { Button } from "@/components/ui/button"
@@ -59,6 +59,15 @@ export function ThemePicture({ theme, className }: { theme: BoardTheme<unknown>;
         </span>
       )}
     </div>
+  )
+}
+
+/** The board in the "Unlocked!" popup after buying it. */
+function UnlockedBoard({ theme }: { theme: BoardTheme<unknown> }) {
+  return (
+    <span className="block size-24 overflow-hidden rounded-2xl shadow-[0_0_0_3px_#fff,0_6px_14px_rgba(30,40,110,.3)]">
+      <BoardThemeThumb theme={theme} />
+    </span>
   )
 }
 
@@ -213,7 +222,11 @@ export function ThemeAction({
           buy.mutate(theme, {
             onSuccess: () => {
               setConfirming(false)
-              toast.success(`${theme.name} board is yours`)
+              announceUnlock({
+                title: `${theme.name} board`,
+                art: { node: <UnlockedBoard theme={theme} /> },
+                line: "It's yours on every device — you'll play on it from now",
+              })
               onUsed?.()
             },
           })

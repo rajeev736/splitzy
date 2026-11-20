@@ -99,7 +99,7 @@ export default function CoinsPage() {
             </span>
           </Link>
           <Link
-            href="/profile/inventory"
+            href="/games/inventory"
             className="flex items-center gap-2.5 rounded-xl border border-card-stroke bg-card shadow-xs px-3 py-2.5 transition-colors hover:bg-muted/60"
           >
             <HugeiconsIcon icon={CrownIcon} className="size-5 shrink-0 text-primary" />

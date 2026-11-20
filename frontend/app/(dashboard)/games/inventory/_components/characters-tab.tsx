@@ -3,13 +3,12 @@
 import * as React from "react"
 import { LockIcon, RepeatIcon, Tick02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { toast } from "sonner"
 
 import { FilterPills } from "@/app/(dashboard)/_components/filter-pills"
 import { Coins } from "@/components/fun/coin"
 import { CharacterAction, Progress } from "@/components/game-avatar/character-action"
 import { CharacterFill, TierChip } from "@/components/game-avatar/character-tile"
-import { LevelRoad, LevelRoadSheet, LevelSummary, RewardThumb } from "@/components/game-avatar/level-road"
+import { LevelRoad, LevelSummary, RewardThumb } from "@/components/game-avatar/level-road"
 import {
   earnedBy,
   isForSale,
@@ -23,6 +22,7 @@ import {
 } from "@/components/game-avatar/ownership"
 import { CHARACTERS } from "@/components/game-avatar/registry"
 import { SignatureStickers } from "@/components/game-avatar/stickers/ui"
+import { announceReward } from "@/components/rewards/reward-notice"
 import type { CharacterDef } from "@/components/game-avatar/types"
 import { BottomSheet } from "@/components/shared/bottom-sheet"
 import { Button } from "@/components/ui/button"
@@ -198,7 +198,7 @@ function CharacterCard({
 }
 
 /** One character, big, playing its entrance (tap to replay), with use / buy / what unlocks it. */
-function CharacterSheet({
+export function CharacterSheet({
   def,
   open,
   onOpenChange,
@@ -215,6 +215,7 @@ function CharacterSheet({
   const owned = ownsCharacter(def, wallet?.avatars)
   return (
     <BottomSheet
+      className="gu"
       open={open}
       onOpenChange={onOpenChange}
       title={def.name}
@@ -271,7 +272,6 @@ function Levels({
   wallet: Wallet | null | undefined
   characters: CharacterDef[]
 }) {
-  const [road, setRoad] = React.useState(false)
   return (
     <section className="flex flex-col gap-2.5">
       <div className="flex items-baseline justify-between gap-2 px-1">
@@ -279,8 +279,7 @@ function Levels({
         <span className="text-xs text-muted-foreground">XP from every live game</span>
       </div>
       <LevelSummary wallet={wallet} className="rounded-xl border border-card-stroke bg-card px-3.5 py-3 shadow-xs" />
-      <LevelRoad user={user} wallet={wallet} characters={characters} compact onSeeAll={() => setRoad(true)} />
-      <LevelRoadSheet open={road} onOpenChange={setRoad} user={user} wallet={wallet} />
+      <LevelRoad user={user} wallet={wallet} characters={characters} />
     </section>
   )
 }
@@ -330,12 +329,14 @@ function AchievementRow({
   const p = achievementProgress(wallet, achievement)
   const open = new Set(unclaimed(rewards, wallet).map(rewardId))
 
-  const take = (r: Reward) => {
+  const take = (r: Reward, button: HTMLElement) => {
+    // Where the coins burst from (the button turns into a tick once it's claimed)
+    const from = button.getBoundingClientRect()
     setClaiming(rewardId(r))
     claim.mutate(
       { achievement: achievement.id, kind: r.kind, id: rewardId(r) },
       {
-        onSuccess: () => toast.success(`${rewardName(r)} is yours`),
+        onSuccess: () => announceReward(r, { from }),
         onSettled: () => setClaiming(null),
       }
     )
@@ -365,7 +366,7 @@ function AchievementRow({
               <RewardThumb reward={r} user={user} />
               <span className="truncate text-xs font-medium">{rewardName(r)}</span>
               {ready ? (
-                <Button size="xs" onClick={() => take(r)} disabled={claim.isPending}>
+                <Button size="xs" onClick={(e) => take(r, e.currentTarget)} disabled={claim.isPending}>
                   {claiming === id ? <Spinner /> : "Claim"}
                 </Button>
               ) : !open.has(id) ? (

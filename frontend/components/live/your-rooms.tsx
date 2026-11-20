@@ -10,6 +10,7 @@ import { useMarkNotificationRead } from "@/hooks/mutations"
 import { useNotifications } from "@/hooks/queries"
 import { useRoomNode, useServerClock } from "@/hooks/use-live-room"
 import { LiveGameLogo } from "@/components/live/live-game-logo"
+import { TrophyIcon } from "@/components/rewards/trophy"
 import { LIVE_GAMES } from "@/lib/live/games"
 import { roomLiveness, type RoomLiveness } from "@/lib/live/liveness"
 import type { RoomMeta, RoomPlayer } from "@/lib/live/types"
@@ -268,6 +269,36 @@ export function RoomInvites({ invites, now }: { invites: (RoomInvite & { meta: R
   )
 }
 
+type Outcome = "won" | "lost" | "draw" | "left" | "done"
+
+const OUTCOMES: Record<Outcome, { label: string; className: string }> = {
+  won: {
+    label: "You won",
+    className: "bg-[linear-gradient(180deg,#fff0a0,#ffcd3c_60%,#f5b11c)] text-[#6b3d00] shadow-[0_2px_0_#d99a0b,inset_0_1px_0_#fffbe2]",
+  },
+  lost: { label: "You lost", className: "bg-[#ffe3e3] text-[var(--gu-red-deep)] shadow-[0_2px_0_#f2b7b7]" },
+  draw: { label: "Draw", className: "bg-[#e4eeff] text-[var(--gu-blue-deep)] shadow-[0_2px_0_#bcd2fa]" },
+  left: { label: "Everyone left", className: "bg-[var(--gu-cream-2)] text-[var(--gu-brown)] shadow-[0_2px_0_var(--gu-line)]" },
+  done: { label: "Finished", className: "bg-[var(--gu-cream-2)] text-[var(--gu-brown)] shadow-[0_2px_0_var(--gu-line)]" },
+}
+
+/** How a game ended for you, as a chunky coloured pill — a gold one with the trophy for a win. */
+function OutcomePill({ outcome }: { outcome: Outcome }) {
+  const o = OUTCOMES[outcome]
+  return (
+    <span
+      className={cn(
+        "inline-flex h-7 shrink-0 items-center gap-1 rounded-full px-2.5 text-[13px] leading-none font-bold tracking-wide uppercase",
+        outcome === "won" && "pl-1.5",
+        o.className
+      )}
+    >
+      {outcome === "won" && <TrophyIcon className="size-[18px]" />}
+      {o.label}
+    </span>
+  )
+}
+
 /** Finished games, newest first: a few, then "Show all". Each can be cleared away. */
 export function RecentRooms({ rooms, uid }: { rooms: Room[]; uid: string }) {
   const [all, setAll] = React.useState(false)
@@ -293,30 +324,28 @@ export function RecentRooms({ rooms, uid }: { rooms: Room[]; uid: string }) {
           const game = LIVE_GAMES[meta.game]
           // RTDB drops an empty winnerIds array, so a draw arrives without one
           const winners = meta.result ? (meta.result.winnerIds ?? []) : undefined
-          const outcome = !winners
-            ? "Finished"
+          const outcome: Outcome = !winners
+            ? "done"
             : meta.result?.reason === "everyone_left"
-              ? "Everyone left"
+              ? "left"
               : winners.length === 0
-                ? "Draw"
+                ? "draw"
                 : winners.includes(uid)
-                  ? "You won"
-                  : "You lost"
+                  ? "won"
+                  : "lost"
           return (
             <div key={code} className="flex items-center">
               <Link href={`/play/${code}`} className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pr-1 pl-2">
-                <LiveGameLogo game={game.id} className="size-10 rounded-xl" />
+                <LiveGameLogo game={game.id} className="size-12 rounded-2xl" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-bold">{game.name}</span>
-                  <span
-                    className={cn(
-                      "block truncate text-xs font-bold",
-                      outcome === "You won" ? "text-[var(--gu-green-deep)]" : "text-[var(--gu-ink-soft)]"
+                  <span className="block truncate text-base leading-tight font-bold">{game.name}</span>
+                  <span className="mt-1 flex min-w-0 items-center gap-2">
+                    <OutcomePill outcome={outcome} />
+                    {meta.hostId !== uid && (
+                      <span className="truncate text-xs font-semibold text-[var(--gu-ink-soft)]">
+                        {meta.hostName.split(" ")[0]}&apos;s room
+                      </span>
                     )}
-                  >
-                    {outcome === "You won" ? "🏆 " : ""}
-                    {outcome}
-                    {meta.hostId !== uid && <span className="font-semibold"> · {meta.hostName.split(" ")[0]}&apos;s room</span>}
                   </span>
                 </span>
               </Link>

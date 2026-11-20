@@ -114,7 +114,8 @@ service cloud.firestore {
 
     function themeBuyOk(id, delta) {
       let had = resource.data.get('themes', []);
-      return themePrice(id) > 0 && delta == -themePrice(id) && !(id in had) &&
+      let price = themePrice(id);
+      return price > 0 && delta == -price && !(id in had) &&
              request.resource.data.themes == had.concat([id]);
     }
 
@@ -176,7 +177,8 @@ service cloud.firestore {
 
     function characterBuyOk(id, delta) {
       let had = resource.data.get('avatars', []);
-      return characterPrice(id) > 0 && delta == -characterPrice(id) && !(id in had) &&
+      let price = characterPrice(id);
+      return price > 0 && delta == -price && !(id in had) &&
              request.resource.data.avatars == had.concat([id]) &&
              request.resource.data.frames == resource.data.frames;
     }
@@ -209,9 +211,10 @@ service cloud.firestore {
       let w = resource.data;
       let n = int(a.replace('lv', ''));
       let paid = w.get('levelCoins', []);
+      let bonus = levelBonus(a);
       return w.get('livePlayed', 0) * 10 + w.get('liveWins', 0) * 30 >= 40 * (n - 1) + 15 * (n - 1) * (n - 2) &&
              (item == 'coins'
-               ? levelBonus(a) > 0 && delta == levelBonus(a) && !(a in paid) &&
+               ? bonus > 0 && delta == bonus && !(a in paid) &&
                  request.resource.data.levelCoins == paid.concat([a])
                : delta == 0 && rewardItemOk(a, item, levelFrame(a)));
     }
@@ -245,15 +248,17 @@ service cloud.firestore {
     /** Frame (free or owned), game character (free or owned), mood and birthday on a profile. */
     function profileExtrasOk(userId) {
       let d = request.resource.data;
-      return (!changes('frame') || d.get('frame', '') == '' || isFreeFrame(d.frame) ||
+      // One diff for all four checks (the rules engine counts every expression)
+      let changed = d.diff(resource.data).affectedKeys();
+      return (!changed.hasAny(['frame']) || d.get('frame', '') == '' || isFreeFrame(d.frame) ||
               d.frame in get(/databases/$(database)/documents/wallets/$(userId)).data.frames) &&
-             (!changes('gameAvatar') || d.get('gameAvatar', '') == '' || isFreeCharacter(d.gameAvatar) ||
+             (!changed.hasAny(['gameAvatar']) || d.get('gameAvatar', '') == '' || isFreeCharacter(d.gameAvatar) ||
               (d.gameAvatar is string &&
                d.gameAvatar in get(/databases/$(database)/documents/wallets/$(userId)).data.get('avatars', []))) &&
-             (!changes('mood') || d.get('mood', null) == null ||
+             (!changed.hasAny(['mood']) || d.get('mood', null) == null ||
               (d.mood.keys().hasOnly(['id', 'at']) && d.mood.id is string && d.mood.id.size() <= 20 &&
                d.mood.at is string)) &&
-             (!changes('birthday') || d.get('birthday', null) == null ||
+             (!changed.hasAny(['birthday']) || d.get('birthday', null) == null ||
               (d.birthday.keys().hasOnly(['month', 'day']) &&
                d.birthday.month is int && d.birthday.month >= 1 && d.birthday.month <= 12 &&
                d.birthday.day is int && d.birthday.day >= 1 && d.birthday.day <= 31));
@@ -278,7 +283,8 @@ service cloud.firestore {
     }
 
     function frameBuyOk(id, delta) {
-      return framePrice(id) > 0 && delta == -framePrice(id) &&
+      let price = framePrice(id);
+      return price > 0 && delta == -price &&
              !(id in resource.data.frames) &&
              request.resource.data.frames == resource.data.frames.concat([id]);
     }
@@ -309,23 +315,23 @@ service cloud.firestore {
                resource.data.get('coinsWon', 0) + (delta == c.stake * 2 ? c.stake : 0);
     }
 
-    function statSame(f) {
-      return request.resource.data.get(f, 0) == resource.data.get(f, 0);
-    }
-
     function statUp(f) {
       return request.resource.data.get(f, 0) == resource.data.get(f, 0) + 1;
     }
 
-    /** Lifetime stats move only with their proof: a win with its Game Champ badge, a game with its played record. */
-    function statsOk(tx) {
-      return (tx[0] == 'win' ? statUp('wins') : statSame('wins')) &&
-             (tx[0] == 'played' ? statUp('played') : statSame('played')) &&
-             (tx[0] == 'payout' || statSame('coinsWon')) &&
-             // Live-game counters move only with a live result (liveResultOk checks each step)
-             (tx[0] == 'live' ||
-              (statSame('livePlayed') && statSame('liveWins') && statSame('streak') && statSame('bestStreak') &&
-               request.resource.data.get('liveAt', null) == resource.data.get('liveAt', null)));
+    /**
+     * Lifetime stats move only with their proof: a win with its Game Champ
+     * badge, a game with its played record, coins won with a payout, the live
+     * counters with a live result (liveResultOk checks each step). Read off the
+     * one diff of the update: most updates touch no stat at all.
+     */
+    function statsOk(tx, changed) {
+      let moved = changed.intersection(['wins', 'played', 'coinsWon', 'livePlayed', 'liveWins', 'streak', 'bestStreak', 'liveAt'].toSet());
+      return moved.size() == 0 ||
+             (tx[0] == 'win' && moved.hasOnly(['wins']) && statUp('wins')) ||
+             (tx[0] == 'played' && moved.hasOnly(['played']) && statUp('played')) ||
+             (tx[0] == 'payout' && moved.hasOnly(['coinsWon'])) ||
+             (tx[0] == 'live' && moved.hasOnly(['livePlayed', 'liveWins', 'streak', 'bestStreak', 'liveAt']));
     }
 
     function winRecorded(cid) {
@@ -358,36 +364,55 @@ service cloud.firestore {
               request.resource.data.get('welcomed', false) == resource.data.get('welcomed', false));
     }
 
-    function walletTxOk(tx, delta) {
-      // Board themes change only when one is bought
-      return (tx[0] == 'theme' || request.resource.data.get('themes', []) == resource.data.get('themes', [])) &&
-             // Game characters change only when one is bought or earned
-             (tx[0] in ['avatar', 'earn'] || request.resource.data.get('avatars', []) == resource.data.get('avatars', [])) &&
-             statsOk(tx) &&
-             (welcomeOk(tx, delta) ||
-              (request.resource.data.get('welcomed', false) == resource.data.get('welcomed', false) &&
-               request.resource.data.get('welcomeFrame', false) == resource.data.get('welcomeFrame', false) &&
-               walletSpendOk(tx, delta)));
+    /**
+     * A wallet update, checked off one diff of the document (changed) and its
+     * reason (tx: lastTx split on colons): the fields it may touch, then only
+     * the check for that reason. Kept lean on purpose: the rules engine allows
+     * 1,000 expressions per request, and every lookup and comparison counts.
+     */
+    function walletUpdateOk(changed, tx, delta) {
+      return (changed.hasOnly(['balance', 'frames', 'themes', 'avatars', 'lastTx', 'welcomed', 'welcomeFrame', 'wins', 'played', 'coinsWon',
+                               'livePlayed', 'liveWins', 'streak', 'bestStreak', 'liveAt']) ||
+              // A level's coins: the coins and the level listed as paid, nothing else (levelRewardOk)
+              (tx.size() == 3 && tx[0] == 'earn' && tx[2] == 'coins' && tx[1].matches('lv[0-9]{1,2}') &&
+               changed.hasOnly(['balance', 'levelCoins', 'lastTx']))) &&
+             walletTxOk(tx, delta, changed);
     }
 
-    function walletSpendOk(tx, delta) {
+    function walletTxOk(tx, delta, changed) {
+      // Board themes change only when one is bought
+      return (tx[0] == 'theme' || !changed.hasAny(['themes'])) &&
+             // Game characters change only when one is bought or earned
+             (tx[0] in ['avatar', 'earn'] || !changed.hasAny(['avatars'])) &&
+             statsOk(tx, changed) &&
+             (welcomeOk(tx, delta) ||
+              (!changed.hasAny(['welcomed', 'welcomeFrame']) && walletSpendOk(tx, delta, changed)));
+    }
+
+    function throwOk(id, delta) {
+      let price = throwPrice(id);
+      return price > 0 && delta == -price;
+    }
+
+    function walletSpendOk(tx, delta, changed) {
+      let framesSame = !changed.hasAny(['frames']);
       return (tx[0] == 'frame' && tx.size() == 2 && frameBuyOk(tx[1], delta)) ||
-             (tx[0] == 'theme' && tx.size() == 2 && request.resource.data.frames == resource.data.frames &&
+             (tx[0] == 'theme' && tx.size() == 2 && framesSame &&
               themeBuyOk(tx[1], delta)) ||
              (tx[0] == 'milestone' && tx.size() == 2 && delta == 0 && milestoneOk(tx[1])) ||
              (tx[0] == 'avatar' && tx.size() == 2 && characterBuyOk(tx[1], delta)) ||
              (tx[0] == 'earn' && tx.size() == 3 &&
               (tx[1].matches('lv[0-9]{1,2}') ? levelRewardOk(tx[1], tx[2], delta) : delta == 0 && rewardOk(tx[1], tx[2]))) ||
              (tx[0] == 'live' && liveResultOk(tx, delta)) ||
-             (request.resource.data.frames == resource.data.frames &&
+             (framesSame &&
               delta == 0 && tx.size() == 2 &&
               ((tx[0] == 'win' && winRecorded(tx[1])) || (tx[0] == 'played' && playedRecorded(tx[1])))) ||
-             (request.resource.data.frames == resource.data.frames &&
+             (framesSame &&
               ((tx[0] == 'gift' && tx.size() == 3 && giftPaidOk(tx[1], tx[2], delta)) ||
                (tx[0] == 'stake' && tx.size() == 2 && stakeOk(tx[1], delta)) ||
                (tx[0] == 'payout' && tx.size() == 2 && payoutOk(tx[1], delta)) ||
                // A throwable in a live game: spending only, at its price
-               (tx[0] == 'throw' && tx.size() == 3 && throwPrice(tx[1]) > 0 && delta == -throwPrice(tx[1]))));
+               (tx[0] == 'throw' && tx.size() == 3 && throwOk(tx[1], delta))));
     }
 
     match /wallets/{userId} {
@@ -402,16 +427,12 @@ service cloud.firestore {
                     request.resource.data.lastTx == 'start' &&
                     exists(/databases/$(database)/documents/users/$(userId));
       allow update: if signedIn() && uid() == userId &&
-                    (onlyChanges(['balance', 'frames', 'themes', 'avatars', 'lastTx', 'welcomed', 'welcomeFrame', 'wins', 'played', 'coinsWon',
-                                  'livePlayed', 'liveWins', 'streak', 'bestStreak', 'liveAt']) ||
-                     // A level's coins: the coins and the level listed as paid, nothing else (levelRewardOk)
-                     (request.resource.data.lastTx.matches('earn:lv[0-9]{1,2}:coins') &&
-                      onlyChanges(['balance', 'levelCoins', 'lastTx']))) &&
                     request.resource.data.balance is int &&
                     request.resource.data.balance >= 0 &&
                     request.resource.data.lastTx is string &&
-                    walletTxOk(request.resource.data.lastTx.split(':'),
-                               request.resource.data.balance - resource.data.balance);
+                    walletUpdateOk(request.resource.data.diff(resource.data).affectedKeys(),
+                                   request.resource.data.lastTx.split(':'),
+                                   request.resource.data.balance - resource.data.balance);
       // Only once the account itself is gone (no free reset to the starting coins)
       allow delete: if signedIn() && uid() == userId &&
                     !exists(/databases/$(database)/documents/users/$(userId));
@@ -592,6 +613,9 @@ service cloud.firestore {
                     request.resource.data.get('photoURL', '').size() < 500000 &&
                     request.resource.data.get('displayName', '').size() <= 100 &&
                     request.resource.data.get('upiId', '').size() <= 100 &&
+                    // Game name (game profile), separate from displayName
+                    request.resource.data.get('gameName', '') is string &&
+                    request.resource.data.get('gameName', '').size() <= 20 &&
                     profileExtrasOk(userId);
       allow delete: if signedIn() && uid() == userId;
     }
@@ -1603,14 +1627,34 @@ service cloud.firestore {
                     request.resource.data.participants.size() == request.resource.data.players.size() + 1 &&
                     request.resource.data.participants.hasAll(request.resource.data.players) &&
                     uid() in request.resource.data.participants &&
-                    request.resource.data.game in ['rps', 'lucky_number', 'coin_toss', 'treasure', 'minefield', 'gold_rush',
-                                                   'penalty', 'hilo', 'number_hunt'] &&
+                    (request.resource.data.game in ['rps', 'lucky_number', 'coin_toss', 'treasure', 'minefield', 'gold_rush',
+                                                    'penalty', 'hilo', 'number_hunt'] ||
+                     validLiveCreate()) &&
                     ((request.resource.data.kind == 'friend' && request.resource.data.players.size() == 1) ||
                      (request.resource.data.kind == 'group' && request.resource.data.players.size() <= 15 &&
                       // tiles / cards open one by one, so players could tip each other off: fun only
                       !(noGroupDiscount(request.resource.data.game) && request.resource.data.discountPercent > 0))) &&
                     newStakeOk(challengeId) &&
-                    existsAfter(/databases/$(database)/documents/challenges/$(challengeId)/secret/value);
+                    (request.resource.data.game == 'live' ||
+                     existsAfter(/databases/$(database)/documents/challenges/$(challengeId)/secret/value));
+
+      /**
+       * A live game (Ludo, Chess…) for a discount: 1-on-1 against a friend who
+       * owes you, played in a live room — no secret, no coins. Its result is
+       * recorded by the host alone (see validOpenUpdate).
+       */
+      function validLiveCreate() {
+        let d = request.resource.data;
+        return d.game == 'live' &&
+               d.kind == 'friend' &&
+               d.players.size() == 1 &&
+               d.discountPercent >= 1 &&
+               d.bases[d.players[0]] is int && d.bases[d.players[0]] > 0 &&
+               d.liveGame is string &&
+               d.liveGame.matches('^(scribble|ludo|chess|checkers|tictactoe|snakes|snakes3d|sudoku)$') &&
+               d.roomCode is string && d.roomCode.matches('^[A-HJ-NP-Z2-9]{6}$') &&
+               d.get('stake', 0) == 0;
+      }
 
       /**
        * Coins on a 1-on-1 game for fun: the host stakes them as the game is
@@ -1674,7 +1718,8 @@ service cloud.firestore {
       function validOpenUpdate(challengeId) {
         return (
                       // A player locks in their own move, once
-                      (uid() in resource.data.players &&
+                      (resource.data.game != 'live' &&
+                       uid() in resource.data.players &&
                        stakedIn() &&
                        onlyChanges(['moves']) &&
                        !(uid() in resource.data.moves) &&
@@ -1699,7 +1744,8 @@ service cloud.firestore {
                       ||
                       // Anyone in the game records the result once everyone played;
                       // the host may also end a group game early
-                      (uid() in resource.data.participants &&
+                      (resource.data.game != 'live' &&
+                       uid() in resource.data.participants &&
                        (everyonePlayed(resource.data) ||
                         (resource.data.hostId == uid() && resource.data.kind == 'group' &&
                          resource.data.moves.size() >= 1)) &&
@@ -1710,6 +1756,18 @@ service cloud.firestore {
                          ? validLuckyResult(resource.data, secretDoc(challengeId), request.resource.data.result)
                          : (validVerdictResult(challengeId, resource.data, secretDoc(challengeId), request.resource.data.result) ||
                             validSoloResult(resource.data, secretDoc(challengeId), request.resource.data.result))))
+                      ||
+                      // A live game for a discount: only the host — the one being paid — records
+                      // who won, so the friend who'd gain from a fake win can't write it. The
+                      // winner is that friend or nobody; the discount then works as for any game.
+                      (resource.data.game == 'live' &&
+                       resource.data.hostId == uid() &&
+                       onlyChanges(['status', 'result', 'resolvedAt']) &&
+                       request.resource.data.status == 'DONE' &&
+                       request.resource.data.resolvedAt == request.time &&
+                       request.resource.data.result.keys().hasOnly(['winners']) &&
+                       (request.resource.data.result.winners == [] ||
+                        request.resource.data.result.winners == resource.data.players))
                       ||
                       // The host withdraws an unfinished game
                       (resource.data.hostId == uid() &&

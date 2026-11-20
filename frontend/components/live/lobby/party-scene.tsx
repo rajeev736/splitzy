@@ -385,6 +385,7 @@ function Face({
         style={{ background: "linear-gradient(180deg,#fff3b0,#e9a521)" }}
       >
         <GameAvatar
+          uid={player.uid}
           character={player.avatar}
           frame={player.frame}
           photo={player.photo}

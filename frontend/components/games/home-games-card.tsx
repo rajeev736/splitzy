@@ -9,6 +9,8 @@ import { useChallenges } from "@/hooks/queries"
 import { useLiveGameDiscounts } from "@/hooks/use-game-discounts"
 import { formatCountdown } from "@/hooks/use-now"
 import { GAMES, stakeLabel } from "@/lib/games"
+import { LiveGameLogo } from "@/components/live/live-game-logo"
+import { LIVE_GAMES } from "@/lib/live/games"
 import { formatPaise } from "@/lib/money"
 import type { Challenge } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -52,7 +54,7 @@ export function HomeGamesCard() {
       <div className="flex items-center justify-between px-4 pt-3.5 pb-1">
         <h2 className="text-sm font-semibold">Games</h2>
         <Link
-          href="/challenges"
+          href="/challenges?tab=discount"
           className={cn(
             "text-xs font-medium transition-colors",
             rows.length > 3 ? "text-primary hover:underline" : "text-muted-foreground hover:text-foreground"
@@ -63,7 +65,7 @@ export function HomeGamesCard() {
       </div>
       <ul className="flex flex-col divide-y px-1 pb-1">
         {rows.slice(0, 3).map(({ c, kind, who }) => {
-          const game = GAMES[c.game]
+          const game = { name: c.game === "live" && c.liveGame ? LIVE_GAMES[c.liveGame].name : GAMES[c.game].name }
           const liveDiscount = who ? liveDiscounts.byPerson.get(who) : undefined
           const waitingOn = c.players.filter((p) => c.moves?.[p] === undefined).map((p) => c.playerNames[p])
           return (
@@ -72,9 +74,13 @@ export function HomeGamesCard() {
                 href={`/challenges/${c.id}`}
                 className="flex items-center gap-3 rounded-md px-3 py-3 transition-colors hover:bg-muted/60"
               >
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-md border text-lg" aria-hidden>
-                  <GameGlyph game={c.game} />
-                </span>
+                {c.game === "live" && c.liveGame ? (
+                  <LiveGameLogo game={c.liveGame} className="size-9 shrink-0 rounded-md" />
+                ) : (
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-md border text-lg" aria-hidden>
+                    <GameGlyph game={c.game} />
+                  </span>
+                )}
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">
                     {kind === "play"
@@ -115,7 +121,7 @@ export function HomeGamesCard() {
       </ul>
       {rows.length > 3 && (
         <Link
-          href="/challenges"
+          href="/challenges?tab=discount"
           className="flex items-center justify-center gap-1 border-t px-4 py-2.5 text-xs font-medium text-primary transition-colors hover:bg-muted/60"
         >
           {rows.length - 3} more in Games

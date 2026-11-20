@@ -87,6 +87,12 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/(.*)", headers: securityHeaders },
+      // Boards, avatars, logos, sounds: not content-hashed, so a week fresh and then
+      // refreshed in the background (never a wait) — screens and games open from cache
+      ...["boards", "avatars", "game-logos", "chess", "sounds", "brands", "group-icons", "assets"].map((dir) => ({
+        source: `/${dir}/:path*`,
+        headers: [{ key: "Cache-Control", value: "public, max-age=604800, stale-while-revalidate=2592000" }],
+      })),
       // The service worker must never be cached, so phones always pick up the latest one
       {
         source: "/sw.js",

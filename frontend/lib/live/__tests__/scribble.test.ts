@@ -30,7 +30,19 @@ import {
   turnPoints,
   unrevealedIndexes,
 } from "../scribble"
-import { PACK_IDS, pickChoices, WORD_PACKS, wordsOf } from "../scribble-words"
+import {
+  aliasesOf,
+  guessCandidates,
+  PACK_IDS,
+  pickChoices,
+  spellingsOf,
+  WORD_PACKS,
+  wordsOf,
+} from "../scribble-words"
+import {
+  floodMask,
+  parseHex,
+} from "../../../components/live/scribble/flood-fill"
 import type { RoomPlayer } from "../types"
 
 function assert(condition: unknown, message: string) {
@@ -66,18 +78,15 @@ function noUndefined(v: unknown, path = "state"): void {
 console.log("Running Scribble tests...\n")
 
 // Word packs: enough of them, drawable, well-formed
-const shape = /^[a-z][a-z -]{1,12}[a-z]$/
+const shape = /^[a-z][a-z -]{1,14}[a-z]$/
 for (const pack of PACK_IDS) {
   const words = wordsOf(pack)
-  assert(
-    words.length >= 80,
-    `${pack} has at least 80 words (${words.length})`
-  )
+  assert(words.length >= 80, `${pack} has at least 80 words (${words.length})`)
   assert(new Set(words).size === words.length, `${pack} has no duplicates`)
   for (const w of words)
     assert(
       shape.test(w),
-      `${pack}: "${w}" is 3–14 lowercase letters, spaces or hyphens`
+      `${pack}: "${w}" is 3–16 lowercase letters, spaces or hyphens`
     )
   assert(
     WORD_PACKS[pack].length === words.length,
@@ -115,7 +124,84 @@ assert(
   pickChoices("food", 3, wordsOf("food")).length === 3,
   "when everything's used, the pack is reused"
 )
+assert(wordsOf("mix").length >= 300, "300+ words in all")
+for (const w of [
+  "samosa",
+  "auto rickshaw",
+  "rangoli",
+  "diya",
+  "kite",
+  "pressure cooker",
+  "taj mahal",
+  "tiffin box",
+  "bullock cart",
+])
+  assert(wordsOf("mix").includes(w), `"${w}" is in the mix`)
 console.log("✓ Word packs")
+
+// Other spellings: only for pack words, never another pack word by mistake
+const squashed = new Map(wordsOf("mix").map((w) => [w.replace(/[ -]/g, ""), w]))
+for (const w of wordsOf("mix")) {
+  for (const a of aliasesOf(w)) {
+    assert(normalize(a) === a, `alias "${a}" is written normalised`)
+    const other = squashed.get(a.replace(/ /g, ""))
+    assert(
+      !other || other === w || ["swing", "jhula"].includes(w),
+      `alias "${a}" of "${w}" isn't the word "${other}"`
+    )
+  }
+}
+const means = (guess: string, word: string) =>
+  guessCandidates(guess).includes(word)
+assert(means("Patang", "kite"), "patang = kite")
+assert(means("golgappa", "pani puri"), "golgappa = pani puri")
+assert(means("Gol-Gappe!", "pani puri"), "spelling, case and punctuation")
+assert(means("autorickshaw", "auto rickshaw"), "joined up")
+assert(means("pressure  cooker", "pressure cooker"), "extra spaces")
+assert(means("marble", "marbles"), "singular of a plural word")
+assert(means("jalebis", "jalebi"), "plural of a word")
+assert(means("tomatoes", "tomato"), "-es plural")
+assert(means("pagdi", "turban"), "pagdi = turban")
+assert(!means("bike", "scooter"), "a different thing isn't an alias")
+assert(
+  guessCandidates("anything at all")[0] === "anything at all",
+  "the guess itself comes first"
+)
+assert(guessCandidates("  ").length === 0, "nothing for an empty guess")
+assert(spellingsOf("kite").includes("patang"), "close nudges know the aliases")
+console.log("✓ Guess spellings")
+
+// Paint bucket
+{
+  const W = 20
+  const H = 10
+  const px = new Uint8ClampedArray(W * H * 4).fill(255)
+  // A black wall down column 10
+  for (let y = 0; y < H; y++) px.set([0, 0, 0, 255], (y * W + 10) * 4)
+  const m = floodMask(px, W, H, 2, 2, [255, 0, 0])
+  assert(m, "fills a white area")
+  assert(m!.mask[5 * W + 0] && m!.mask[5 * W + 9], "the whole left side")
+  assert(
+    m!.mask[5 * W + 10],
+    "grows one pixel into the wall (covers soft edges)"
+  )
+  assert(!m!.mask[5 * W + 11], "but not through it")
+  assert(m!.maxX === 10 && m!.minX === 0, "bounds")
+  assert(
+    floodMask(px, W, H, 2, 2, [255, 255, 255]) === null,
+    "same colour: nothing to do"
+  )
+  assert(
+    floodMask(px, W, H, 25, 2, [255, 0, 0]) === null,
+    "off the canvas: nothing"
+  )
+  assert(
+    parseHex("#ff8000").join() === "255,128,0" &&
+      parseHex("nope").join() === "0,0,0",
+    "colours"
+  )
+}
+console.log("✓ Paint bucket")
 
 // Setup
 let s = fresh(3)

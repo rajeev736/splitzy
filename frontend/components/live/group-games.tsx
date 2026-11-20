@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { useRouter } from "nextjs-toploader/app"
 import { ArrowRight01Icon, Notification03Icon, PlayIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
@@ -29,6 +30,7 @@ import { callGroupToLounge, watchLounge, type Lounge } from "@/services/lounges"
  */
 export function GroupGames({ group, uid }: { group: Group; uid: string }) {
   const { user } = useSession()
+  const router = useRouter()
   const [rooms, setRooms] = React.useState<GroupRoom[]>([])
   const [lounge, setLounge] = React.useState<Lounge | null>(null)
   const [calling, setCalling] = React.useState(false)
@@ -66,7 +68,8 @@ export function GroupGames({ group, uid }: { group: Group; uid: string }) {
   return (
     <div className="flex flex-col gap-5">
       {/* The group's game room: always open */}
-      <section className="gu gu-sky relative overflow-hidden rounded-3xl p-4 text-white shadow-[0_6px_0_#3c72d6,0_12px_24px_rgba(30,40,110,.25)]">
+      {/* A soft shadow and a hairline ring: a hard blue lip under the lilac bottom read as a stray blue edge */}
+      <section className="gu gu-sky relative isolate overflow-hidden rounded-3xl p-4 text-white shadow-[0_0_0_1px_rgba(60,114,214,.18),0_10px_24px_rgba(30,40,110,.22)]">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <p className="gu-title text-2xl leading-tight">Group game room</p>
@@ -86,7 +89,7 @@ export function GroupGames({ group, uid }: { group: Group; uid: string }) {
             <>
               <span className="flex shrink-0 -space-x-2.5">
                 {here.slice(0, 5).map(([id, v]) => (
-                  <GameAvatar key={id} character={v.avatar} photo={v.photo} name={v.name} size={30} className="rounded-full shadow-[0_0_0_2px_#fff]" />
+                  <GameAvatar key={id} uid={id} character={v.avatar} photo={v.photo} name={v.name} size={30} className="rounded-full shadow-[0_0_0_2px_#fff]" />
                 ))}
               </span>
               <span className="min-w-0 truncate text-sm font-bold [text-shadow:0_1px_0_rgba(20,40,110,.35)]">
@@ -99,10 +102,15 @@ export function GroupGames({ group, uid }: { group: Group; uid: string }) {
         </div>
 
         <div className="mt-4 grid grid-cols-[1fr_auto] gap-3">
-          <Link href={`/lounge/${group.id}`} className="gu-btn gu-green">
-            <HugeiconsIcon icon={PlayIcon} className="size-5" strokeWidth={2.6} />
+          <GameButton
+            tone="green"
+            icon={PlayIcon}
+            onClick={() => router.push(`/lounge/${group.id}`)}
+            onContextMenu={(e) => e.preventDefault()}
+            className="select-none [-webkit-touch-callout:none]"
+          >
             {loungeCode && here.length > 0 ? "Join them" : "Enter room"}
-          </Link>
+          </GameButton>
           <GameButton tone="yellow" icon={Notification03Icon} onClick={() => void call()} disabled={calling} aria-label="Call the group to play">
             Call
           </GameButton>

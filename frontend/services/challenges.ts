@@ -1,4 +1,4 @@
-import { arrayUnion, doc, getDoc, increment, serverTimestamp, Timestamp, updateDoc, writeBatch } from "firebase/firestore"
+import { arrayUnion, doc, getDoc, increment, serverTimestamp, setDoc, Timestamp, updateDoc, writeBatch } from "firebase/firestore"
 
 import { AppError } from "@/lib/errors"
 import {
@@ -24,6 +24,8 @@ import {
   type RpsMove,
   type RpsPlay,
 } from "@/lib/games"
+import { LIVE_GAMES } from "@/lib/live/games"
+import type { LiveGameId } from "@/lib/live/types"
 import type { Challenge, UserProfile } from "@/lib/types"
 import { MAX_STAKE } from "@/lib/fun/catalog"
 import { coinTx, isFriendDraw } from "./fun"
@@ -430,9 +432,17 @@ export async function resolveChallenge(user: UserProfile, challenge: Challenge):
     throw e
   }
   const resolved: Challenge = { ...challenge, status: "DONE", result, resolvedAt: nowIso() }
+  await notifyResult(user, challenge, result)
+  return resolved
+}
 
-  // Tell everyone else how it ended
-  const game = GAMES[challenge.game]
+/** The game's name for messages: the live game's own name for a live challenge. */
+const challengeGameName = (c: Pick<Challenge, "game" | "liveGame">) =>
+  c.game === "live" && c.liveGame ? LIVE_GAMES[c.liveGame].name : GAMES[c.game].name
+
+/** Tells everyone else in the game how it ended (best effort). */
+async function notifyResult(user: UserProfile, challenge: Challenge, result: NonNullable<Challenge["result"]>) {
+  const game = { ...GAMES[challenge.game], name: challengeGameName(challenge) }
   const forFun = challenge.discountPercent === 0
   for (const uid of challenge.participants.filter((p) => p !== user.uid)) {
     const won = result.winners.includes(uid)
@@ -463,8 +473,96 @@ export async function resolveChallenge(user: UserProfile, challenge: Challenge):
       data: { challengeId: challenge.id, actorId: user.uid, actorName: user.displayName },
     }).catch((e) => console.warn("Result notification failed:", e))
   }
+}
 
-  return resolved
+/* ── Live games for a discount ───────────────────────────────────────── */
+
+export interface LiveDiscountInput {
+  /** The friend who owes you, and how much (paise). */
+  friend: { uid: string; name: string; basePaise: number }
+  discountPercent: number
+  liveGame: LiveGameId
+  /** The 2-seat room the game is played in (services/live-rooms). */
+  roomCode: string
+  /** The id to use (the room is opened first and carries it). */
+  id?: string
+}
+
+/**
+ * A discount challenge played as a live game: the friend who owes you plays
+ * you 1-on-1 in a live room; if they win, they get `discountPercent` off what
+ * they owe — the same discount, the same 10-minute window as every other
+ * discount game. Live rooms are refereed by the players' phones, so only the
+ * host (the one being paid) records the result: the one who'd gain from a
+ * fake win can't write it (see firestore.rules).
+ */
+export async function createLiveDiscountChallenge(user: UserProfile, input: LiveDiscountInput): Promise<Challenge> {
+  const pct = input.discountPercent
+  if (!Number.isInteger(pct) || pct < 1 || pct > 100) throw new AppError("Discount must be between 1% and 100%")
+  if (input.friend.uid === user.uid) throw new AppError("Pick a friend to challenge")
+  if (!(input.friend.basePaise > 0)) throw new AppError("They don't owe you anything, so there's no discount to play for")
+  const challenge: Challenge = {
+    id: input.id ?? newChallengeId(),
+    kind: "friend",
+    game: "live",
+    liveGame: input.liveGame,
+    roomCode: input.roomCode,
+    hostId: user.uid,
+    hostName: user.displayName,
+    players: [input.friend.uid],
+    playerNames: { [input.friend.uid]: input.friend.name },
+    participants: [user.uid, input.friend.uid],
+    discountPercent: pct,
+    bases: { [input.friend.uid]: input.friend.basePaise },
+    status: "OPEN",
+    moves: {},
+    createdAt: nowIso(),
+  }
+  const firestore = getDb()
+  if (!firestore) throw new AppError("Games need an internet connection")
+  await setDoc(doc(firestore, "challenges", challenge.id), challenge)
+
+  const name = LIVE_GAMES[input.liveGame].name
+  await sendNotification({
+    userId: input.friend.uid,
+    title: `🎮 ${user.displayName.split(" ")[0]} challenged you to ${name}!`,
+    message: `Beat them live to get ${pct}% off the ₹${rupees(input.friend.basePaise)} you owe — pay right after the game to use it.`,
+    type: "CHALLENGE_RECEIVED",
+    data: { challengeId: challenge.id, actorId: user.uid, actorName: user.displayName, amountPaise: input.friend.basePaise },
+  }).catch((e) => console.warn("Challenge notification failed:", e))
+  return challenge
+}
+
+/**
+ * The live game is over: the host records who won (the friend, or nobody).
+ * Once only — a second device or a second try is turned down by the rules
+ * and simply returns what's there.
+ */
+export async function recordLiveResult(user: UserProfile, challenge: Challenge, winnerIds: string[]): Promise<Challenge> {
+  if (challenge.game !== "live" || challenge.status !== "OPEN" || challenge.hostId !== user.uid) return challenge
+  const firestore = getDb()
+  if (!firestore) return challenge
+  const result = { winners: challenge.players.filter((p) => winnerIds.includes(p)) }
+  const ref = doc(firestore, "challenges", challenge.id)
+  try {
+    await updateDoc(ref, { status: "DONE", result, resolvedAt: serverTimestamp() })
+  } catch (e) {
+    if ((e as { code?: string })?.code === "permission-denied") {
+      const latest = await getDoc(ref).catch(() => null)
+      if (latest?.exists() && latest.data().status !== "OPEN") return toChallenge(latest.data())
+    }
+    throw e
+  }
+  await notifyResult(user, challenge, result)
+  return { ...challenge, status: "DONE", result, resolvedAt: nowIso() }
+}
+
+/** Reads one challenge (for the room to find the discount game it belongs to). */
+export async function fetchChallenge(id: string): Promise<Challenge | null> {
+  const firestore = getDb()
+  if (!firestore) return null
+  const snap = await getDoc(doc(firestore, "challenges", id)).catch(() => null)
+  return snap?.exists() ? toChallenge(snap.data()) : null
 }
 
 async function requireCoins(uid: string, amount: number) {
@@ -539,4 +637,9 @@ export async function cancelChallenge(user: UserProfile, challenge: Challenge) {
   if (challenge.status !== "OPEN") throw new AppError("This game is already over")
   const firestore = getDb()
   if (firestore) await updateDoc(doc(firestore, "challenges", challenge.id), { status: "CANCELLED" })
+  // A live discount game: its room closes too (best effort — only possible before it starts)
+  if (challenge.game === "live" && challenge.roomCode) {
+    const { deleteRoom } = await import("./live-rooms")
+    await deleteRoom(challenge.roomCode).catch(() => undefined)
+  }
 }

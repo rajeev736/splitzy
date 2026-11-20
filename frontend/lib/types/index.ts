@@ -14,6 +14,8 @@ export interface UserProfile {
   frame?: string;
   /** Game profile character (components/game-avatar), shown in live games instead of the photo. */
   gameAvatar?: string;
+  /** Name shown in games (game profile); Split screens keep displayName. lib/game-name gameNameOf. */
+  gameName?: string;
   /** What they're up to, set by them. */
   mood?: { id: string; at: string };
   /** Shown only when they choose to share it (the year stays private). */
@@ -311,7 +313,12 @@ export interface Challenge {
     | "gold_rush"
     | "penalty"
     | "hilo"
-    | "number_hunt";
+    | "number_hunt"
+    /** A live game (Ludo, Chess…) played 1-on-1 in a room for a discount; the host records who won. */
+    | "live";
+  /** game "live": which live game, and its room (/play/{roomCode}). */
+  liveGame?: import("@/lib/live/types").LiveGameId;
+  roomCode?: string;
   hostId: string;
   hostName: string;
   players: string[];

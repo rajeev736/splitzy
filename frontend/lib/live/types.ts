@@ -53,6 +53,12 @@ export interface RoomMeta {
   result?: LiveResult
   /** A rematch was started: everyone is invited to this room. */
   rematchCode?: string
+  /** A discount game (Challenge game "live"): the challenge this room decides. */
+  challengeId?: string
+  /** A private room: only these players may take a seat (a discount game's two, a group round's players). */
+  only?: string[]
+  /** A game started in a group's game room (services/lounges): its group. Skips the lobby. */
+  lounge?: string
 }
 
 export interface RoomPlayer {

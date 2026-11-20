@@ -36,7 +36,8 @@ export function MemberRow({
       )}
       {...props}
     >
-      <UserAvatar uid={uid} src={photoURL} name={name} size="sm" />
+      {/* A label row toggles its checkbox: the avatar mustn't open the peek there */}
+      <UserAvatar uid={uid} src={photoURL} name={name} size="sm" peek={Comp !== "label"} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold">{name}</div>
         {subtitle && <div className="truncate text-xs text-muted-foreground">{subtitle}</div>}

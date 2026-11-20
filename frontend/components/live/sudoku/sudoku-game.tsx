@@ -18,7 +18,7 @@ import { useStageFit } from "../use-stage-fit"
 const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`)
 const storeKey = (code: string, uid: string) => `joysplit_sudoku_${code}_${uid}`
 /** Height a phone keeps for everything but the (square) grid: players, timer, keypad, gaps. */
-const GRID_RESERVE_PX = 214
+const GRID_RESERVE_PX = 236
 
 function readSaved(code: string, uid: string, puzzle: string): string | null {
   try {
@@ -165,17 +165,18 @@ export function SudokuView({ code, meta, players, uid, me, isReferee, now, endGa
     >
       {/* Everyone's progress, and the clock */}
       <div className="flex items-center gap-2">
-        {/* Five fit on the smallest phones: seats share the row (down to the photo's width) */}
-        <div className="no-scrollbar flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
+        {/* A frame's ornaments reach ~1/3 of the photo past it on every side: the row
+            leaves that room (a scrolling row clips whatever pokes out of it) */}
+        <div className="no-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto px-2.5 py-3">
           {ranking.map((id) => {
             const p = byId[id]
             const fin = state.finished?.[id]
             const pct = fin !== undefined ? 100 : Math.round(((state.progress?.[id] ?? 0) / blanks) * 100)
             const place = fin !== undefined ? Object.values(state.finished ?? {}).filter((t) => t <= fin).length : 0
             return (
-              <div key={id} className={cn("flex max-w-14 min-w-10 flex-1 basis-0 flex-col items-center gap-1", p?.left && "opacity-50")}>
+              <div key={id} className={cn("flex max-w-16 min-w-[3.4rem] flex-1 basis-0 flex-col items-center gap-1.5", p?.left && "opacity-50")}>
                 <span className="relative">
-                  <PlayerAvatar player={p} size={36} />
+                  <PlayerAvatar player={p} size={32} />
                   {place > 0 && (
                     <span className="absolute -right-1.5 -bottom-1 rounded-full bg-success px-1 text-[9px] font-bold text-success-foreground ring-2 ring-background">
                       {ordinal(place)}

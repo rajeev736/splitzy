@@ -231,7 +231,7 @@ function GroupDashboardContent() {
         </SwipeTabPanels>
 
         {/* Action bar: at the very bottom of the screen on mobile, inline on desktop. */}
-        <div className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-4 pt-3 backdrop-blur-sm md:static md:border-0 md:bg-transparent md:p-0">
+        <div className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t bg-background px-4 pt-3 md:static md:border-0 md:bg-transparent md:p-0">
           <div className="mx-auto flex max-w-md items-center gap-3">
             <Button
               size="lg"

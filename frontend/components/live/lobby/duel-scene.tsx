@@ -162,6 +162,7 @@ export function DuelScene({
                   }}
                 >
                   <GameAvatar
+                    uid={p.uid}
                     character={p.avatar}
                     frame={p.frame}
                     photo={p.photo}

@@ -1,5 +1,7 @@
 "use client"
 
+import type * as React from "react"
+
 import { getInitials } from "@/components/shared/user-avatar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
@@ -16,7 +18,8 @@ export function FramedAvatar({
   frame,
   size,
   className,
-}: {
+  ...props
+}: Omit<React.HTMLAttributes<HTMLSpanElement>, "children"> & {
   src?: string | null
   name: string
   frame?: string
@@ -28,6 +31,7 @@ export function FramedAvatar({
   const box = framed ? (size * 200) / 120 : size
   return (
     <span
+      {...props}
       className={cn("relative inline-flex shrink-0 items-center justify-center", className)}
       style={{ width: size, height: size }}
     >

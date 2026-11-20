@@ -1,6 +1,7 @@
 "use client"
 
 import { FrameArt, hasFrame } from "@/components/fun/frame-art"
+import { PEEK_CLASS, peekTriggerProps } from "@/components/profile-peek/peek"
 import { useSession } from "@/components/providers/session-provider"
 import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useFriends } from "@/hooks/queries"
@@ -52,15 +53,21 @@ export interface UserAvatarProps {
   className?: string
   /** Small status dot / icon rendered at the bottom-right. */
   badge?: React.ReactNode
-  /** Whose avatar it is: shows their profile frame (yours or a friend's). */
+  /**
+   * Whose avatar it is: shows their profile frame (yours or a friend's), and a
+   * tap opens their profile peek (components/profile-peek).
+   */
   uid?: string
   /** A frame to show regardless of who it is. */
   frame?: string
+  /** `false`: a tap doesn't open the profile peek (the avatar has its own job here). */
+  peek?: boolean
 }
 
-export function UserAvatar({ src, name, size = "md", className, badge, uid, frame }: UserAvatarProps) {
+export function UserAvatar({ src, name, size = "md", className, badge, uid, frame, peek = true }: UserAvatarProps) {
   const known = useKnownFrame(uid)
   const worn = frame ?? known
+  const tap = peek && uid ? peekTriggerProps({ uid, look: "app", hint: { name, photo: src } }, name) : null
   const photo = (
     <>
       {src ? <AvatarImage src={src} alt={name || "Avatar"} /> : null}
@@ -72,7 +79,7 @@ export function UserAvatar({ src, name, size = "md", className, badge, uid, fram
 
   if (!hasFrame(worn)) {
     return (
-      <Avatar className={cn(SIZES[size], className)}>
+      <Avatar {...tap} className={cn(SIZES[size], tap && PEEK_CLASS, className)}>
         {photo}
         {badge ? <AvatarBadge className="size-auto! bg-transparent ring-0">{badge}</AvatarBadge> : null}
       </Avatar>
@@ -82,7 +89,10 @@ export function UserAvatar({ src, name, size = "md", className, badge, uid, fram
   // Framed: the photo shrinks a little so the frame fits the same box (spilling
   // just 10% around it), so rows and headers keep their layout.
   return (
-    <span className={cn("relative inline-flex shrink-0 items-center justify-center rounded-full", SIZES[size], className)}>
+    <span
+      {...tap}
+      className={cn("relative inline-flex shrink-0 items-center justify-center rounded-full", SIZES[size], tap && PEEK_CLASS, className)}
+    >
       <Avatar className="size-[72%] text-[0.8em]">{photo}</Avatar>
       <FrameArt frame={worn} className="absolute" style={{ inset: "-10%" }} />
       {badge ? <span className="absolute right-0 bottom-0 z-10">{badge}</span> : null}

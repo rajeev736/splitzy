@@ -510,11 +510,13 @@ export default function CreateGroupPage() {
                       render={<label />}
                     >
                       <ItemMedia>
+                        {/* The row is a label (tap toggles the friend): no peek */}
                         <UserAvatar
                           uid={friend.uid}
                           src={friend.photoURL}
                           name={friend.displayName}
                           size="sm"
+                          peek={false}
                         />
                       </ItemMedia>
                       <ItemContent className="min-w-0 gap-0">

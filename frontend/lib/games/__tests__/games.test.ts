@@ -242,7 +242,11 @@ assert(!hasHostRounds({ game: "coin_toss", kind: "friend" }), "no rounds for coi
 assert(!GAMES.hilo.groupDiscount && !GAMES.number_hunt.groupDiscount && GAMES.penalty.groupDiscount, "group discounts")
 assert(isRoundGame("penalty") && isRoundGame("hilo") && !isRoundGame("number_hunt"), "round games")
 assert(isTileGame("number_hunt") && isTileGame("minefield") && !isTileGame("hilo"), "tile games")
-assert(GAME_IDS.length === Object.keys(GAMES).length && new Set(GAME_IDS).size === GAME_IDS.length, "every game listed once")
+// Every classic game listed once; "live" (a live room for a discount) has its own picker
+assert(
+  GAME_IDS.length === Object.keys(GAMES).length - 1 && !GAME_IDS.includes("live") && new Set(GAME_IDS).size === GAME_IDS.length,
+  "every game listed once"
+)
 
 const dives = hostRoundDocs({ game: "penalty", kind: "friend" }, { dives: ["L", "C", "R", "L", "C"] })
 assert(dives.length === 5 && dives[2][0] === 2 && dives[2][1].move === "R", "a doc per dive")

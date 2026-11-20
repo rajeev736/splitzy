@@ -9,7 +9,7 @@ import type { LiveResult, RoomOptions, RoomPlayer } from "./types"
  * be watched without re-reading every stroke on each pen move:
  *
  *   game     the turn record below (ScribbleState)
- *   strokes  push()-ed drawing strokes, {u, c, w, p: [x,y,x,y,…]} in 0..1000 canvas units
+ *   strokes  push()-ed drawing strokes, {u, c, w, p: [x,y,x,y,…], t?, g?} in 0..1000 canvas units
  *   correct  {uid: {at}} — who has guessed this turn's word (self-written, create-only; see rules)
  *
  * A turn goes choosing → drawing → turnEnd, then the next drawer. The drawer's
@@ -39,14 +39,33 @@ export const STROKE_FLUSH_MS = 80
 export type ScribblePhase = "choosing" | "drawing" | "turnEnd" | "over"
 export type ScribbleEndReason = "rounds_over" | "abandoned"
 
+/**
+ * What a stroke draws (missing = a freehand pen / eraser line):
+ * "f" a flood fill from p[0], p[1]; "l" a line, "r" a rectangle, "o" an
+ * ellipse, each from corner (p[0], p[1]) to corner (p[2], p[3]). Shapes and
+ * fills are written once, whole; only freehand strokes grow as you draw.
+ * (A device on an older version draws a shape as a straight line and a fill
+ * as nothing.)
+ */
+export type StrokeKind = "f" | "l" | "r" | "o"
+
+export const isStrokeKind = (v: unknown): v is StrokeKind =>
+  v === "f" || v === "l" || v === "r" || v === "o"
+
 export interface ScribbleStroke {
   u: string
   /** "#rrggbb"; the eraser paints the background white. */
   c: string
-  /** Width in canvas units (of 1000). */
+  /** Width in canvas units (of 1000); 0 for a fill. */
   w: number
   /** x, y pairs, integers; x in 0..1000, y in 0..750. */
   p: number[]
+  t?: StrokeKind
+  /**
+   * The rest of a long freehand line (split every MAX_STROKE_POINTS): the key
+   * of its first piece, so undo takes the whole line back at once.
+   */
+  g?: string
 }
 
 export type CorrectMap = Record<string, { at: number }>

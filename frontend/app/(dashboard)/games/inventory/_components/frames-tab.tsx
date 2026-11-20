@@ -3,11 +3,11 @@
 import * as React from "react"
 import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { toast } from "sonner"
 
 import { FilterPills } from "@/app/(dashboard)/_components/filter-pills"
 import { Coins } from "@/components/fun/coin"
 import { FramedAvatar } from "@/components/fun/framed-avatar"
+import { announceUnlock, gameToast } from "@/components/rewards/reward-notice"
 import { BottomSheet } from "@/components/shared/bottom-sheet"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { Button } from "@/components/ui/button"
@@ -233,14 +233,19 @@ function FrameSheet({
   const wear = (frame: FrameId | null) =>
     equip.mutate(
       { frame, owned },
-      { onSuccess: () => toast.success(frame ? `${FRAMES[frame].name} on` : "Frame removed") }
+      {
+        onSuccess: () =>
+          gameToast(frame ? { title: `${FRAMES[frame].name} on`, art: { frame } } : { title: "Frame removed" }),
+      }
     )
 
   const purchase = () =>
     buy.mutate(id, {
       onSuccess: () => {
         setConfirmBuy(false)
-        equip.mutate({ frame: id, owned: [...owned, id] }, { onSuccess: () => toast.success(`${info.name} is yours`) })
+        equip.mutate({ frame: id, owned: [...owned, id] }, {
+          onSuccess: () => announceUnlock({ title: `${info.name} frame`, art: { frame: id }, equipped: true }),
+        })
       },
     })
 
@@ -248,9 +253,9 @@ function FrameSheet({
     setClaiming(true)
     try {
       await claimMilestoneFrame(user.uid, id)
-      toast.success(`${info.name} unlocked and on`)
+      announceUnlock({ title: `${info.name} frame`, art: { frame: id }, equipped: true })
     } catch (e) {
-      toast.error(getErrorMessage(e))
+      gameToast({ title: "Couldn't claim it", description: getErrorMessage(e) })
     } finally {
       setClaiming(false)
     }
@@ -304,6 +309,7 @@ function FrameSheet({
   return (
     <>
       <BottomSheet
+        className="gu"
         open={open}
         onOpenChange={onOpenChange}
         title={info.name}

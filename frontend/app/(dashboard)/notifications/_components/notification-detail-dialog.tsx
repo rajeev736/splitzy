@@ -167,7 +167,7 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
 
   if (notif.type === "BADGE") {
     return (
-      <Button size="lg" className={CTA} onClick={() => go(data?.frame ? "/profile/inventory#milestones" : "/profile#badges")}>
+      <Button size="lg" className={CTA} onClick={() => go(data?.frame ? "/games/inventory#milestones" : "/profile#badges")}>
         {data?.frame ? "Claim your frame" : "See your badges"}
       </Button>
     )

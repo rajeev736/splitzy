@@ -3,9 +3,9 @@
 import * as React from "react"
 import { LockIcon, Tick02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { toast } from "sonner"
 
 import { Coins } from "@/components/fun/coin"
+import { announceUnlock, gameToast } from "@/components/rewards/reward-notice"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
@@ -59,7 +59,7 @@ export function CharacterAction({
       { id: def.id, owned },
       {
         onSuccess: () => {
-          toast.success(`You're ${def.name} in games now`)
+          gameToast({ title: `You're ${def.name} in games now`, art: { character: def } })
           onWorn?.()
         },
       }
@@ -69,7 +69,7 @@ export function CharacterAction({
       { achievement: achievement!.id, kind: "character", id: def.id, equip: true, owned },
       {
         onSuccess: () => {
-          toast.success(`${def.name} is yours`)
+          announceUnlock({ title: def.name, art: { character: def }, equipped: true })
           onWorn?.()
         },
       }
@@ -131,7 +131,7 @@ export function CharacterAction({
           buy.mutate(def.id, {
             onSuccess: () => {
               setConfirming(false)
-              toast.success(`${def.name} is yours`)
+              announceUnlock({ title: def.name, art: { character: def }, equipped: true })
               wear.mutate({ id: def.id, owned: [...(owned ?? []), def.id] }, { onSuccess: () => onWorn?.() })
             },
           })

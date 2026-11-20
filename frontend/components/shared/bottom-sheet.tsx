@@ -15,6 +15,7 @@ export function BottomSheet({
   footer,
   children,
   bodyClassName,
+  className,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -25,10 +26,15 @@ export function BottomSheet({
   footer?: React.ReactNode
   children: React.ReactNode
   bodyClassName?: string
+  /** On the sheet itself, e.g. "gu" for the Games side's theme. */
+  className?: string
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="mx-auto flex max-h-[88svh] w-full max-w-xl flex-col gap-0 rounded-t-3xl pb-[env(safe-area-inset-bottom)]">
+      <SheetContent
+        side="bottom"
+        className={cn("mx-auto flex max-h-[88svh] w-full max-w-xl flex-col gap-0 rounded-t-3xl pb-[env(safe-area-inset-bottom)]", className)}
+      >
         <SheetHeader className="gap-1 pb-3">
           <SheetTitle className="text-base font-semibold">{title}</SheetTitle>
           {description && <SheetDescription className="text-xs">{description}</SheetDescription>}

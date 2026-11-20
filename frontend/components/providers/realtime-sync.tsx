@@ -6,6 +6,8 @@ import { useQueryClient, type QueryKey } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
+import { gameToast, onGamesSide } from "@/components/rewards/reward-notice"
+import { isFrameId } from "@/lib/fun/catalog"
 import { db, isFirebaseConfigured } from "@/lib/firebase/config"
 import { queryKeys } from "@/lib/query/keys"
 import { publish, publishError } from "@/lib/query/realtime"
@@ -63,8 +65,18 @@ export function RealtimeSync() {
         if (announced.has(n.id) || n.read) continue
         announced.add(n.id)
         if (Date.now() - new Date(n.createdAt).getTime() > ANNOUNCE_WITHIN_MS) continue
+        const frame = n.data?.frame
         if (document.visibilityState === "hidden") {
           void showSystemNotification(n).catch(() => undefined)
+        } else if (n.type === "BADGE" && (isFrameId(frame) || onGamesSide())) {
+          // An unlock that's a game reward (a milestone frame), or any badge while on the Games side: in the game's look
+          gameToast({
+            title: n.title,
+            description: n.message,
+            art: isFrameId(frame) ? { frame } : { trophy: true },
+            duration: 5000,
+            onClick: () => routerRef.current.push(notificationHref(n)),
+          })
         } else {
           toast(n.title, {
             description: n.message,

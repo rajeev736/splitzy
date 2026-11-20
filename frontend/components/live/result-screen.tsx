@@ -38,7 +38,8 @@ export interface ResultRow {
 
 /** The yellow button: start a rematch (host), join one that exists, or wait for the host. */
 export type PlayAgain =
-  | { kind: "rematch"; onClick: () => void; pending: boolean }
+  | { kind: "rematch"; onClick: () => void; pending: boolean; label?: string }
+  | { kind: "link"; href: string; label: string }
   | { kind: "join"; href: string }
   | { kind: "wait"; hostName: string }
 
@@ -124,6 +125,10 @@ export function ResultScreen({
               <Link href={playAgain.href} replace className="rs-btn rs-btn-gold">
                 Join Rematch
               </Link>
+            ) : playAgain.kind === "link" ? (
+              <Link href={playAgain.href} replace className="rs-btn rs-btn-gold">
+                {playAgain.label}
+              </Link>
             ) : playAgain.kind === "rematch" ? (
               <button
                 type="button"
@@ -132,7 +137,7 @@ export function ResultScreen({
                 disabled={playAgain.pending}
               >
                 {playAgain.pending && <Spinner className="size-5" />}
-                Play Again
+                {playAgain.label ?? "Play Again"}
               </button>
             ) : (
               <button
@@ -602,7 +607,7 @@ function Row({ row, draw, index }: { row: ResultRow; draw: boolean; index: numbe
         <Medal kind={medal} place={gold ? 1 : row.place} />
       </span>
       <span className="rs-ava">
-        <PlayerAvatarFill player={row} className="size-full" />
+        <PlayerAvatarFill player={{ ...row, uid: row.id }} className="size-full" />
         {level && (
           <span className="rs-lv">
             <LevelBadge level={level} />

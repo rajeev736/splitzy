@@ -17,11 +17,10 @@ import { HugeiconsIcon } from "@hugeicons/react"
 
 import { Coins } from "@/components/fun/coin"
 import { BadgeGrid } from "@/components/fun/badge-grid"
-import { FramedAvatar } from "@/components/fun/framed-avatar"
 import { MoodFace } from "@/components/fun/mood-face"
-import { NewChallengeSheet } from "@/components/games/new-challenge-sheet"
 import { AppHeader } from "@/components/layout/app-header"
 import { PageContainer } from "@/components/layout/app-shell"
+import { useFriendState } from "@/components/profile-peek/friend-action"
 import { useSession } from "@/components/providers/session-provider"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ListSkeleton } from "@/components/shared/query-state"
@@ -48,6 +47,8 @@ import { formatPaise } from "@/lib/money"
 import { cn } from "@/lib/utils"
 import { BondPill } from "./_components/bond-section"
 import { FriendMoney } from "./_components/friend-money"
+import { NonFriendProfile } from "./_components/non-friend-profile"
+import { ProfilePair } from "./_components/profile-pair"
 import { BetweenYou, BirthdayCard, MomentFeed } from "./_components/friend-fun"
 import { playBurst } from "@/lib/fun/burst"
 import { GiftSheet, LoveActions, PlanSheet } from "./_components/send-moments"
@@ -75,9 +76,16 @@ function FriendProfileContent() {
   const badges = useBadges(friendId, loveBonds ?? 0)
   const moments = useMoments(friendId)
   const now = useNow(0)
+  const relation = useFriendState(friendId)
+  const self = !!user && friendId === user.uid
+
+  // Your own profile lives at /profile
+  React.useEffect(() => {
+    if (self) router.replace("/profile")
+  }, [self, router])
 
   const [tab, setTab] = React.useState<"activity" | "expenses">("activity")
-  const [sheet, setSheet] = React.useState<"gift" | "plan" | "game" | null>(
+  const [sheet, setSheet] = React.useState<"gift" | "plan" | null>(
     null
   )
 
@@ -90,7 +98,8 @@ function FriendProfileContent() {
   }, [expenses, user, friendId])
 
   const isFriend = friendship?.status === "ACTIVE" || !!cached
-  if (friends.isPending && !friend) {
+  // Still loading: your friends, or (for anyone else) their public profile
+  if ((friends.isPending && !friend) || (!friend && live === undefined) || self) {
     return (
       <>
         <AppHeader title="Friend" showBack />
@@ -100,15 +109,26 @@ function FriendProfileContent() {
       </>
     )
   }
-  if (!friend || !isFriend || !user) {
+  if (!friend || !user) {
     return (
       <>
-        <AppHeader title="Friend" showBack />
+        <AppHeader title="Profile" showBack />
         <PageContainer className="max-w-2xl">
           <EmptyState
-            title="Not on your friends list"
-            description="Add them as a friend to see their profile."
+            title="Profile not found"
+            description="This account doesn't exist anymore."
           />
+        </PageContainer>
+      </>
+    )
+  }
+  // Not your friend (a group member, a player, someone in a chat): their public profile
+  if (!isFriend) {
+    return (
+      <>
+        <AppHeader title={friend.displayName} showBack />
+        <PageContainer className="max-w-2xl gap-6 pb-28">
+          <NonFriendProfile person={friend} state={relation} mutual={mutual} meUid={user.uid} />
         </PageContainer>
       </>
     )
@@ -160,24 +180,10 @@ function FriendProfileContent() {
       />
 
       <PageContainer className="max-w-2xl gap-6 pb-28">
-        {/* Who they are */}
+        {/* Who they are, for splitting: photo (no frame), name, JoySplit ID */}
         <section className="flex flex-col items-center gap-3 text-center">
-          <div className="p-7">
-            <FramedAvatar
-              src={friend.photoURL}
-              name={friend.displayName}
-              frame={friend.frame}
-              size={96}
-            />
-          </div>
-          <div className="-mt-4 flex flex-col items-center gap-1">
-            <h1 className="text-xl font-bold tracking-tight">
-              {friend.displayName}
-            </h1>
-            <p className="font-mono text-xs text-muted-foreground">
-              {friend.splitzyId}
-            </p>
-          </div>
+          <h1 className="sr-only">{friend.displayName}</h1>
+          <ProfilePair friend={friend} />
           {mood && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/70 py-1 pr-3 pl-1 text-xs font-medium">
               <MoodFace
@@ -267,7 +273,10 @@ function FriendProfileContent() {
                 key={a.key}
                 variant="outline"
                 className="h-auto flex-col gap-1.5 rounded-xl py-3 text-xs font-medium"
-                onClick={() => setSheet(a.key)}
+                onClick={() =>
+                  // A game: the Games side's For fun, with them ready to invite
+                  a.key === "game" ? router.push(`/challenges?tab=fun&invite=${friend.uid}`) : setSheet(a.key)
+                }
               >
                 <HugeiconsIcon icon={a.icon} className="size-5 text-primary" />
                 {a.label}
@@ -364,18 +373,6 @@ function FriendProfileContent() {
         onOpenChange={(o) => setSheet(o ? "plan" : null)}
         friend={friend}
       />
-      {sheet === "game" && (
-        <NewChallengeSheet
-          open
-          onOpenChange={(o) => !o && setSheet(null)}
-          initialPerson={{
-            uid: friend.uid,
-            name: friend.displayName,
-            photoURL: friend.photoURL,
-          }}
-          initialStake="fun"
-        />
-      )}
     </>
   )
 }

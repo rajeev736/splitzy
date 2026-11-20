@@ -27,10 +27,11 @@ export const LADDERS: Record<number, number> = {
 /**
  * The 3D tower's ladders: the same, less square 1's — there the gate already
  * takes the 1 you need to get in, so a ladder waiting right behind it would
- * make every start the same climb.
+ * make every start the same climb — and less 80's, straight to 100: one lucky
+ * landing shouldn't win the whole game.
  */
 export const GATE_LADDERS: Record<number, number> = Object.fromEntries(
-  Object.entries(LADDERS).filter(([foot]) => foot !== "1")
+  Object.entries(LADDERS).filter(([foot]) => foot !== "1" && foot !== "80")
 )
 export const laddersFor = (variant: "flat" | "gate") => (variant === "gate" ? GATE_LADDERS : LADDERS)
 
@@ -185,6 +186,47 @@ export function applyRoll(s: SnakesState, uid: string, value: number, ctx: Snake
   const next: SnakesState = { ...s, players, seq, last, turnAt: ctx.now, sixes: bonus ? sixes : 0 }
   if (isOver(next, ctx.gone)) return { ...next, phase: "over" }
   return bonus ? next : passTo(next, uid, ctx)
+}
+
+/**
+ * The roll, weighted so a game stays a race (still random — every face keeps
+ * a real chance, nothing is ever fixed):
+ *  - trailing far behind the leader: ladders under your next squares get
+ *    likelier, snakes rarer, big numbers (and the 6 that rolls again) a bit
+ *    likelier — and at the gate, the 1 that opens it;
+ *  - far in front: snakes get a little likelier and ladders a little rarer —
+ *    but the roll that reaches 100 is never made harder.
+ * Even games (or alone in the race) roll fair. `rand` is a uniform [0, 1)
+ * source (the screen passes the CSPRNG).
+ */
+export function rollFor(s: SnakesState, uid: string, rand: () => number): number {
+  const w = [0, 1, 1, 1, 1, 1, 1]
+  const me = s.players[uid]
+  const rivals = s.order.filter((u) => u !== uid && s.players[u] && s.players[u].place === 0 && !s.players[u].out)
+  if (me && me.place === 0 && rivals.length > 0) {
+    const best = Math.max(...rivals.map((u) => s.players[u].pos))
+    const clamp01 = (x: number) => Math.max(0, Math.min(1, x))
+    const behind = clamp01((best - me.pos - 8) / 40)
+    const ahead = clamp01((me.pos - best - 8) / 40)
+    for (let d = 1; d <= 6; d++) {
+      const step = stepTo(s, me.pos, d)
+      if (step.blocked || step.stuck) continue
+      const { end, via } = slideFrom(step.to, s.variant)
+      if (end === LAST) continue
+      if (via === "ladder") w[d] *= 1 + behind * 1.5 - ahead * 0.4
+      if (via === "snake") w[d] *= 1 - behind * 0.6 + ahead * 0.6
+      w[d] += behind * (d - 1) * 0.08
+    }
+    // Stuck at the gate while the others climb: the 1 that opens it
+    if (me.pos === 0 && s.variant === "gate") w[1] += behind * 1.2
+  }
+  const total = w.slice(1).reduce((a, b) => a + Math.max(0.25, b), 0)
+  let r = rand() * total
+  for (let face = 1; face <= 6; face++) {
+    r -= Math.max(0.25, w[face])
+    if (r < 0) return face
+  }
+  return 6
 }
 
 /** The referee passes an idle / offline / departed player's turn; 3 clock misses in a row and they're out. */

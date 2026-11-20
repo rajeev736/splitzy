@@ -74,7 +74,7 @@ export function BottomNav() {
           <HugeiconsIcon icon={PlusSignIcon} className="size-6" strokeWidth={2} />
         </Link>
       )}
-      <nav className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-card/90 px-1.5 backdrop-blur-md md:hidden">
+      <nav className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-card px-1.5 md:hidden">
         {/* Equal-width columns regardless of label length */}
         <div
           className="mx-auto grid max-w-md"
@@ -115,6 +115,7 @@ export function BottomNav() {
                       src={user.photoURL}
                       name={user.displayName}
                       size="xs"
+                      peek={false}
                       className={cn(
                         "size-6 ring-2 ring-offset-1 ring-offset-card transition-all",
                         active ? "ring-primary" : "ring-transparent"

@@ -7,6 +7,8 @@ import { toast } from "sonner"
 import { MomentBurst } from "@/components/fun/moment-burst"
 import { WelcomeTour } from "@/components/fun/welcome-tour"
 import { useSession } from "@/components/providers/session-provider"
+import { flyCoins } from "@/components/rewards/coin-burst"
+import { gameToast } from "@/components/rewards/reward-notice"
 import { useBadges, useFriendships, useMyPlayed, useWallet } from "@/hooks/use-fun"
 import { FRAME_IDS, FRAMES } from "@/lib/fun/catalog"
 import { useChallenges, useExpenseHistory, useFriends, useNotifications } from "@/hooks/queries"
@@ -139,7 +141,11 @@ export function FunSync() {
       collecting.current.add(c.id)
       collectStake(user, c)
         .then((amount) => {
-          if (amount > 0 && c.status === "DONE") toast.success(`+${amount} coins`, { description: `From your ${GAMES[c.game]?.name ?? "game"}` })
+          if (amount > 0 && c.status === "DONE") {
+            // Game-style: the coins fly into the counter, with a game toast saying where from
+            void flyCoins({ amount })
+            gameToast({ title: `+${amount.toLocaleString("en-IN")} coins`, description: `From your ${GAMES[c.game]?.name ?? "game"}`, art: { coins: true } })
+          }
         })
         .catch((e) => {
           console.warn("Collect stake:", e)

@@ -8,13 +8,13 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useSession } from "@/components/providers/session-provider"
 import { useChallenges } from "@/hooks/queries"
 import { cn } from "@/lib/utils"
-import { NewChallengeSheet } from "./new-challenge-sheet"
 
 /**
- * "Challenge to a game" for someone who owes you: opens the new-challenge sheet
- * with them picked and a discount on offer (they can still switch to a game for
- * fun). Shows "Challenge sent" while a discount game with them is open, so two
- * discounts never stack. Stops click propagation so it can sit inside clickable rows.
+ * "Challenge to a game" for someone who owes you: opens the Games side's
+ * discount set-up (/play/discount) with them picked — a live game one-on-one,
+ * and a discount if they win. Shows "Challenge sent" while a discount game
+ * with them is open, so two discounts never stack. Stops click propagation so
+ * it can sit inside clickable rows.
  */
 export function ChallengeButton({
   person,
@@ -29,7 +29,6 @@ export function ChallengeButton({
 }) {
   const { user } = useSession()
   const { data: challenges } = useChallenges()
-  const [open, setOpen] = React.useState(false)
   const pending = challenges.find(
     (c) => c.status === "OPEN" && c.discountPercent > 0 && c.hostId === user?.uid && c.players.includes(person.uid)
   )
@@ -55,29 +54,13 @@ export function ChallengeButton({
   }
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation()
-          setOpen(true)
-        }}
-        className={cn(pill, "border-warning/40 text-warning hover:bg-warning/10")}
-      >
-        <HugeiconsIcon icon={GameController03Icon} className="size-3.5" />
-        Challenge
-      </button>
-      {open && (
-        // The sheet is portalled, but React events still bubble to a clickable parent row
-        <span onClick={(e) => e.stopPropagation()}>
-          <NewChallengeSheet
-            open={open}
-            onOpenChange={setOpen}
-            initialPerson={{ ...person, owedPaise }}
-            initialStake="discount"
-          />
-        </span>
-      )}
-    </>
+    <Link
+      href={`/play/discount?to=${person.uid}`}
+      onClick={(e) => e.stopPropagation()}
+      className={cn(pill, "border-warning/40 text-warning hover:bg-warning/10")}
+    >
+      <HugeiconsIcon icon={GameController03Icon} className="size-3.5" />
+      Challenge
+    </Link>
   )
 }

@@ -30,6 +30,7 @@ import type {
   RoomPlayer,
   VoiceState,
 } from "@/lib/live/types"
+import { gameNameOf } from "@/lib/game-name"
 import type { UserProfile } from "@/lib/types"
 import { countLiveResult } from "./game-profile"
 
@@ -69,7 +70,7 @@ const ts = () => serverTimestamp() as unknown as number
 function playerEntry(user: UserProfile, seat: number, level?: number): RoomPlayer {
   const entry: RoomPlayer = {
     uid: user.uid,
-    name: user.displayName,
+    name: gameNameOf(user),
     seat,
     joinedAt: ts(),
     online: true,
@@ -125,19 +126,31 @@ export function createRoom(
   game: LiveGameId,
   picked: RoomOptions = {},
   /** Your game level, for your seat (lib/live/levels). */
-  level?: number
+  level?: number,
+  /** A discount game: two seats, only the two of you, tied to its challenge. */
+  duel?: { challengeId: string; with: string },
+  /** A group game room's game: only these players sit, and it starts as soon as they have. */
+  round?: { groupId: string; only: string[] }
 ): Promise<string> {
   return withTimeout(
-    openRoom(user, game, picked, level),
+    openRoom(user, game, picked, level, duel, round),
     CREATE_TIMEOUT_MS,
     "Couldn't reach the game server — check your internet and try again"
   )
 }
 
-async function openRoom(user: UserProfile, game: LiveGameId, picked: RoomOptions, level?: number): Promise<string> {
-  const options = defaultOptions(game, picked)
-  // Team Ludo is always four seats (lib/live/seats)
-  const { minPlayers, maxPlayers } = seatsFor(game, options)
+async function openRoom(
+  user: UserProfile,
+  game: LiveGameId,
+  picked: RoomOptions,
+  level?: number,
+  duel?: { challengeId: string; with: string },
+  round?: { groupId: string; only: string[] }
+): Promise<string> {
+  // A duel is one-on-one: never teams
+  const options = defaultOptions(game, duel ? { ...picked, ...(game === "ludo" ? { teams: "solo" } : {}) } : picked)
+  // Team Ludo is always four seats (lib/live/seats); a duel two
+  const { minPlayers, maxPlayers } = duel ? { minPlayers: 2, maxPlayers: 2 } : seatsFor(game, options)
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = randomRoomCode()
     const meta: RoomMeta = {
@@ -150,6 +163,8 @@ async function openRoom(user: UserProfile, game: LiveGameId, picked: RoomOptions
       maxPlayers,
       status: "lobby",
       options,
+      ...(duel ? { challengeId: duel.challengeId, only: [user.uid, duel.with] } : {}),
+      ...(round ? { lounge: round.groupId, only: round.only } : {}),
     }
     // Only claim a code nobody else has
     const res = await runTransaction(roomRef(code, "meta"), (current) =>
@@ -164,7 +179,7 @@ async function openRoom(user: UserProfile, game: LiveGameId, picked: RoomOptions
   throw new AppError("Couldn't open a room — please try again")
 }
 
-export type JoinOutcome = "joined" | "not_found" | "full" | "started" | "ended"
+export type JoinOutcome = "joined" | "not_found" | "full" | "started" | "ended" | "private"
 
 /**
  * Takes a seat in the room (or comes back to yours). The seat count is also
@@ -191,7 +206,7 @@ export async function joinRoom(
     const patch: Record<string, unknown> = {
       online: true,
       lastSeen: ts(),
-      name: user.displayName,
+      name: gameNameOf(user),
       ...gameProfilePatch(user, level),
     }
     // An uploaded photo can't ride on a seat: clear an old one rather than fail the whole update
@@ -204,6 +219,8 @@ export async function joinRoom(
     return "joined"
   }
   if (!isJoinable(meta)) return meta.status === "ended" ? "ended" : "started"
+  // A discount game is between the two of them only
+  if (meta.only && !meta.only.includes(user.uid)) return "private"
 
   const seated = seatOrder(players)
   if (seated.length >= meta.maxPlayers) return "full"

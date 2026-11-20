@@ -67,7 +67,7 @@ export function BadgesTab({
       </button>
 
       <Dialog open={!!open} onOpenChange={(o) => !o && setOpen(null)}>
-        <DialogContent className="max-w-sm">{open && <BadgeDetail badge={open} earlyBird={earlyBird} />}</DialogContent>
+        <DialogContent className="gu max-w-sm">{open && <BadgeDetail badge={open} earlyBird={earlyBird} />}</DialogContent>
       </Dialog>
     </div>
   )

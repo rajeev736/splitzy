@@ -23,7 +23,10 @@ export function GameScreen({
   ...props
 }: React.ComponentProps<"div">) {
   return (
-    <div className={cn("gu gu-sky relative isolate flex min-h-svh w-full flex-col", className)} {...props}>
+    <div className={cn("gu relative isolate flex min-h-svh w-full flex-col bg-[#6aa9f2]", className)} {...props}>
+      {/* The sky is pinned to the screen, not stretched over the page: it doesn't
+          shift as content loads or the page changes length, and scrolling never repaints it */}
+      <div aria-hidden className="gu-sky pointer-events-none fixed inset-0 -z-10" />
       {children}
     </div>
   )

@@ -129,6 +129,7 @@ function VoiceAvatar({
         />
       )}
       <UserAvatar
+        uid={player.uid}
         src={player.photo}
         name={player.name}
         size="sm"

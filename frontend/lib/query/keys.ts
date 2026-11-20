@@ -25,4 +25,6 @@ export const queryKeys = {
   groupExpenses: (uid: string, groupId: string) => [...queryKeys.user(uid), "groupExpenses", groupId] as const,
   userSearch: (uid: string, splitzyId: string) => [...queryKeys.user(uid), "userSearch", splitzyId] as const,
   suggestions: (uid: string) => [...queryKeys.user(uid), "suggestions"] as const,
+  /** Someone's public profile (users/{uid}), read once for the profile peek. */
+  profile: (uid: string, otherUid: string) => [...queryKeys.user(uid), "profile", otherUid] as const,
 }

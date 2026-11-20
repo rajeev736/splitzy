@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import { useParams } from "next/navigation"
 
 import { NewRoomFlow } from "@/components/live/new-room/new-room-flow"
@@ -28,5 +29,9 @@ export default function NewRoomPage() {
     )
   }
   // Keyed: another game starts from its own defaults
-  return <NewRoomFlow key={game} game={game} />
+  return (
+    <React.Suspense fallback={<GameScreen />}>
+      <NewRoomFlow key={game} game={game} />
+    </React.Suspense>
+  )
 }

@@ -41,3 +41,56 @@ self.addEventListener("notificationclick", (event) => {
     })
   )
 })
+
+/* ── Offline-fast assets ─────────────────────────────────────────────────
+ * Game boards, avatars, logos, sounds and the app's own (content-hashed)
+ * code come from this phone after the first visit, so screens and games
+ * open instantly and nothing re-downloads on a slow network. Pages, data
+ * and anything from other sites always go to the network as usual. */
+const ASSET_CACHE = "joysplit-assets-v1"
+const ASSET_DIRS = ["/boards/", "/avatars/", "/game-logos/", "/chess/", "/sounds/", "/brands/", "/icons/", "/group-icons/", "/assets/"]
+/** Plenty for every board, avatar and sound; the oldest go first past this. */
+const ASSET_LIMIT = 400
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k.startsWith("joysplit-assets-") && k !== ASSET_CACHE).map((k) => caches.delete(k)))
+    )
+  )
+})
+
+async function trim(cache) {
+  const keys = await cache.keys()
+  if (keys.length > ASSET_LIMIT) await Promise.all(keys.slice(0, keys.length - ASSET_LIMIT).map((k) => cache.delete(k)))
+}
+
+self.addEventListener("fetch", (event) => {
+  const req = event.request
+  if (req.method !== "GET" || req.headers.has("range")) return
+  const url = new URL(req.url)
+  if (url.origin !== self.location.origin) return
+  const hashed = url.pathname.startsWith("/_next/static/")
+  const asset = hashed || ASSET_DIRS.some((d) => url.pathname.startsWith(d))
+  if (!asset) return
+  event.respondWith(
+    caches.open(ASSET_CACHE).then(async (cache) => {
+      const hit = await cache.match(req)
+      // Hashed files never change: the cached copy is the file. Public assets:
+      // answer from the cache now and refresh it in the background.
+      const refresh = fetch(req)
+        .then((res) => {
+          if (res.ok && res.type === "basic") {
+            void cache.put(req, res.clone()).then(() => trim(cache))
+          }
+          return res
+        })
+        .catch(() => hit)
+      if (hit) {
+        if (!hashed) event.waitUntil(refresh.then(() => undefined))
+        return hit
+      }
+      return refresh
+    })
+  )
+})
