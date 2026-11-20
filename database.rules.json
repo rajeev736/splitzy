@@ -51,7 +51,6 @@
             ".validate": "!newData.exists() || (data.exists() && newData.child('by').val() === data.child('by').val() && newData.child('value').val() === data.child('value').val() && newData.child('at').val() === data.child('at').val())"
           },
           "log": {
-            ".validate": "!data.exists() || newData.numChildren() >= data.numChildren()",
             "$n": {
               ".validate": "(data.exists() && newData.child('b').val() === data.child('b').val() && newData.child('a').val() === data.child('a').val() && newData.child('t').val() === data.child('t').val()) || (!data.exists() && newData.child('b').val() === auth.uid && newData.child('a').isString() && newData.child('a').val().length <= 40 && !newData.child('a').val().beginsWith('r') && newData.child('t').val() === now)"
             }
