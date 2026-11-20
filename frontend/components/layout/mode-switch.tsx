@@ -80,7 +80,11 @@ const ITEMS = [
   { value: "games" as const, label: "Games", icon: GameController03Icon },
 ]
 
-/** The Split | Games switch: a fixed-size track with a sliding pill. */
+/**
+ * The Split | Games switch: a full-width track with a sliding pill, in the
+ * look of the side you're on — Split's blue on its cards, Games' gold on its
+ * sky — so it's plain which side is open.
+ */
 export function ModeSwitch({ look = "app", className }: { look?: "app" | "game"; className?: string }) {
   const { mode, go } = useModeSwitch()
   const yourTurn = useGamesYourTurn()
@@ -108,8 +112,10 @@ export function ModeSwitch({ look = "app", className }: { look?: "app" | "game";
       // The Split tour ends here ("Games are here")
       data-tour={game ? undefined : "mode-switch"}
       className={cn(
-        "relative grid h-10 w-[13.5rem] shrink-0 grid-cols-2 rounded-full p-1",
-        game ? "bg-white/30 shadow-[inset_0_2px_0_rgba(20,40,110,.15)]" : "bg-muted",
+        "relative grid h-12 w-full grid-cols-2 rounded-full p-1",
+        game
+          ? "bg-[#2c63c4]/55 shadow-[inset_0_2px_0_rgba(10,30,90,.25),0_1px_0_rgba(255,255,255,.35)]"
+          : "border border-border/70 bg-muted",
         className
       )}
     >
@@ -117,8 +123,10 @@ export function ModeSwitch({ look = "app", className }: { look?: "app" | "game";
       <span
         aria-hidden
         className={cn(
-          "absolute top-1 bottom-1 left-1 w-[calc(50%-0.25rem)] rounded-full transition-transform duration-250 ease-out motion-reduce:transition-none",
-          game ? "bg-[#fff8ea] shadow-[inset_0_-3px_0_#ead8b6,0_3px_0_rgba(20,40,110,.22)]" : "bg-card shadow-sm"
+          "absolute top-1 bottom-1 left-1 w-[calc(50%-0.25rem)] rounded-full transition-transform duration-300 ease-[cubic-bezier(.2,.85,.25,1)] will-change-transform motion-reduce:transition-none",
+          game
+            ? "bg-gradient-to-b from-[#ffe066] to-[#ffc928] shadow-[inset_0_-3px_0_#e0a400,inset_0_2px_0_rgba(255,255,255,.6),0_3px_0_rgba(20,40,110,.25)]"
+            : "bg-primary shadow-sm"
         )}
         style={{ transform: shown === "games" ? "translateX(100%)" : "translateX(0)" }}
       />
@@ -133,17 +141,17 @@ export function ModeSwitch({ look = "app", className }: { look?: "app" | "game";
             aria-selected={mode === it.value}
             onClick={() => pick(it.value)}
             className={cn(
-              "relative z-10 flex items-center justify-center gap-1.5 rounded-full text-[13px] transition-colors duration-200",
+              "relative z-10 flex items-center justify-center gap-2 rounded-full text-[15px] transition-colors duration-200",
               game
-                ? cn("font-[family-name:var(--gu-font)] text-sm font-bold", active ? "text-[#2c3f73]" : "text-white [text-shadow:0_1px_0_rgba(20,40,110,.35)]")
+                ? cn("font-[family-name:var(--gu-font)] text-base font-bold", active ? "text-[#6b3a00]" : "text-white [text-shadow:0_1px_0_rgba(20,40,110,.35)]")
                 : active
-                  ? "font-semibold text-foreground"
+                  ? "font-semibold text-primary-foreground"
                   : "font-medium text-muted-foreground"
             )}
           >
-            <HugeiconsIcon icon={it.icon} className="size-4" strokeWidth={active ? 2.2 : 1.7} />
+            <HugeiconsIcon icon={it.icon} className="size-5" strokeWidth={active ? 2.3 : 1.8} />
             {it.label}
-            {dot ? <span aria-label="A game is waiting for you" className="absolute top-1 right-3 size-2 rounded-full bg-destructive" /> : null}
+            {dot ? <span aria-label="A game is waiting for you" className="absolute top-2 right-4 size-2.5 rounded-full bg-destructive ring-2 ring-muted" /> : null}
           </button>
         )
       })}
@@ -153,8 +161,8 @@ export function ModeSwitch({ look = "app", className }: { look?: "app" | "game";
 
 /**
  * The bar the switch lives in, identical on both sides: same height, same
- * top inset, the switch dead centre (side slots are laid over the edges, so
- * they never push it). Split shows it bare; Games adds its bell.
+ * top inset, the switch across the full width — so flipping sides never moves
+ * it. (Optional side slots sit beside it; neither side uses them now.)
  */
 export function ModeBar({
   look = "app",
@@ -169,10 +177,10 @@ export function ModeBar({
 }) {
   return (
     <div className={cn("pt-[env(safe-area-inset-top,0px)]", className)}>
-      <div className="relative mx-auto flex h-14 max-w-2xl items-center justify-center px-3">
-        {left ? <div className="absolute top-1/2 left-3 flex -translate-y-1/2 items-center">{left}</div> : null}
+      <div className="mx-auto flex h-16 max-w-2xl items-center gap-2 px-3">
+        {left ? <div className="flex shrink-0 items-center">{left}</div> : null}
         <ModeSwitch look={look} />
-        {right ? <div className="absolute top-1/2 right-3 flex -translate-y-1/2 items-center gap-2">{right}</div> : null}
+        {right ? <div className="flex shrink-0 items-center gap-2">{right}</div> : null}
       </div>
     </div>
   )

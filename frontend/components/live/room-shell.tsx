@@ -450,6 +450,7 @@ function PlayingView({
           </>
         }
         // Board games fill the screen with their own colours: a soft shade keeps the bar readable on them
+        bare
         className={cn("bg-gradient-to-b to-transparent", BACKDROP_GAMES.includes(meta.game) ? "from-black/30" : "from-[#3f95ee]")}
       />
       <ReactionsOverlay code={code} />

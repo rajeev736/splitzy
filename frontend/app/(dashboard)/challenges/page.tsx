@@ -159,26 +159,29 @@ function ChallengesContent() {
 
 /** Split | Games dead centre, exactly where it sits on the Split side; the games' own bell on the right. */
 function HubTopBar() {
+  return (
+    <header className="sticky top-0 z-30 bg-[#3f95ee] shadow-[0_10px_18px_-12px_rgba(20,40,110,.6)]">
+      <ModeBar look="game" />
+    </header>
+  )
+}
+
+/** The Games bell (game notifications only), beside your coins on the player card. */
+function GameBell() {
   const router = useRouter()
   const { data: notifications } = useNotifications()
   const unread = notifications.filter((n) => !n.read && isGameNotification(n)).length
   return (
-    <header className="sticky top-0 z-30 bg-gradient-to-b from-[#3f95ee] via-[#3f95ee]/95 to-[#3f95ee]/0 pb-1">
-      <ModeBar
-        look="game"
-        right={
-          <GameIconButton
-            icon={Notification01Icon}
-            label={unread > 0 ? `Game notifications, ${unread} unread` : "Game notifications"}
-            tone="cream"
-            size="sm"
-            data-tour="game-bell"
-            badge={unread > 0 ? (unread > 9 ? "9+" : unread) : undefined}
-            onClick={() => router.push("/game-notifications")}
-          />
-        }
-      />
-    </header>
+    <GameIconButton
+      icon={Notification01Icon}
+      label={unread > 0 ? `Game notifications, ${unread} unread` : "Game notifications"}
+      tone="cream"
+      size="sm"
+      data-tour="game-bell"
+      badge={unread > 0 ? (unread > 9 ? "9+" : unread) : undefined}
+      onClick={() => router.push("/game-notifications")}
+      className="!size-8"
+    />
   )
 }
 
@@ -191,22 +194,25 @@ function PlayerCard() {
   return (
     <div className="gu-panel-flat relative" data-tour="player-card">
       {/* Your coins: to the coin history and shop. Claimed coins fly into it (data-coin-target) */}
-      <Link
-        href="/games/coins"
-        data-coin-target
-        data-tour="coin-chip"
-        aria-label={wallet ? `${wallet.balance} coins` : "Coins"}
-        className="gu-chip absolute top-3 right-3 z-10 h-8 !px-3 text-sm active:translate-y-px"
-      >
-        <Coins amount={wallet?.balance ?? 0} iconClassName="size-4" />
-      </Link>
+      <span className="absolute top-3 right-3 z-10 flex items-center gap-1.5">
+        <GameBell />
+        <Link
+          href="/games/coins"
+          data-coin-target
+          data-tour="coin-chip"
+          aria-label={wallet ? `${wallet.balance} coins` : "Coins"}
+          className="gu-chip h-8 !px-3 text-sm active:translate-y-px"
+        >
+          <Coins amount={wallet?.balance ?? 0} iconClassName="size-4" />
+        </Link>
+      </span>
       <Link href={GAME_ROUTES.profile} className="flex items-center gap-3.5 p-3 pr-4 active:translate-y-px">
         <span className="relative shrink-0 p-1">
           <GameAvatar character={user.gameAvatar} photo={user.photoURL} name={gameNameOf(user)} frame={user.frame} size={58} mode="idle" />
           {wallet ? <LevelBadge level={info.level} size={24} className="absolute -bottom-1 left-1/2 -translate-x-1/2" /> : null}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate pr-24 text-lg leading-tight font-bold">{user.gameName?.trim() || user.displayName.split(" ")[0]}</span>
+          <span className="block truncate pr-36 text-lg leading-tight font-bold">{user.gameName?.trim() || user.displayName.split(" ")[0]}</span>
           <span className="block truncate text-xs font-bold text-[var(--gu-brown)]">
             {wallet ? `Level ${info.level} · ${info.title}` : "Player"}
           </span>

@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import { useRouter } from "nextjs-toploader/app"
 import {
   Award01Icon,
@@ -12,13 +13,14 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
-import { CoinIcon } from "@/components/fun/coin"
+import { CoinIcon, Coins } from "@/components/fun/coin"
 import { GameButton, GameNote, GameScreen, GameSectionTitle, GameTopBar } from "@/components/game-ui/kit"
 import { GAME_ROUTES } from "@/components/game-nav/items"
 import { Spinner } from "@/components/ui/spinner"
 import { useCoinHistory, useWallet } from "@/hooks/use-fun"
 import { useNow } from "@/hooks/use-now"
 import type { CoinTx } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 const fmt = new Intl.NumberFormat("en-IN")
 
@@ -73,12 +75,38 @@ export default function GameCoinsPage() {
   // Opened from a Games screen: step back to it; from a link: to the hub
   const back = () => (window.history.length > 1 ? router.back() : router.replace(GAME_ROUTES.hub))
 
+  // The big balance scrolled out of sight: the count stays on in the top bar
+  const balanceRef = React.useRef<HTMLElement>(null)
+  const [pinned, setPinned] = React.useState(false)
+  React.useEffect(() => {
+    const el = balanceRef.current
+    if (!el) return
+    const io = new IntersectionObserver(([e]) => setPinned(!e.isIntersecting), { rootMargin: "-72px 0px 0px 0px" })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+
   return (
     <GameScreen>
-      <GameTopBar title="Coins" subtitle="Win them in games, spend them on cool stuff" onBack={back} />
+      <GameTopBar
+        title="Coins"
+        subtitle="Win them in games, spend them on cool stuff"
+        onBack={back}
+        right={
+          <span
+            aria-hidden={!pinned}
+            className={cn(
+              "gu-chip h-9 !px-3 text-sm transition-[opacity,transform] duration-200 ease-out",
+              pinned ? "translate-y-0 opacity-100" : "pointer-events-none -translate-y-1 opacity-0"
+            )}
+          >
+            <Coins amount={wallet?.balance ?? 0} iconClassName="size-4" />
+          </span>
+        }
+      />
       <div className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-5 px-4 pt-1 pb-10">
         {/* Balance: coins claimed here fly into it */}
-        <section className="gu-panel-flat flex flex-col items-center px-4 pt-5 pb-4 text-center">
+        <section ref={balanceRef} className="gu-panel-flat flex flex-col items-center px-4 pt-5 pb-4 text-center">
           <span data-coin-target className="flex items-center gap-2.5">
             <CoinIcon className="size-11 drop-shadow-[0_3px_3px_rgba(120,60,0,.3)]" />
             <span className="text-[2.4rem] leading-none font-bold tracking-tight tabular-nums">

@@ -34,7 +34,11 @@ export function GameScreen({
 
 /**
  * The bar along the top of a games screen: a round back button, the title on
- * a ribbon (or anything in `center`), and actions on the right.
+ * a ribbon (or anything in `center`), and actions on the right. It stays on
+ * top while the page scrolls, on a full-width band of the sky's own blue (the
+ * colour at the top of the screen, so it reads as sky) — nothing scrolls
+ * through behind the title. `bare`: no band (a game drawn edge to edge
+ * brings its own shade).
  */
 export function GameTopBar({
   title,
@@ -44,7 +48,9 @@ export function GameTopBar({
   center,
   right,
   className,
+  bare = false,
 }: {
+  bare?: boolean
   title?: React.ReactNode
   subtitle?: React.ReactNode
   onBack?: () => void
@@ -58,6 +64,7 @@ export function GameTopBar({
     <header
       className={cn(
         "sticky top-0 z-30 flex items-center gap-2 px-3 pt-[calc(0.6rem+env(safe-area-inset-top,0px))] pb-2",
+        !bare && "bg-[#3f95ee] shadow-[0_10px_18px_-12px_rgba(20,40,110,.6)]",
         className
       )}
     >
