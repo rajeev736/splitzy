@@ -57,7 +57,7 @@ export function GamesWelcome() {
     if (stage !== "idle" || !uid || authState !== "authenticatedProfileComplete" || wallet === undefined || !onGames) return
     const needsCoins = !wallet?.welcomed && !claimed.current.coins
     const needsFrame = !wallet?.welcomeFrame && !wallet?.frames.includes(WELCOME_FRAME) && !claimed.current.frame
-    const tourDue = onHub && !tourDone("games", uid)
+    const tourDue = onHub && !tourDone("games", uid, user?.tours)
     if (!needsCoins && !needsFrame && !tourDue) return
     const t = window.setTimeout(() => {
       if (tourRunning()) return
@@ -65,7 +65,7 @@ export function GamesWelcome() {
       setStage(needsCoins || needsFrame ? "reward" : "tour")
     }, 700)
     return () => window.clearTimeout(t)
-  }, [stage, uid, authState, wallet, onGames, onHub])
+  }, [stage, uid, authState, wallet, onGames, onHub, user?.tours])
 
   // 1 + 2: the welcome gifts
   React.useEffect(() => {
@@ -162,6 +162,8 @@ export function GamesWelcome() {
         if (live) setStage("idle")
         return
       }
+      // Seen from the moment it shows: closing the app part-way won't bring it back
+      markTourDone("games", uid)
       d = startGamesTour(finish)
     }
     void start()

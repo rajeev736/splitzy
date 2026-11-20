@@ -158,8 +158,8 @@ export function WelcomeTour() {
   // A brand-new account: remember the tour is owed, even if the welcome gets claimed on Games first
   const unwelcomed = wallet === null || (!!wallet && !wallet.welcomed)
   React.useEffect(() => {
-    if (uid && unwelcomed && !tourDone("split", uid)) writePending(uid, true)
-  }, [uid, unwelcomed])
+    if (uid && unwelcomed && !tourDone("split", uid, user?.tours)) writePending(uid, true)
+  }, [uid, unwelcomed, user?.tours])
 
   const finish = React.useCallback(() => {
     if (!uid) return
@@ -173,18 +173,20 @@ export function WelcomeTour() {
   // Who sees what: the tour once, then the Early Bird badge until claimed
   React.useEffect(() => {
     if (!uid || authState !== "authenticatedProfileComplete" || wallet === undefined || phase !== "idle" || pathname !== "/home") return
-    const tourDue = !tourDone("split", uid) && (unwelcomed || readPending(uid))
+    const tourDue = !tourDone("split", uid, user?.tours) && (unwelcomed || readPending(uid))
     if (!tourDue && !needsEarly) return
     const t = window.setTimeout(() => {
       if (tourRunning()) return
       setPhase(tourDue ? "touring" : "early")
     }, 900)
     return () => window.clearTimeout(t)
-  }, [uid, authState, wallet, unwelcomed, phase, pathname, needsEarly])
+  }, [uid, authState, wallet, unwelcomed, phase, pathname, needsEarly, user?.tours])
 
   // Run the tour
   React.useEffect(() => {
     if (phase !== "touring" || tour.current) return
+    // Seen from the moment it starts: closing the app part-way won't bring it back
+    if (uid) markTourDone("split", uid)
     const go = (d: Driver, i: number) => {
       const step = STEPS[i]
       if (!step) return
@@ -237,7 +239,7 @@ export function WelcomeTour() {
         d.destroy()
       }
     }
-  }, [phase, router, finish])
+  }, [phase, router, finish, uid])
 
   return (
     <EarlyBirdDialog

@@ -16,6 +16,8 @@ export interface UserProfile {
   gameAvatar?: string;
   /** Name shown in games (game profile); Split screens keep displayName. lib/game-name gameNameOf. */
   gameName?: string;
+  /** Onboarding tours already seen on this account (components/fun/tour-kit). */
+  tours?: Partial<Record<"split" | "games", boolean>>;
   /** What they're up to, set by them. */
   mood?: { id: string; at: string };
   /** Shown only when they choose to share it (the year stays private). */
