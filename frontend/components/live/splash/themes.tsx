@@ -27,6 +27,22 @@ export interface SplashTheme {
 export type TileIcon = keyof typeof ICONS
 
 export const SPLASH_THEMES: Record<LiveGameId, SplashTheme> = {
+  colorclash: {
+    title: ["COLOR", "CLASH"],
+    sky: "linear-gradient(180deg,#ff9a8b 0%,#ffc3a0 48%,#ffe8b8 100%)",
+    cloudShade: "#ffd6cc",
+    rim: "#7a1f3d",
+    tint: "#ffe28c",
+    tiles: ["seven", "palette", "three"],
+  },
+  memory: {
+    title: ["MEMORY", "TILES"],
+    sky: "linear-gradient(180deg,#6fb1ff 0%,#9fc2ff 48%,#d6c7ff 100%)",
+    cloudShade: "#e8d6ff",
+    rim: "#23308f",
+    tint: "#d6e4ff",
+    tiles: ["grid", "nine", "crown"],
+  },
   tictactoe: {
     title: ["TIC TAC", "TOE"],
     sky: "linear-gradient(180deg,#7db4ff 0%,#a7c3ff 48%,#d9cbff 100%)",

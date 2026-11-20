@@ -110,6 +110,16 @@ export function ModeSwitch({ look = "app", className }: { look?: "app" | "game";
     const now = typeof window === "undefined" ? { x: mode === "games" ? 1 : 0, left: 0 } : slideState(mode)
     return { x: now.x, ms: 0, left: now.left }
   })
+  // Pages stay mounted (hidden) after you leave them, keeping this switch's state —
+  // so each time its page shows again, put the pill on its side (carrying on a
+  // slide still under way) instead of where it was left
+  React.useLayoutEffect(() => {
+    const st = slideState(mode)
+    const target = mode === "games" ? 1 : 0
+    // Syncing to the page being shown again (not derivable in render: a revealed page may not re-render)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPill((p) => (st.left > 0 ? { x: st.x, ms: 0, left: st.left } : p.x === target && p.left === 0 ? p : { x: target, ms: 0, left: 0 }))
+  }, [mode])
   React.useEffect(() => {
     if (pill.left <= 0) return
     // Next frame: the rest of the trip, in the time that's left

@@ -248,12 +248,74 @@ export const LIVE_GAMES: Record<LiveGameId, LiveGameInfo> = {
     ],
     tone: "bg-violet-500/12",
   },
+  // Run by the server (lib/live/hosted): the deck and hands stay hidden
+  colorclash: {
+    id: "colorclash",
+    name: "Color Clash",
+    tagline: "Match the colour or number — first to empty your hand wins",
+    howTo:
+      "Everyone gets 7 cards. On your turn play a card that matches the top card's colour, number or symbol — or a Wild. Skip, Reverse and +2 shake things up; Wild +4 makes the next player draw four. Can't play? Draw one. Down to one card? Tap \"One!\" before someone catches you. First to empty their hand wins the round.",
+    emoji: "🃏",
+    minPlayers: 2,
+    maxPlayers: 6,
+    duration: "~15 min",
+    options: [
+      {
+        key: "rounds",
+        label: "Rounds",
+        choices: [
+          { value: 1, label: "1 round" },
+          { value: 3, label: "Best of 3" },
+          { value: 5, label: "Best of 5" },
+        ],
+        default: 1,
+      },
+    ],
+    tone: "bg-rose-500/12",
+  },
+  // Run by the server (lib/live/hosted): the tiles stay face down for real
+  memory: {
+    id: "memory",
+    name: "Memory Tiles",
+    shortName: "Memory",
+    tagline: "Flip two tiles — find the pairs, keep your turn",
+    howTo:
+      "All tiles start face down. On your turn flip two: if they match, they're yours, you score a point and go again. If not, they flip back and the next player goes. Remember where everything is! Most pairs when the board is cleared wins the round.",
+    emoji: "🧠",
+    minPlayers: 2,
+    maxPlayers: 4,
+    duration: "~8 min",
+    options: [
+      {
+        key: "size",
+        label: "Board",
+        choices: [
+          { value: 16, label: "16 tiles" },
+          { value: 24, label: "24 tiles" },
+          { value: 36, label: "36 tiles" },
+        ],
+        default: 24,
+      },
+      {
+        key: "rounds",
+        label: "Rounds",
+        choices: [
+          { value: 1, label: "1 round" },
+          { value: 3, label: "Best of 3" },
+        ],
+        default: 1,
+      },
+    ],
+    tone: "bg-sky-500/12",
+  },
 }
 
 /** Display order on the Games tab. */
 export const LIVE_GAME_IDS: LiveGameId[] = [
   "scribble",
   "ludo",
+  "colorclash",
+  "memory",
   "snakes3d",
   "snakes",
   "sudoku",

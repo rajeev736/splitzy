@@ -17,7 +17,17 @@
  * timers from server time, so they agree to the second.
  */
 
-export type LiveGameId = "scribble" | "ludo" | "chess" | "checkers" | "tictactoe" | "snakes" | "snakes3d" | "sudoku"
+export type LiveGameId =
+  | "scribble"
+  | "ludo"
+  | "chess"
+  | "checkers"
+  | "tictactoe"
+  | "snakes"
+  | "snakes3d"
+  | "sudoku"
+  | "colorclash"
+  | "memory"
 
 export type RoomStatus = "lobby" | "countdown" | "playing" | "ended"
 

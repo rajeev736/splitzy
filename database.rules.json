@@ -10,7 +10,7 @@
         "meta": {
           ".read": "auth != null",
           ".write": "auth != null && ((!data.exists() && newData.child('hostId').val() === auth.uid) || (data.exists() && newData.exists() && root.child('rooms/' + $code + '/players/' + auth.uid).exists()))",
-          ".validate": "newData.hasChildren(['code', 'game', 'hostId', 'hostName', 'createdAt', 'minPlayers', 'maxPlayers', 'status']) && newData.child('code').val() === $code && $code.matches(/^[A-HJ-NP-Z2-9]{6}$/) && newData.child('game').val().matches(/^(scribble|ludo|chess|checkers|tictactoe|snakes|snakes3d|sudoku)$/) && newData.child('status').val().matches(/^(lobby|countdown|playing|ended)$/) && newData.child('hostId').isString() && newData.child('hostName').isString() && newData.child('hostName').val().length <= 60 && newData.child('createdAt').isNumber() && newData.child('minPlayers').isNumber() && newData.child('minPlayers').val() >= 1 && newData.child('maxPlayers').isNumber() && newData.child('maxPlayers').val() >= 2 && newData.child('maxPlayers').val() <= 8 && (!data.exists() || (newData.child('game').val() === data.child('game').val() && newData.child('createdAt').val() === data.child('createdAt').val() && newData.child('maxPlayers').val() === data.child('maxPlayers').val()))",
+          ".validate": "newData.hasChildren(['code', 'game', 'hostId', 'hostName', 'createdAt', 'minPlayers', 'maxPlayers', 'status']) && newData.child('code').val() === $code && $code.matches(/^[A-HJ-NP-Z2-9]{6}$/) && newData.child('game').val().matches(/^(scribble|ludo|chess|checkers|tictactoe|snakes|snakes3d|sudoku|colorclash|memory)$/) && newData.child('status').val().matches(/^(lobby|countdown|playing|ended)$/) && newData.child('hostId').isString() && newData.child('hostName').isString() && newData.child('hostName').val().length <= 60 && newData.child('createdAt').isNumber() && newData.child('minPlayers').isNumber() && newData.child('minPlayers').val() >= 1 && newData.child('maxPlayers').isNumber() && newData.child('maxPlayers').val() >= 2 && newData.child('maxPlayers').val() <= 8 && (!data.exists() || (newData.child('game').val() === data.child('game').val() && newData.child('createdAt').val() === data.child('createdAt').val() && newData.child('maxPlayers').val() === data.child('maxPlayers').val()))",
           "status": {
             ".validate": "!(data.val() === 'ended' && newData.val() !== 'ended')"
           },
@@ -40,7 +40,7 @@
 
         "state": {
           ".read": "auth != null",
-          ".write": "auth != null && root.child('rooms/' + $code + '/players/' + auth.uid).exists() && ((root.child('rooms/' + $code + '/meta/status').val() !== 'ended' && newData.exists()) || (root.child('rooms/' + $code + '/meta/status').val() === 'ended' && !newData.exists() && (root.child('rooms/' + $code + '/meta/settled').val() === true || root.child('rooms/' + $code + '/meta/endedAt').val() + 1800000 < now)))",
+          ".write": "auth != null && root.child('rooms/' + $code + '/players/' + auth.uid).exists() && ((root.child('rooms/' + $code + '/meta/status').val() !== 'ended' && newData.exists() && !root.child('rooms/' + $code + '/meta/game').val().matches(/^(colorclash|memory)$/)) || (root.child('rooms/' + $code + '/meta/status').val() === 'ended' && !newData.exists() && (root.child('rooms/' + $code + '/meta/settled').val() === true || root.child('rooms/' + $code + '/meta/endedAt').val() + 1800000 < now)))",
           ".validate": "!data.child('log').exists() || newData.child('log').exists()",
           "correct": {
             "$uid": {
@@ -61,7 +61,7 @@
           ".write": "auth != null && !newData.exists() && root.child('rooms/' + $code + '/meta/status').val() === 'ended' && root.child('rooms/' + $code + '/players/' + auth.uid).exists()",
           "$uid": {
             ".read": "auth != null && $uid === auth.uid",
-            ".write": "auth != null && $uid === auth.uid"
+            ".write": "auth != null && $uid === auth.uid && !root.child('rooms/' + $code + '/meta/game').val().matches(/^(colorclash|memory)$/)"
           }
         },
 
@@ -120,7 +120,7 @@
         ".read": "auth != null",
         ".write": "auth != null && $uid === auth.uid",
         ".validate": "newData.hasChildren(['state', 'at']) && newData.child('state').isString() && newData.child('state').val().matches(/^(online|room|game|offline)$/) && newData.child('at').isNumber()",
-        "game": { ".validate": "newData.isString() && newData.val().matches(/^(scribble|ludo|chess|checkers|tictactoe|snakes|snakes3d|sudoku)$/)" },
+        "game": { ".validate": "newData.isString() && newData.val().matches(/^(scribble|ludo|chess|checkers|tictactoe|snakes|snakes3d|sudoku|colorclash|memory)$/)" },
         "state": { ".validate": true },
         "at": { ".validate": true },
         "$other": { ".validate": false }
@@ -132,7 +132,7 @@
         ".read": "auth != null",
         "$code": {
           ".write": "auth != null",
-          ".validate": "$code.matches(/^[A-HJ-NP-Z2-9]{6}$/) && newData.hasChildren(['game', 'hostId', 'hostName', 'at']) && newData.child('hostId').val() === auth.uid && newData.child('game').val().matches(/^(scribble|ludo|chess|checkers|tictactoe|snakes|snakes3d|sudoku)$/) && newData.child('hostName').isString() && newData.child('hostName').val().length <= 60 && newData.child('at').isNumber()"
+          ".validate": "$code.matches(/^[A-HJ-NP-Z2-9]{6}$/) && newData.hasChildren(['game', 'hostId', 'hostName', 'at']) && newData.child('hostId').val() === auth.uid && newData.child('game').val().matches(/^(scribble|ludo|chess|checkers|tictactoe|snakes|snakes3d|sudoku|colorclash|memory)$/) && newData.child('hostName').isString() && newData.child('hostName').val().length <= 60 && newData.child('at').isNumber()"
         }
       }
     },
@@ -150,7 +150,7 @@
         },
         "game": {
           ".write": "auth != null && newData.parent().child('leader').val() === auth.uid",
-          ".validate": "newData.isString() && newData.val().matches(/^(scribble|ludo|chess|checkers|tictactoe|snakes|snakes3d|sudoku)$/)"
+          ".validate": "newData.isString() && newData.val().matches(/^(scribble|ludo|chess|checkers|tictactoe|snakes|snakes3d|sudoku|colorclash|memory)$/)"
         },
         "options": {
           ".write": "auth != null && newData.parent().child('leader').val() === auth.uid",

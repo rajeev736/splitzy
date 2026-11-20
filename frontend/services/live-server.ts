@@ -37,6 +37,10 @@ export function useWarmDice(on: boolean) {
   }, [on])
 }
 
+/** A move in a game the server runs (lib/live/hosted): start, play, draw, flip, tick… */
+export const actOnServer = (code: string, action: { type: string; seq?: number } & Record<string, unknown>) =>
+  call<{ ok: true; seq: number }>("/api/live/act", { code, action })
+
 /** Rolls your dice on the server (Ludo, Snakes & Ladders); the board updates through the room as usual. */
 export const rollOnServer = (code: string, seq: number) => call<{ ok: true; value: number; seq: number }>("/api/live/roll", { code, seq })
 

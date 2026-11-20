@@ -1,4 +1,6 @@
 import * as React from "react"
+import { ColorClashArt } from "./colorclash/logo-art"
+import { MemoryArt } from "./memory/logo-art"
 
 import type { LiveGameId } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
@@ -408,4 +410,6 @@ const ART: Record<LiveGameId, (props: ArtProps) => React.JSX.Element> = {
   chess: Chess,
   checkers: Checkers,
   tictactoe: TicTacToe,
+  colorclash: ColorClashArt,
+  memory: MemoryArt,
 }

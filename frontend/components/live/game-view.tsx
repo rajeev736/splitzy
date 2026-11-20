@@ -12,6 +12,8 @@ import type {
 import { useRoomNode } from "@/hooks/use-live-room"
 import { endGame as endGameService } from "@/services/live-rooms"
 import { CheckersGame } from "./checkers/checkers-game"
+import { ColorClashGame } from "./colorclash/colorclash-game"
+import { MemoryGame } from "./memory/memory-game"
 import { ChessGame } from "./chess/chess-game"
 import { LudoGame } from "./ludo/ludo-game"
 import { ScribbleGame } from "./scribble/scribble-game"
@@ -35,6 +37,8 @@ const GAME_COMPONENTS: Record<
   snakes: SnakesGame,
   snakes3d: Snakes3DGame,
   sudoku: SudokuGame,
+  colorclash: ColorClashGame,
+  memory: MemoryGame,
 }
 
 /** Renders the room's game and hands it everything it needs from the shell. */

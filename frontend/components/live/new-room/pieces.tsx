@@ -1,8 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { UserGroupIcon } from "@hugeicons/core-free-icons"
-import { HugeiconsIcon } from "@hugeicons/react"
 
 import { GameChoice } from "@/components/game-ui/kit"
 import { LiveGameLogo } from "@/components/live/live-game-logo"
@@ -25,6 +23,8 @@ export const GAME_GLOW: Record<LiveGameId, string> = {
   snakes: "#4ade80",
   snakes3d: "#34d399",
   sudoku: "#a78bfa",
+  colorclash: "#fb7185",
+  memory: "#38bdf8",
 }
 
 /**
@@ -59,11 +59,8 @@ export function LiveGameGrid({
               <span className="gu-chip absolute -top-1 left-1/2 z-10 -translate-x-1/2 !px-2 !py-0.5 text-[10px] text-[var(--gu-blue-deep)]">Recent</span>
             ) : null}
             <LiveGameLogo game={id} className="size-[4.5rem] rounded-[1.4rem] drop-shadow-[0_4px_0_rgba(44,63,115,.18)]" />
-            <span className="w-full truncate text-[1.02rem] leading-tight font-bold text-white [text-shadow:0_1px_0_rgba(20,40,110,.45)]">{g.shortName ?? g.name}</span>
-            <span className="flex items-center gap-1 text-[11px] font-bold text-white/90 [text-shadow:0_1px_0_rgba(20,40,110,.4)]">
-              <HugeiconsIcon icon={UserGroupIcon} className="size-3.5" strokeWidth={2.2} />
-              {playersLabel(g)}
-            </span>
+            {/* Just the name, in the game's deep navy so it reads on the light sky */}
+            <span className="w-full truncate text-[1.02rem] leading-tight font-bold text-[#1d2b5c] [text-shadow:0_1px_0_rgba(255,255,255,.55)]">{g.shortName ?? g.name}</span>
           </button>
         )
       })}

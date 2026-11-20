@@ -73,9 +73,19 @@ export function GameBottomNav() {
 
   const badges: Partial<Record<GameNavId, number>> = { hub: yourTurn, levels: toClaim }
 
+  // The tab you tapped lights up at once; the page catches up a moment later
+  const [pending, setPending] = React.useState<string | null>(null)
+  const [seenPath, setSeenPath] = React.useState(pathname)
+  if (pathname !== seenPath) {
+    setSeenPath(pathname)
+    setPending(null)
+  }
+  const current = pending ?? pathname
+
   const goTo = (e: React.MouseEvent, href: string) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey) return // let new-tab clicks through
     e.preventDefault()
+    if (pathname !== href) setPending(href)
     if (pathname === href) {
       window.scrollTo({ top: 0, behavior: "smooth" })
       return
@@ -96,7 +106,7 @@ export function GameBottomNav() {
     <nav aria-label="Games" className="gn-wrap">
       <div className="gn-tray" data-tour="game-nav">
         {GAME_NAV_ITEMS.map((item) => {
-          const active = pathname === item.href
+          const active = current === item.href
           const badge = badges[item.id] ?? 0
           return (
             <Link
@@ -109,7 +119,7 @@ export function GameBottomNav() {
               style={{ "--gn-face": item.face, "--gn-base": item.base } as React.CSSProperties}
             >
               <span className="gn-tile">
-                <HugeiconsIcon icon={item.icon} className={active ? "size-7" : "size-6"} strokeWidth={active ? 2.3 : 2} />
+                <HugeiconsIcon icon={item.icon} className="size-7" strokeWidth={active ? 2.3 : 2} />
                 {badge > 0 ? <span className="gn-badge">{badge > 9 ? "9+" : badge}</span> : null}
               </span>
               <span className="gn-label">{item.label}</span>

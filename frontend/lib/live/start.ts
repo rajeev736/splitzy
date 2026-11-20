@@ -31,5 +31,9 @@ export function initialStateFor(game: LiveGameId, players: RoomPlayer[], options
       return initialSnakesState(players, options, seed, "gate")
     case "sudoku":
       return initialSudokuState(players, options, seed)
+    case "colorclash":
+    case "memory":
+      // Dealt by the server (lib/server/hosted): never started on a device
+      throw new Error("This game is started by the server")
   }
 }

@@ -1,0 +1,104 @@
+/* Color Clash table animations (transform / opacity only) */
+
+@keyframes cc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.cc-arrows-spin {
+  animation: cc-spin 14s linear infinite;
+}
+
+@keyframes cc-flash {
+  from {
+    transform: scale(0.7);
+    opacity: 0.85;
+  }
+  to {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+.cc-flash {
+  animation: cc-flash 700ms ease-out both;
+}
+
+@keyframes cc-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+.cc-glow {
+  animation: cc-glow 1.4s ease-in-out infinite;
+}
+
+@keyframes cc-pop {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.cc-pop {
+  animation: cc-pop 320ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+}
+
+@keyframes cc-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px);
+  }
+  75% {
+    transform: translateX(5px);
+  }
+}
+.cc-shake {
+  animation: cc-shake 220ms ease-in-out 2;
+}
+
+@keyframes cc-bounce {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-3px) scale(1.06);
+  }
+}
+.cc-bounce {
+  animation: cc-bounce 0.9s ease-in-out infinite;
+}
+
+@keyframes cc-rise {
+  from {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+}
+.cc-rise {
+  animation: cc-rise 260ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-arrows-spin,
+  .cc-glow,
+  .cc-bounce,
+  .cc-shake {
+    animation: none;
+  }
+}

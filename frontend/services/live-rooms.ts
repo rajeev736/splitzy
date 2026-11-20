@@ -32,7 +32,8 @@ import type {
 } from "@/lib/live/types"
 import { gameNameOf } from "@/lib/game-name"
 import type { UserProfile } from "@/lib/types"
-import { settleOnServer } from "./live-server"
+import { isHostedGame } from "@/lib/live/hosted"
+import { actOnServer, settleOnServer } from "./live-server"
 
 /**
  * Everything the app writes to a live room. Reads happen through the hooks in
@@ -384,6 +385,11 @@ export async function startGame(
   meta: RoomMeta,
   players: RoomPlayer[]
 ): Promise<void> {
+  // Games the server runs deal their own start (cards, tiles nobody may see)
+  if (isHostedGame(meta.game)) {
+    await actOnServer(code, { type: "start" })
+    return
+  }
   const active = players.filter((p) => !p.left)
   if (!canStart(meta, players))
     throw new AppError(

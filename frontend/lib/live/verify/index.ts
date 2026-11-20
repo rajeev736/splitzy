@@ -1,6 +1,7 @@
 import type { LiveGameId } from "../types"
 import { verifyCheckers } from "./checkers"
 import { verifyChess } from "./chess"
+import { verifyHosted } from "./hosted"
 import { verifyLudo } from "./ludo"
 import { verifySnakes } from "./snakes"
 import { verifySudoku } from "./sudoku"
@@ -24,6 +25,8 @@ export const VERIFIERS: Partial<Record<LiveGameId, Verifier>> = Object.fromEntri
       ["checkers", verifyCheckers],
       ["tictactoe", verifyTictactoe],
       ["sudoku", verifySudoku],
+      ["colorclash", verifyHosted],
+      ["memory", verifyHosted],
     ] as const
   ).filter(([, v]) => v !== null)
 )
