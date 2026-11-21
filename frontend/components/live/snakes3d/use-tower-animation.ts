@@ -5,6 +5,7 @@ import gsap from "gsap"
 
 import type { SnakesState } from "@/lib/live/snakes"
 import type { SnakesSound } from "@/lib/live/sound"
+import { diceSettlesIn } from "../dice-settle"
 import { standOf, tileCentre, type Pt } from "./geometry"
 
 /** The SVG groups that make up one piece and its effects. */
@@ -125,7 +126,8 @@ export function useTowerAnimation({
         return
       }
       // Rattle: the piece bumps the gate, the gate shudders
-      const tl = gsap.timeline({ onComplete: () => (timeline.current = null) })
+      // It plays once the dice has settled: the piece never sets off while it still turns
+    const tl = gsap.timeline({ delay: diceSettlesIn(), onComplete: () => (timeline.current = null) })
       tl.call(() => soundCb.current?.("gate_shut"), [], 0.1)
       tl.to(hop, { x: 4, duration: 0.07, yoyo: true, repeat: 5, ease: "sine.inOut" }).set(hop, { x: 0 })
       if (doorL && doorR) {
@@ -145,7 +147,8 @@ export function useTowerAnimation({
 
     const target = state.players[uid]?.pos ?? last.end
     shown.current[uid] = target
-    const tl = gsap.timeline({ onComplete: () => (timeline.current = null) })
+    // It plays once the dice has settled: the piece never sets off while it still turns
+    const tl = gsap.timeline({ delay: diceSettlesIn(), onComplete: () => (timeline.current = null) })
     const sound = (s: SnakesSound, position?: gsap.Position) => tl.call(() => soundCb.current?.(s), [], position)
     const hopTo = (pos: number, dur: number) => {
       const p = standOf(pos, slot)

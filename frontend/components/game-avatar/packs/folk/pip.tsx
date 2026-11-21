@@ -209,7 +209,7 @@ export const PIP: CharacterDef = {
   name: "Pip",
   tagline: "Has wandered every board in the land",
   tier: "premium",
-  price: 2800,
+  price: 0, // level 12 only: never sold
   earn: { level: 12 },
   accent: ACCENT,
   Art,

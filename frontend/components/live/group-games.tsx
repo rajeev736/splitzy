@@ -15,6 +15,7 @@ import { useRoomNode, useServerClock } from "@/hooks/use-live-room"
 import { getErrorMessage } from "@/lib/errors"
 import { isLiveConfigured } from "@/lib/firebase/config"
 import { LiveGameLogo } from "@/components/live/live-game-logo"
+import { RoomMembers } from "@/components/live/room-members"
 import { LIVE_GAME_IDS, LIVE_GAMES } from "@/lib/live/games"
 import { roomLiveness } from "@/lib/live/liveness"
 import type { RoomMeta, RoomPlayer } from "@/lib/live/types"
@@ -154,15 +155,19 @@ function GroupRoomRow({ room, groupId, uid }: { room: GroupRoom; groupId: string
         <span className="block truncate text-sm font-medium">
           {info.name} <span className="font-normal text-muted-foreground">· {host}</span>
         </span>
-        <span
-          className={cn(
-            "flex items-center gap-1.5 text-xs font-medium",
-            live.life === "idle" ? "text-muted-foreground" : inLobby ? "text-warning" : "text-primary"
-          )}
-        >
-          <span aria-hidden className="size-1.5 rounded-full bg-current" />
-          {label}
+        <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium">
+          <span
+            className={cn(
+              "flex shrink-0 items-center gap-1.5",
+              live.life === "idle" ? "text-muted-foreground" : inLobby ? "text-warning" : "text-primary"
+            )}
+          >
+            <span aria-hidden className="size-1.5 rounded-full bg-current" />
+            {label}
+          </span>
+          <span className="truncate font-mono tracking-wider text-muted-foreground">· {room.code}</span>
         </span>
+        <RoomMembers players={players} uid={uid} className="mt-1.5" textClassName="text-muted-foreground" />
       </span>
       <span className="flex shrink-0 items-center gap-0.5 text-xs font-semibold text-primary">
         {inLobby ? "Join" : "Open"}

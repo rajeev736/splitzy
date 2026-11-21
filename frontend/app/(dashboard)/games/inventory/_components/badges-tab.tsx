@@ -7,9 +7,13 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { BadgeArt } from "@/components/fun/badge-art"
 import { BadgeDetail } from "@/components/fun/badge-grid"
 import { FramedAvatar } from "@/components/fun/framed-avatar"
+import { StreakFlame } from "@/components/streak/streak-art"
+import { StreakBadges } from "@/components/streak/streak-badges"
+import { hasStreakBadge, streakView, useToday } from "@/components/streak/use-streak"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import type { BadgeSummary } from "@/hooks/use-fun"
 import { BADGES, FRAME_IDS, isMilestoneFrame, isSingleBadge } from "@/lib/fun/catalog"
+import { STREAK_MILESTONES } from "@/lib/live/streak"
 import type { Wallet } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import type { InventoryUser } from "./frames-tab"
@@ -22,12 +26,15 @@ export function BadgesTab({
   user,
   wallet,
   badges,
+  badgeIds,
   earlyBird,
   onShowMilestones,
 }: {
   user: InventoryUser
   wallet: Wallet | null | undefined
   badges: BadgeSummary[] | undefined
+  /** Every badge doc id: the streak badges are `streak_<days>` docs. */
+  badgeIds?: ReadonlySet<string>
   earlyBird?: number
   /** Opens the milestone frames (also earned). */
   onShowMilestones: () => void
@@ -41,6 +48,8 @@ export function BadgesTab({
         Badges can&apos;t be bought. You earn them by paying fast, playing and sending gifts, and friends see them on your
         profile.
       </p>
+
+      <StreakBadgesCard wallet={wallet} badgeIds={badgeIds} />
 
       <div className="flex flex-col gap-2">
         {badges
@@ -70,6 +79,33 @@ export function BadgesTab({
         <DialogContent className="gu max-w-sm">{open && <BadgeDetail badge={open} earlyBird={earlyBird} />}</DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+/** The five play-streak badges, in their own card at the top: your streak now and best, then the medallions. */
+function StreakBadgesCard({ wallet, badgeIds }: { wallet: Wallet | null | undefined; badgeIds?: ReadonlySet<string> }) {
+  const today = useToday()
+  const s = streakView(wallet, today)
+  const have = STREAK_MILESTONES.filter((d) => hasStreakBadge(d, wallet, badgeIds)).length
+  return (
+    <section className="rounded-xl border border-card-stroke bg-card px-2.5 pt-2.5 pb-2 shadow-xs" aria-label="Play streak badges">
+      <div className="flex items-center gap-2.5 px-0.5">
+        <span className="stk-badge size-10 !rounded-[14px]" data-out={s.days === 0 || undefined}>
+          <StreakFlame lit={s.days > 0} still className="size-6" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold">Play streak</span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {s.days > 0 ? `${s.days} day${s.days === 1 ? "" : "s"} now` : "Play a live game every day"}
+            {s.best > 0 ? ` · best ${s.best}` : ""}
+          </span>
+        </span>
+        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary tabular-nums">
+          {have}/{STREAK_MILESTONES.length}
+        </span>
+      </div>
+      <StreakBadges wallet={wallet} earnedIds={badgeIds} className="mt-2" />
+    </section>
   )
 }
 

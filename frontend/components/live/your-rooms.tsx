@@ -10,6 +10,7 @@ import { useMarkNotificationRead } from "@/hooks/mutations"
 import { useNotifications } from "@/hooks/queries"
 import { useRoomNode, useServerClock } from "@/hooks/use-live-room"
 import { LiveGameLogo } from "@/components/live/live-game-logo"
+import { RoomMembers } from "@/components/live/room-members"
 import { TrophyIcon } from "@/components/rewards/trophy"
 import { LIVE_GAMES } from "@/lib/live/games"
 import { roomLiveness, type RoomLiveness } from "@/lib/live/liveness"
@@ -95,7 +96,7 @@ export interface RoomInvite {
   read: boolean
 }
 
-export type Room = { code: string; meta: RoomMeta; live: RoomLiveness }
+export type Room = { code: string; meta: RoomMeta; live: RoomLiveness; players: Record<string, RoomPlayer> | null }
 
 /**
  * Your rooms and the invites waiting for you, sorted into what the Live tab
@@ -145,7 +146,7 @@ export function useLiveRooms(uid: string | undefined) {
   const mine: Room[] = codes.flatMap((code) => {
     const r = rooms[code]
     if (!r?.meta || r.players === undefined) return []
-    return [{ code, meta: r.meta, live: roomLiveness(r.meta, r.players, now) }]
+    return [{ code, meta: r.meta, live: roomLiveness(r.meta, r.players, now), players: r.players }]
   })
 
   // Abandoned for good: close it (once per room per visit)
@@ -169,7 +170,7 @@ export function useLiveRooms(uid: string | undefined) {
       const r = rooms[i.code]
       if (!r?.meta || r.meta.status !== "lobby") return []
       const live = roomLiveness(r.meta, r.players, now)
-      return live.life === "idle" ? [] : [{ ...i, meta: r.meta }]
+      return live.life === "idle" ? [] : [{ ...i, meta: r.meta, players: r.players ?? null }]
     }),
   }
 }
@@ -210,6 +211,7 @@ export function ActiveRooms({ rooms, uid }: { rooms: Room[]; uid: string }) {
               <span className="block truncate text-xs font-semibold text-[var(--gu-ink-soft)]">
                 {meta.hostId === uid ? "Your room" : `${meta.hostName.split(" ")[0]}'s room`} · {code}
               </span>
+              <RoomMembers players={r.players} uid={uid} ring="var(--gu-cream)" className="mt-1" textClassName="text-[var(--gu-ink-soft)]" />
             </span>
             <span className="gu-btn gu-green gu-btn-sm pointer-events-none shrink-0">
               {meta.status === "playing" ? "Rejoin" : "Open"}
@@ -222,7 +224,15 @@ export function ActiveRooms({ rooms, uid }: { rooms: Room[]; uid: string }) {
 }
 
 /** Friends asking you into their room: join in one tap, or wave it away. */
-export function RoomInvites({ invites, now }: { invites: (RoomInvite & { meta: RoomMeta })[]; now: number }) {
+export function RoomInvites({
+  invites,
+  now,
+  uid,
+}: {
+  invites: (RoomInvite & { meta: RoomMeta; players: Record<string, RoomPlayer> | null })[]
+  now: number
+  uid?: string
+}) {
   const markRead = useMarkNotificationRead()
   if (invites.length === 0) return null
   return (
@@ -239,6 +249,7 @@ export function RoomInvites({ invites, now }: { invites: (RoomInvite & { meta: R
                 <span className="block truncate text-xs font-semibold text-[var(--gu-ink-soft)]">
                   From {inv.from.split(" ")[0]} · {ago(inv.at, now)}
                 </span>
+                <RoomMembers players={inv.players} uid={uid} ring="var(--gu-cream)" className="mt-1" textClassName="text-[var(--gu-ink-soft)]" />
               </span>
               <Link
                 href={`/play/${inv.code}`}

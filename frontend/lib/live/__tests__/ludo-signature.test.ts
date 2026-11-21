@@ -56,15 +56,15 @@ function noUndefined(v: unknown, path = "state"): void {
 
 console.log("Running Ludo signature / power timer tests...\n")
 
-// Every character has exactly one power; every kind is there for free
+// Every character has exactly one power; every kind comes with a basic (free or cheap) character
 {
   for (const c of CHARACTERS) assert(POWER_KINDS.includes(CHARACTER_POWER[c.id]), `${c.id} has a power`)
   const ids = new Set(CHARACTERS.map((c) => c.id))
   for (const id of Object.keys(CHARACTER_POWER)) assert(ids.has(id), `${id} is a real character`)
   for (const kind of POWER_KINDS)
     assert(
-      CHARACTERS.some((c) => c.tier === "basic" && c.price === 0 && CHARACTER_POWER[c.id] === kind),
-      `${kind} comes with a free character — a faked avatar buys nothing`
+      CHARACTERS.some((c) => c.tier === "basic" && CHARACTER_POWER[c.id] === kind),
+      `${kind} comes with a basic character — a faked avatar buys little`
     )
   assert(characterPower("zenko") === "jump" && characterPower(undefined) === null, "lookup")
   assert(characterPower("nobody") === null && characterPower("toString") === null, "unknown ids get nothing")

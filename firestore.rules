@@ -58,18 +58,18 @@ service cloud.firestore {
     // the same batch: a frame bought, a gift sent, a game stake, a game payout.
     // Prices mirror lib/fun/catalog.
 
-    /** Coin price of a premium frame; 0 for free or unknown frames. */
+    /** Coin price of a premium frame; 0 for free, unknown and never-sold frames (milestones, level prizes: levelFrame). */
     function framePrice(id) {
       return {
-        'laurel': 300, 'star_1': 400, 'flame': 700, 'star_3': 800, 'crystal_wings': 900,
-        'gold_wings': 1000, 'royal_crown': 1200, 'kitty': 300, 'ribbon': 350, 'blossom': 400,
+        'laurel': 300, 'star_1': 400, 'flame': 700, 'crystal_wings': 900,
+        'royal_crown': 1200, 'kitty': 300, 'ribbon': 350, 'blossom': 400,
         'cloud_moon': 500, 'pumpkin': 500, 'festive': 600, 'sweethearts': 400, 'cupid': 500,
         'rose_vine': 700, 'love_wings': 900,
-        'silver_wings': 450, 'gem_wings': 650, 'inferno': 1100, 'fox': 400, 'headphones': 450,
+        'gem_wings': 650, 'inferno': 1100, 'fox': 400, 'headphones': 450,
         'rainbow': 500, 'horns': 550, 'unicorn': 600, 'butterfly': 650, 'witch': 700,
         'neon_heart': 350, 'sweet_candy': 450, 'love_letter': 550, 'party': 600,
-        'deep_blue': 1800, 'diwali': 2000, 'wildfire': 2200, 'thunder': 2400, 'neon_beats': 2600,
-        'neon_hazard': 2800, 'frost_wings': 3000, 'spellbound': 3200, 'cosmic_cat': 3500
+        'diwali': 2000, 'wildfire': 2200, 'neon_beats': 2600,
+        'neon_hazard': 2800, 'spellbound': 3200
       }.get(id, 0);
     }
 
@@ -121,12 +121,14 @@ service cloud.firestore {
 
     // ── Game profile: characters (components/game-avatar registry) and live-game rewards ──
 
-    /** Coin price of a game character; 0 for basic ones, earn-only legends and unknown ids. Mirrors the registry. */
+    /** Coin price of a game character; 0 for the free ones (foxy, bao), earn-only ones (every level prize) and unknown ids. Mirrors the registry. */
     function characterPrice(id) {
       return {
+        'hoppy': 500, 'waddles': 500, 'hootie': 600, 'sheru': 800, 'bolt': 800, 'blip': 1000, 'astro': 1000,
+        'sixer': 1200, 'chai-uncle': 1200, 'rangoli': 1500,
         'fuzzby': 3000, 'zenko': 4500, 'fizzwick': 4000, 'cinder': 5000, 'bijou': 6000,
-        'buck': 3000, 'mimi': 2500, 'pip': 2800, 'brick': 3000, 'skye': 3500,
-        'nova': 4000, 'bramble': 6500, 'riff': 7500, 'pemberton': 8500, 'flora': 9000
+        'buck': 3000, 'brick': 3000,
+        'nova': 4000, 'bramble': 6500, 'riff': 7500
       }.get(id, 0);
     }
 
@@ -138,7 +140,7 @@ service cloud.firestore {
       }.get(id, '');
     }
 
-    /** Free to wear: not sold and not a reward (basic characters). */
+    /** Free to wear: not sold and not a reward (foxy, bao). */
     function isFreeCharacter(id) {
       return id is string && id.matches('^[a-z0-9_-]{1,40}$') &&
              characterPrice(id) == 0 && characterEarn(id) == '';
@@ -203,23 +205,26 @@ service cloud.firestore {
 
     /**
      * A level's reward (lib/live/levels), once your XP (10 a game played, 30
-     * more a win) reaches the level's: a character naming it, its frame, or its
-     * coins, once (listed in levelCoins; the update rule lets a coin claim
-     * change nothing else).
+     * more a win) reaches the level's (levelXp: 35m + 3m² + 2m³, m = level - 1):
+     * a character naming it, its frame, or its coins, once (listed in
+     * levelCoins; the update rule lets a coin claim change nothing else).
      */
     function levelRewardOk(a, item, delta) {
       let w = resource.data;
-      let n = int(a.replace('lv', ''));
+      let m = int(a.replace('lv', '')) - 1;
       let paid = w.get('levelCoins', []);
       let bonus = levelBonus(a);
-      return w.get('livePlayed', 0) * 10 + w.get('liveWins', 0) * 30 >= 40 * (n - 1) + 15 * (n - 1) * (n - 2) &&
+      return w.get('livePlayed', 0) * 10 + w.get('liveWins', 0) * 30 >= m * (35 + m * (3 + 2 * m)) &&
              (item == 'coins'
                ? bonus > 0 && delta == bonus && !(a in paid) &&
                  request.resource.data.levelCoins == paid.concat([a])
                : delta == 0 && rewardItemOk(a, item, levelFrame(a)));
     }
 
-    /** Frame (free or owned), game character (free or owned), mood and birthday on a profile. */
+    /**
+     * Frame (free or owned), game character (free or owned), mood and birthday on a profile.
+     * Checked only when they change: a character put on while it was free stays on until you switch.
+     */
     function profileExtrasOk(userId) {
       let d = request.resource.data;
       // One diff for all four checks (the rules engine counts every expression)
@@ -263,10 +268,32 @@ service cloud.firestore {
              request.resource.data.frames == resource.data.frames.concat([id]);
     }
 
-    function giftPaidOk(fid, mid, delta) {
+    // A gift: paid in coins at its price, or one taken from the gifts you bought ahead (stock)
+    function giftPaidOk(fid, mid, delta, changed) {
       let path = /databases/$(database)/documents/friendships/$(fid)/moments/$(mid);
       let m = getAfter(path).data;
-      return !exists(path) && m.from == uid() && m.type == 'gift' && delta == -giftPrice(m.item);
+      return !exists(path) && m.from == uid() && m.type == 'gift' &&
+             ((delta == -giftPrice(m.item) && !changed.hasAny(['stock'])) ||
+              (delta == 0 && stockMoved('g_' + m.item, -1)));
+    }
+
+    /**
+     * Throwables and gifts bought ahead (lib/fun/stock): wallet.stock maps
+     * "<t|g>_<id>" to how many are left. Only the one entry `key` moves, by
+     * `by`, and never below 0.
+     */
+    function stockMoved(key, by) {
+      let before = resource.data.get('stock', {});
+      let after = request.resource.data.get('stock', {});
+      let n = after.get(key, 0);
+      return after.diff(before).affectedKeys().hasOnly([key]) && n is int && n >= 0 && n == before.get(key, 0) + by;
+    }
+
+    /** Buying `n` ahead (lastTx buy:<t|g>:<id>:<n>:<nonce>): n × the price, and n more in stock. */
+    function stockBuyOk(tx, delta) {
+      let price = tx[1] == 't' ? throwPrice(tx[2]) : tx[1] == 'g' ? giftPrice(tx[2]) : 0;
+      return price > 0 && tx[3].matches('[1-9][0-9]?') &&
+             delta == -price * int(tx[3]) && stockMoved(tx[1] + '_' + tx[2], int(tx[3]));
     }
 
     function stakeOk(cid, delta) {
@@ -346,7 +373,7 @@ service cloud.firestore {
      */
     function walletUpdateOk(changed, tx, delta) {
       return (changed.hasOnly(['balance', 'frames', 'themes', 'avatars', 'lastTx', 'welcomed', 'welcomeFrame', 'wins', 'played', 'coinsWon',
-                               'livePlayed', 'liveWins', 'streak', 'bestStreak', 'liveAt']) ||
+                               'livePlayed', 'liveWins', 'streak', 'bestStreak', 'liveAt', 'stock']) ||
               // A level's coins: the coins and the level listed as paid, nothing else (levelRewardOk)
               (tx.size() == 3 && tx[0] == 'earn' && tx[2] == 'coins' && tx[1].matches('lv[0-9]{1,2}') &&
                changed.hasOnly(['balance', 'levelCoins', 'lastTx']))) &&
@@ -358,6 +385,8 @@ service cloud.firestore {
       return (tx[0] == 'theme' || !changed.hasAny(['themes'])) &&
              // Game characters change only when one is bought or earned
              (tx[0] in ['avatar', 'earn'] || !changed.hasAny(['avatars'])) &&
+             // What you bought ahead changes only when you buy more or use one
+             (tx[0] in ['buy', 'use', 'gift'] || !changed.hasAny(['stock'])) &&
              statsOk(tx, changed) &&
              (welcomeOk(tx, delta) ||
               (!changed.hasAny(['welcomed', 'welcomeFrame']) && walletSpendOk(tx, delta, changed)));
@@ -381,11 +410,15 @@ service cloud.firestore {
               delta == 0 && tx.size() == 2 &&
               ((tx[0] == 'win' && winRecorded(tx[1])) || (tx[0] == 'played' && playedRecorded(tx[1])))) ||
              (framesSame &&
-              ((tx[0] == 'gift' && tx.size() == 3 && giftPaidOk(tx[1], tx[2], delta)) ||
+              ((tx[0] == 'gift' && tx.size() == 3 && giftPaidOk(tx[1], tx[2], delta, changed)) ||
                (tx[0] == 'stake' && tx.size() == 2 && stakeOk(tx[1], delta)) ||
                (tx[0] == 'payout' && tx.size() == 2 && payoutOk(tx[1], delta)) ||
                // A throwable in a live game: spending only, at its price
-               (tx[0] == 'throw' && tx.size() == 3 && throwOk(tx[1], delta))));
+               (tx[0] == 'throw' && tx.size() == 3 && throwOk(tx[1], delta)) ||
+               // Throwables and gifts bought ahead, n at a time; a throwable used from them (no coins)
+               (tx[0] == 'buy' && tx.size() == 5 && stockBuyOk(tx, delta)) ||
+               (tx[0] == 'use' && tx.size() == 4 && tx[1] == 't' && delta == 0 &&
+                throwPrice(tx[2]) > 0 && stockMoved('t_' + tx[2], -1))));
     }
 
     match /wallets/{userId} {

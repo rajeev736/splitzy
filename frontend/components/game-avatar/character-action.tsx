@@ -53,6 +53,8 @@ export function CharacterAction({
   const sale = isForSale(def)
   const short = !have && sale && !!wallet && balance < def.price
   const busy = buy.isPending || wear.isPending || claim.isPending
+  // Put on while it was free (it stays on): you can still buy or claim it, to keep it once you switch
+  const playing = wearing && (have || (!sale && !claimable))
 
   const use = () =>
     wear.mutate(
@@ -91,14 +93,14 @@ export function CharacterAction({
   return (
     <div className={cn("flex w-full flex-col gap-1.5", className)}>
       <Button
-        variant={wearing ? "secondary" : have ? "outline" : "default"}
-        disabled={wearing || busy || (!claimable && (short || (!have && !wallet)))}
+        variant={playing ? "secondary" : have ? "outline" : "default"}
+        disabled={playing || busy || (!claimable && (short || (!have && !wallet)))}
         onClick={() => (claimable ? takeReward() : have ? use() : setConfirming(true))}
         className="w-full"
       >
         {busy ? (
           <Spinner />
-        ) : wearing ? (
+        ) : playing ? (
           <>
             <HugeiconsIcon icon={Tick02Icon} data-icon="inline-start" />
             Playing as {def.name}
@@ -115,6 +117,11 @@ export function CharacterAction({
           </>
         )}
       </Button>
+      {wearing && !playing && sale && (
+        <p className="text-center text-xs text-muted-foreground">
+          You picked {def.name} while it was free — it stays while you play as it. Buy it to keep it if you switch.
+        </p>
+      )}
       {/* A legend that's sold and earned: the other way in */}
       {!have && !claimable && achievement && progress && (
         <p className="text-center text-xs text-muted-foreground">

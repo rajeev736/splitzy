@@ -1,12 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
+import Link from "next/link"
+import { ArrowLeft01Icon, ArrowRight01Icon, LockIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { FilterPills } from "@/app/(dashboard)/_components/filter-pills"
 import { Coins } from "@/components/fun/coin"
 import { FramedAvatar } from "@/components/fun/framed-avatar"
+import { LEVELS_HREF } from "@/components/game-avatar/level-road"
 import { announceUnlock, gameToast } from "@/components/rewards/reward-notice"
 import { BottomSheet } from "@/components/shared/bottom-sheet"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
@@ -14,12 +16,14 @@ import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { useBuyFrame, useEquipFrame } from "@/hooks/use-fun-mutations"
 import { getErrorMessage } from "@/lib/errors"
+import { levelInfo } from "@/lib/live/levels"
 import {
   FRAME_CATEGORIES,
   FRAME_IDS,
   FRAMES,
   isFrameId,
   isFreeFrame,
+  isLevelFrame,
   isMilestoneFrame,
   MILESTONE_LABEL,
   ownsFrame,
@@ -34,6 +38,9 @@ export type FrameFilter = "all" | "owned" | "store" | "earn"
 export type InventoryUser = Pick<UserProfile, "uid" | "displayName" | "photoURL" | "frame" | "gameAvatar">
 
 const fmt = new Intl.NumberFormat("en-IN")
+
+/** In the store: not a milestone's or a level's prize (those are only ever earned). */
+const isSold = (id: FrameId) => !isMilestoneFrame(id) && !isLevelFrame(id)
 
 /** Frames: every one in the app, on your own photo. Tap one to try it on, then wear, buy or claim it. */
 export function FramesTab({
@@ -54,16 +61,16 @@ export function FramesTab({
 
   const counts = {
     owned: FRAME_IDS.filter((id) => ownsFrame(id, owned)).length,
-    store: FRAME_IDS.filter((id) => !isMilestoneFrame(id) && !ownsFrame(id, owned)).length,
-    earn: FRAME_IDS.filter(isMilestoneFrame).length,
+    store: FRAME_IDS.filter((id) => isSold(id) && !ownsFrame(id, owned)).length,
+    earn: FRAME_IDS.filter((id) => !isSold(id)).length,
   }
   const shown = FRAME_IDS.filter((id) =>
     filter === "owned"
       ? ownsFrame(id, owned)
       : filter === "store"
-        ? !isMilestoneFrame(id) && !ownsFrame(id, owned)
+        ? isSold(id) && !ownsFrame(id, owned)
         : filter === "earn"
-          ? isMilestoneFrame(id)
+          ? !isSold(id)
           : true
   )
   // In the store, cheapest first
@@ -182,6 +189,17 @@ function FrameStatus({ id, wallet, wearing }: { id: FrameId; wallet: Wallet | nu
   if (wearing) return <span className="font-medium text-primary">Wearing</span>
   if (isFreeFrame(id)) return <>Free</>
   if (wallet?.frames.includes(id)) return <>Owned</>
+  const level = FRAMES[id].level
+  if (level) {
+    // A level's prize: never a price, just the level (Claim once you're there — on the Levels road)
+    if (levelInfo(wallet).level >= level) return <span className="font-semibold text-primary">Claim</span>
+    return (
+      <span className="inline-flex items-center gap-1 font-medium">
+        <HugeiconsIcon icon={LockIcon} className="size-3" />
+        Reach level {level}
+      </span>
+    )
+  }
   const goal = milestoneProgress(wallet, id)
   if (goal) {
     if (goal.done) return <span className="font-semibold text-primary">Claim</span>
@@ -228,6 +246,8 @@ function FrameSheet({
   const has = ownsFrame(id, owned)
   const balance = wallet?.balance ?? 0
   const progress = milestoneProgress(wallet, id)
+  const prize = info.level
+  const reached = !!prize && levelInfo(wallet).level >= prize
   const at = order.indexOf(id)
   const busy = buy.isPending || equip.isPending || claiming
   const category = FRAME_CATEGORIES.find((c) => c.id === info.category)?.label
@@ -270,9 +290,11 @@ function FrameSheet({
         ? isFreeFrame(id)
           ? "Free for everyone"
           : "Owned"
-        : progress
-          ? MILESTONE_LABEL[progress.stat](progress.goal)
-          : "Try it on, then buy it with coins"
+        : prize
+          ? `Level ${prize} reward · never sold`
+          : progress
+            ? MILESTONE_LABEL[progress.stat](progress.goal)
+            : "Try it on, then buy it with coins"
 
   const action =
     id === wearing ? (
@@ -284,6 +306,18 @@ function FrameSheet({
         {equip.isPending && <Spinner />}
         Wear {info.name}
       </Button>
+    ) : prize ? (
+      // A level's prize: only by reaching the level, claimed on the Levels road
+      reached ? (
+        <Link href={LEVELS_HREF} className="gu-btn gu-yellow h-11 w-full">
+          Claim it on Levels
+        </Link>
+      ) : (
+        <Button className="h-11 w-full" variant="outline" disabled>
+          <HugeiconsIcon icon={LockIcon} data-icon="inline-start" />
+          Reach level {prize} to unlock
+        </Button>
+      )
     ) : progress ? (
       // Milestone frames are earned, never bought
       progress.done ? (

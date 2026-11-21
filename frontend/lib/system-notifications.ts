@@ -35,7 +35,13 @@ export function notificationHref(n: AppNotification): string {
   if (d?.roomCode) return `/play/${d.roomCode}`
   if (d?.challengeId) return `/challenges/${d.challengeId}`
   if (n.type === "PAYMENT_REMINDER" && d?.awaitingConfirm && d.actorId) return `/friends/${d.actorId}`
-  if (n.type === "BADGE") return d?.frame ? "/games/inventory#milestones" : "/profile#badges"
+  if (n.type === "BADGE") {
+    if (d?.frame) return "/games/inventory#milestones"
+    // A play streak badge (streak_<days>): it lives on the Games side
+    return d?.badge?.startsWith("streak_") ? "/games/inventory#badges" : "/profile#badges"
+  }
+  // Your play streak ends at midnight: one game keeps it
+  if (n.type === "STREAK_REMINDER") return "/games"
   if ((n.type === "MOMENT" || n.type.startsWith("PLAN") || n.type.startsWith("BOND")) && d?.actorId) return `/friends/${d.actorId}`
   if (n.type === "FRIEND_REQUEST") return "/friends/requests"
   if (n.type.startsWith("FRIEND")) return "/friends"

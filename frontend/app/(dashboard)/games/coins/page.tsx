@@ -5,7 +5,9 @@ import { useRouter } from "nextjs-toploader/app"
 import {
   Award01Icon,
   Backpack01Icon,
+  CalendarCheckIn01Icon,
   CrownIcon,
+  FireIcon,
   GameController03Icon,
   GiftIcon,
   RotateLeft01Icon,
@@ -36,6 +38,9 @@ const KIND: Record<CoinTx["kind"], { icon: typeof GiftIcon; face: string; base: 
   throw: { icon: GameController03Icon, face: "#ff8a3d", base: "#d9601c" },
   avatar: { icon: SparklesIcon, face: "#e879f9", base: "#b23fc4" },
   level: { icon: Award01Icon, face: "#ffcd3c", base: "#d99a0b" },
+  stock: { icon: Backpack01Icon, face: "#22c3a6", base: "#118b75" },
+  daily: { icon: CalendarCheckIn01Icon, face: "#4f8ff7", base: "#2f63cf" },
+  streak: { icon: FireIcon, face: "#ff6b3d", base: "#d4431a" },
 }
 
 function day(iso: string, now: number) {

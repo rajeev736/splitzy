@@ -3,6 +3,7 @@
 import * as React from "react"
 
 import type { LudoState } from "@/lib/live/ludo"
+import { diceSettlesInMs } from "../dice-settle"
 
 /** Token positions per player as drawn on the board — lags the real state while a move animates. */
 export type Positions = Record<string, number[]>
@@ -49,7 +50,8 @@ function buildFrames(from: Positions | null, state: LudoState): Frame[] {
   // The board doesn't show where this move starts (joined mid-game, skipped a state): don't guess
   if (from[last.by]?.[last.token] !== last.from) return snap
 
-  const frames: Frame[] = []
+  // First a hold where it stands: the walk sets off once the dice has settled (see below)
+  const frames: Frame[] = [{ positions: from, ms: 0 }]
   const path =
     last.from < 0
       ? [0]
@@ -88,12 +90,14 @@ export function useLudoAnimation(state: LudoState | null | undefined) {
   }
   React.useEffect(() => {
     if (!anim || anim.step >= anim.frames.length - 1) return
+    // The piece never sets off while the dice is still turning
+    const wait = anim.step === 0 ? diceSettlesInMs() : 0
     const id = window.setTimeout(
       () =>
         setAnim((a) =>
           a && a.seq === anim.seq ? { ...a, step: a.step + 1 } : a
         ),
-      anim.frames[anim.step].ms
+      anim.frames[anim.step].ms + wait
     )
     return () => window.clearTimeout(id)
   }, [anim])

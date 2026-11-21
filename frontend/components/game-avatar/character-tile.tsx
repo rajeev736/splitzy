@@ -8,7 +8,7 @@ import type { CharacterDef, CharacterMode } from "./types"
 type Shape = "circle" | "card" | "square"
 const ROUND: Record<Shape, string> = { circle: "rounded-full", card: "rounded-[22%]", square: "" }
 
-const TIER_LABEL = { basic: "Free", premium: "Premium", legend: "Legend" } as const
+const TIER_LABEL = { basic: "Classic", premium: "Premium", legend: "Legend" } as const
 
 /**
  * One character's art on its accent colour, from the def itself — for the
@@ -94,7 +94,7 @@ function useReducedMotion() {
   return React.useSyncExternalStore(subscribe, () => window.matchMedia(query).matches, () => false)
 }
 
-/** Free · Premium · Legend, as a small pill. */
+/** Free (or Classic, the still ones with a price) · Premium · Legend, as a small pill. */
 export function TierChip({ def, className }: { def: CharacterDef; className?: string }) {
   return (
     <span
@@ -108,7 +108,7 @@ export function TierChip({ def, className }: { def: CharacterDef; className?: st
         className
       )}
     >
-      {TIER_LABEL[def.tier]}
+      {def.price === 0 && !def.earn ? "Free" : TIER_LABEL[def.tier]}
     </span>
   )
 }

@@ -204,7 +204,7 @@ export const MIMI: CharacterDef = {
   name: "Mimi",
   tagline: "Cute ears, sharper claws",
   tier: "premium",
-  price: 2500,
+  price: 0, // level 7 only: never sold
   earn: { level: 7 },
   accent: ACCENT,
   Art,

@@ -8,6 +8,7 @@ import { FramedAvatar } from "@/components/fun/framed-avatar"
 import { CharacterTile } from "@/components/game-avatar/character-tile"
 import { rewardName, type Reward } from "@/components/game-avatar/ownership"
 import type { CharacterDef } from "@/components/game-avatar/types"
+import { isGamesSideShowing } from "@/components/game-ui/games-side"
 import { GameButton, GamePanel } from "@/components/game-ui/kit"
 import { useSession } from "@/components/providers/session-provider"
 import type { FrameId } from "@/lib/fun/catalog"
@@ -184,10 +185,9 @@ export function announceUnlock({
   })
 }
 
-/** Whether a Games screen is showing right now (a full-page `.gu` sky). */
+/** Whether a Games screen is showing right now (a mounted GameScreen, see game-ui/games-side). */
 export function onGamesSide(): boolean {
-  if (typeof document === "undefined") return false
-  return !!document.querySelector(".gu.gu-sky.min-h-svh")
+  return isGamesSideShowing()
 }
 
 /* ── Host ──────────────────────────────────────────────────────────── */

@@ -9,12 +9,16 @@ import type { Achievement } from "./achievements"
  *
  *   XP = games played × 10 + games won × 30   (a win is worth 40, any other game 10)
  *
- * Level n needs `levelXp(n)`: each level takes 30 XP more than the one before
- * (40, 70, 100, …), so the first few come in a game or two and the later ones
- * take a few dozen.
+ * Level n needs `levelXp(n)` = 35m + 3m² + 2m³ XP in all (m = n - 1): the
+ * first few come in a handful of games (level 2 is one win, level 4 about ten
+ * games), then every step grows — around 140 games for level 10, a thousand
+ * for 20, and level 30 is months of regular play (see the table in
+ * lib/live/__tests__/levels.test.ts).
  *
  * Some levels give rewards: a frame and/or coins (LEVEL_REWARDS) and the game
- * characters whose `earn.level` names them (components/game-avatar). A level
+ * characters whose `earn.level` names them (components/game-avatar). Those
+ * frames and characters are never sold — reaching the level is the only way
+ * to get them (catalog `level`, price 0; not in the rules' price maps). A level
  * works like an achievement with the id `lv<n>` (achievementById), so its
  * rewards are claimed the same way (`earn:lv<n>:<item>`); coins come once
  * each, listed in the wallet's `levelCoins`.
@@ -27,8 +31,11 @@ export const XP_PLAY = 10
 export const XP_WIN = 30
 export const MAX_LEVEL = 30
 
-/** Total XP that level `n` needs (level 1 = 0). */
-export const levelXp = (n: number) => 40 * (n - 1) + 15 * (n - 1) * (n - 2)
+/** Total XP that level `n` needs (level 1 = 0). The rules compute it the same way: `m * (35 + m * (3 + 2 * m))`. */
+export const levelXp = (n: number) => {
+  const m = n - 1
+  return m * (35 + m * (3 + 2 * m))
+}
 
 type Counters = Pick<Wallet, "livePlayed" | "liveWins"> | null | undefined
 
@@ -54,7 +61,11 @@ const TITLES: { from: number; title: string }[] = [
 ]
 export const levelTitle = (n: number) => TITLES.find((t) => n >= t.from)!.title
 
-/** Where you stand: the level, its title and the XP into it (`need` = 0 at the top). */
+/**
+ * Where you stand: the level, its title and the XP into it (`need` = 0 at the
+ * top). Always from the counters, never a stored level — so a curve change
+ * can't leave anyone past their level (rewards already claimed simply stay).
+ */
 export function levelInfo(wallet: Counters) {
   const xp = liveXp(wallet)
   const level = levelOf(xp)
@@ -69,7 +80,7 @@ export const xpFor = (won: boolean) => XP_PLAY + (won ? XP_WIN : 0)
 
 export interface LevelReward {
   level: number
-  /** A frame (lib/fun/catalog): sold ones are free here, they're a level's prize. */
+  /** A frame (lib/fun/catalog, marked with this level): never sold — reaching the level is the only way to get it. */
   frame?: FrameId
   /** Coins, given once. */
   coins?: number

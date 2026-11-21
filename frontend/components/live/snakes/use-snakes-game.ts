@@ -23,7 +23,7 @@ import { stateTransaction } from "@/services/live-rooms"
 
 const ts = () => serverTimestamp() as unknown as number
 /** Let the last move play out before the results screen takes over. */
-const END_DELAY_MS = 2200
+const END_DELAY_MS = 2900
 
 /**
  * Everything a Snakes & Ladders screen needs, shared by the flat board and

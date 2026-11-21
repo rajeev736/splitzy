@@ -40,14 +40,30 @@ export async function pushToPhones(app: App, notif: Pick<AppNotification, "id" |
   return res.successCount
 }
 
-/** Writes a notification (as the server) and pushes it to their phones. */
+/**
+ * Writes a notification (as the server) and pushes it to their phones.
+ * With a fixed `id` it's sent once: if that notification already exists,
+ * nothing happens (returns false).
+ */
 export async function notifyFromServer(
   app: App,
-  input: Pick<AppNotification, "userId" | "title" | "message" | "type" | "data">
-): Promise<void> {
+  input: Pick<AppNotification, "userId" | "title" | "message" | "type" | "data">,
+  opts: { id?: string } = {}
+): Promise<boolean> {
   const db = getFirestore(app)
-  const id = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${input.userId}`
+  const id = opts.id ?? `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${input.userId}`
   const notif = { ...input, id, read: false, createdAt: new Date().toISOString(), pushedAt: new Date().toISOString() }
-  await db.doc(`notifications/${id}`).set(notif)
+  if (opts.id) {
+    const created = await db
+      .doc(`notifications/${id}`)
+      .create(notif)
+      .then(() => true)
+      // 6 = ALREADY_EXISTS: sent before
+      .catch((e: { code?: number }) => (e?.code === 6 ? false : Promise.reject(e)))
+    if (!created) return false
+  } else {
+    await db.doc(`notifications/${id}`).set(notif)
+  }
   await pushToPhones(app, notif).catch(() => 0)
+  return true
 }

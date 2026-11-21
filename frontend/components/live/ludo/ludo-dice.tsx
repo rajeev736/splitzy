@@ -4,6 +4,7 @@ import * as React from "react"
 import gsap from "gsap"
 
 import { cn } from "@/lib/utils"
+import { markDiceLanding } from "../dice-settle"
 
 /** Which of the 9 grid spots carry a pip, per face. */
 const PIPS: Record<number, number[]> = {
@@ -44,6 +45,8 @@ const clampFace = (v: number | null | undefined) =>
 const TUMBLE_S = 0.45
 /** How long a landing takes (s). */
 const LAND_S = 0.7
+/** How long a roll that wasn't tumbling (someone else's) takes to land (s). */
+const ROLL_S = 0.85
 
 /**
  * Brings the cube to rest on `face`. A roll lands with a spin and a hop; one
@@ -75,7 +78,7 @@ function landOn(cube: HTMLDivElement, hop: HTMLDivElement | null, face: number, 
   gsap.to(cube, {
     rotationX: endX,
     rotationY: endY,
-    duration: fromTumble ? LAND_S : isRoll ? 0.85 : 0.35,
+    duration: fromTumble ? LAND_S : isRoll ? ROLL_S : 0.35,
     ease: fromTumble ? "power2.out" : isRoll ? "power3.out" : "power2.out",
     overwrite: true,
   })
@@ -180,6 +183,16 @@ export function LudoDice({
     // The face is read when it settles
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rolling, size])
+
+  // A new roll: tell the boards when it will be at rest, before their effects
+  // of this render run — the piece waits for the dice (see dice-settle). Its
+  // last few degrees are too slight to see, so it counts as settled a touch early.
+  const markedSpin = React.useRef<number | null>(spin)
+  React.useLayoutEffect(() => {
+    if (spin === null || spin === markedSpin.current) return
+    markedSpin.current = spin
+    markDiceLanding(tumbling.current ? LAND_S * 0.85 : ROLL_S * 0.8)
+  }, [spin])
 
   // A new roll (or a new resting face): land on it
   React.useEffect(() => {

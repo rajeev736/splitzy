@@ -5,6 +5,7 @@ import { useMutation } from "@tanstack/react-query"
 import { useSession } from "@/components/providers/session-provider"
 import { AppError } from "@/lib/errors"
 import type { BondId, FrameId, MoodId } from "@/lib/fun/catalog"
+import type { StockItem } from "@/lib/fun/stock"
 import { chooseTheme, type BoardTheme } from "@/lib/live/themes"
 import type { Friendship, Moment } from "@/lib/types"
 import * as fun from "@/services/fun"
@@ -70,6 +71,14 @@ export function useBuyTheme() {
       await fun.buyTheme(me().uid, theme.id)
       chooseTheme(theme.game, theme.id)
     },
+  })
+}
+
+/** Buys a throwable or a gift ahead, `count` at a time (lib/fun/stock). */
+export function useBuyStock() {
+  const me = useUser()
+  return useMutation({
+    mutationFn: (v: { item: StockItem; count: number }) => fun.buyStock(me().uid, v.item, v.count),
   })
 }
 

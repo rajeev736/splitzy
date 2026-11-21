@@ -89,9 +89,11 @@ async function startHosted(
   if (meta.status !== "lobby" && meta.status !== "countdown") return { ok: false, status: 409, reason: "already started" }
   if (!canStart(meta, players)) return { ok: false, status: 409, reason: "not enough players" }
   if (!players.some((p) => p.uid === uid && !p.left)) return { ok: false, status: 403, reason: "not seated" }
-  // Claim the start (two devices may ask at once)
+  // Claim the start (two devices may ask at once). A transaction's first run sees
+  // null before the real value has loaded: pass it through (it's retried with the
+  // real value) — aborting there would refuse every start as "already started".
   const claim = await db.ref(`rooms/${code}/meta/status`).transaction((s: string | null) =>
-    s === "lobby" || s === "countdown" ? "playing" : undefined
+    s === null ? s : s === "lobby" || s === "countdown" ? "playing" : undefined
   )
   if (!claim.committed) return { ok: false, status: 409, reason: "already started" }
   const seated = players.filter((p) => !p.left && p.seat < meta.maxPlayers).sort((a, b) => a.seat - b.seat || a.joinedAt - b.joinedAt)
@@ -122,8 +124,9 @@ async function publish(db: ReturnType<typeof getDatabase>, code: string, meta: R
   )
   const result = step.state.result
   if (result && meta.status !== "ended") {
+    // (null on the first run, before the meta has loaded: passed through and retried, as above)
     await room.child("meta").transaction((m: RoomMeta | null) =>
-      !m || m.status === "ended" ? undefined : { ...m, status: "ended", endedAt: Date.now(), result }
+      m === null ? m : m.status === "ended" ? undefined : { ...m, status: "ended", endedAt: Date.now(), result }
     )
     // The game is over: the server's own copy (the deck, the layout) isn't needed any more
     await db.ref(`hosted/${code}`).remove().catch(() => undefined)

@@ -7,12 +7,13 @@ import type { PowerKind } from "./ludo"
  * their turn before rolling; it never fizzles out.
  *
  * Data only (no React, no art) so the engine stays plain TS. The room entry's
- * `avatar` is self-reported, so nothing here may be worth faking: every kind
- * is also given by a free basic character (two each), and a premium or legend
- * character's power is never stronger than a free one's.
+ * `avatar` is self-reported, so little here is worth faking: every kind is
+ * also given by a basic character (two each; Foxy and Bao free, the rest a
+ * few coins), and a premium or legend character's power is never stronger
+ * than a basic one's.
  */
 export const CHARACTER_POWER: Record<string, PowerKind> = {
-  // Basic (free): two of each kind
+  // Basic (free or cheap): two of each kind
   foxy: "jump", // quick paws
   hoppy: "jump", // a frog hops
   waddles: "freeze", // cool as ice

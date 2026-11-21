@@ -20,8 +20,9 @@ import { GameNavSpacer, useGameTabBack } from "@/components/game-nav/game-bottom
 import { GAME_ROUTES } from "@/components/game-nav/items"
 import { useSession } from "@/components/providers/session-provider"
 import { gameToast } from "@/components/rewards/reward-notice"
+import { StreakCard } from "@/components/streak/streak-card"
 import { Spinner } from "@/components/ui/spinner"
-import { useWallet } from "@/hooks/use-fun"
+import { useBadges, useWallet } from "@/hooks/use-fun"
 import { useEquipFrame, useSetGameAvatar } from "@/hooks/use-fun-mutations"
 import { FRAME_IDS, FRAMES, isFrameId, ownsFrame, type FrameId } from "@/lib/fun/catalog"
 import { gameNameOf } from "@/lib/game-name"
@@ -44,6 +45,8 @@ const fmt = new Intl.NumberFormat("en-IN")
 export default function GameProfilePage() {
   const { user } = useSession()
   const wallet = useWallet()
+  // Only which badge docs exist, for the streak badges
+  const badges = useBadges(user?.uid)
   const back = useGameTabBack()
   const [naming, setNaming] = React.useState(false)
   const [sheet, setSheet] = React.useState<{ def: CharacterDef; open: boolean } | null>(null)
@@ -57,6 +60,19 @@ export default function GameProfilePage() {
       <GameTopBar title="Profile" subtitle="You in games" onBack={back} right={<GameCoinChip />} />
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 pt-2 pb-4">
         <Hero user={user} wallet={wallet} def={def} onRename={() => setNaming(true)} onCharacter={openCharacter} />
+        <section className="flex flex-col gap-3">
+          <GameSectionTitle
+            action={
+              <Link href={`${GAME_ROUTES.inventory}#badges`} className="gu-chip h-8 !px-3 text-xs active:translate-y-px">
+                All badges
+                <HugeiconsIcon icon={ArrowRight01Icon} className="size-3.5" strokeWidth={2.6} />
+              </Link>
+            }
+          >
+            Play streak
+          </GameSectionTitle>
+          <StreakCard wallet={wallet} earnedIds={badges?.ids} variant="profile" />
+        </section>
         <LevelCard user={user} wallet={wallet} />
         <CharacterPicker user={user} wallet={wallet} onOpen={openCharacter} />
         <FramePicker user={user} wallet={wallet} />

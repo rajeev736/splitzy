@@ -5,6 +5,7 @@ import gsap from "gsap"
 import { toast } from "sonner"
 
 import { Coins } from "@/components/fun/coin"
+import { StockBadge } from "@/components/fun/stock-badge"
 import { CharStickerFlight } from "@/components/game-avatar/stickers/flight"
 import { CHAR_STICKER_GAP_MS, charStickerId, charStickerOf, paced } from "@/components/game-avatar/stickers/registry"
 import { SignaturePicker } from "@/components/game-avatar/stickers/ui"
@@ -14,8 +15,10 @@ import { Spinner } from "@/components/ui/spinner"
 import { serverNow, useRoomChildren, useRoomNode } from "@/hooks/use-live-room"
 import { useWallet } from "@/hooks/use-fun"
 import { getErrorMessage } from "@/lib/errors"
+import { stockOf } from "@/lib/fun/stock"
 import { THROW_PREFIX, THROWABLE_IDS, THROWABLES, throwableOf, type ThrowableId } from "@/lib/live/throwables"
 import type { Reaction, RoomPlayer } from "@/lib/live/types"
+import type { Wallet } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { playSound, type SoundEvent } from "@/lib/live/sound"
 import { payForThrow } from "@/services/fun"
@@ -261,68 +264,69 @@ export function ThrowPicker({
       <div className="flex flex-col gap-3 pb-2">
         {mine && <SignaturePicker character={mine} readyAt={readyAt} busy={sending} onSend={(n) => void sendSignature(n)} />}
         <div className="grid grid-cols-4 gap-2">
-          {THROWABLE_IDS.filter((id) => !THROWABLES[id].vip).map((id) => {
-            const item = THROWABLES[id]
-            const short = (wallet?.balance ?? 0) < item.price
-            return (
-              <button
-                key={id}
-                type="button"
-                disabled={!!busy || short}
-                onClick={() => void throwIt(id)}
-                className={cn(
-                  "relative flex flex-col items-center gap-1 rounded-xl border px-1 pt-2.5 pb-2 transition-[transform,background-color] active:scale-95 disabled:opacity-45",
-                  "bg-card",
-                  busy === id && "border-primary"
-                )}
-              >
-                {busy === id ? (
-                  <span className="flex size-11 items-center justify-center">
-                    <Spinner className="size-5" />
-                  </span>
-                ) : (
-                  <ThrowableArt id={id} className="size-11" />
-                )}
-                <span className="line-clamp-1 text-[11px] font-medium">{item.name}</span>
-                <Coins amount={item.price} className="text-[11px]" iconClassName="size-3" />
-              </button>
-            )
-          })}
+          {THROWABLE_IDS.filter((id) => !THROWABLES[id].vip).map((id) => (
+            <ThrowTile key={id} id={id} wallet={wallet} busy={busy} onThrow={(i) => void throwIt(i)} />
+          ))}
         </div>
         <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
           VIP <span className="font-normal text-muted-foreground">— big, loud, and seen by everyone</span>
         </p>
         <div className="grid grid-cols-4 gap-2">
-          {THROWABLE_IDS.filter((id) => THROWABLES[id].vip).map((id) => {
-            const item = THROWABLES[id]
-            const short = (wallet?.balance ?? 0) < item.price
-            return (
-              <button
-                key={id}
-                type="button"
-                disabled={!!busy || short}
-                onClick={() => void throwIt(id)}
-                className={cn(
-                  "relative flex flex-col items-center gap-1 rounded-xl border px-1 pt-2.5 pb-2 transition-[transform,background-color] active:scale-95 disabled:opacity-45",
-                  "border-amber-400/60 bg-gradient-to-b from-amber-100 to-amber-50 dark:from-amber-500/20 dark:to-amber-500/5",
-                  busy === id && "border-primary"
-                )}
-              >
-                {busy === id ? (
-                  <span className="flex size-11 items-center justify-center">
-                    <Spinner className="size-5" />
-                  </span>
-                ) : (
-                  <ThrowableArt id={id} className="size-11" />
-                )}
-                <span className="line-clamp-1 text-[11px] font-medium">{item.name}</span>
-                <Coins amount={item.price} className="text-[11px]" iconClassName="size-3" />
-              </button>
-            )
-          })}
+          {THROWABLE_IDS.filter((id) => THROWABLES[id].vip).map((id) => (
+            <ThrowTile key={id} id={id} wallet={wallet} busy={busy} onThrow={(i) => void throwIt(i)} />
+          ))}
         </div>
+        <p className="text-center text-[11px] text-muted-foreground">
+          The green count is what you have — those go first, no coins. Buy more in bulk from your inventory.
+        </p>
       </div>
     </BottomSheet>
+  )
+}
+
+/** One throwable: the ones you have (bought ahead) go first and show their count; else its price in coins. */
+function ThrowTile({
+  id,
+  wallet,
+  busy,
+  onThrow,
+}: {
+  id: ThrowableId
+  wallet: Wallet | null | undefined
+  busy: ThrowableId | null
+  onThrow: (id: ThrowableId) => void
+}) {
+  const item = THROWABLES[id]
+  const have = stockOf(wallet, { kind: "t", id })
+  const short = !have && (wallet?.balance ?? 0) < item.price
+  return (
+    <button
+      type="button"
+      disabled={!!busy || short}
+      onClick={() => onThrow(id)}
+      aria-label={have ? `${item.name}, ${have} left` : `${item.name}, ${item.price} coins`}
+      className={cn(
+        "relative flex flex-col items-center gap-1 rounded-xl border px-1 pt-2.5 pb-2 transition-[transform,background-color] active:scale-95 disabled:opacity-45",
+        item.vip ? "border-amber-400/60 bg-gradient-to-b from-amber-100 to-amber-50 dark:from-amber-500/20 dark:to-amber-500/5" : "bg-card",
+        have > 0 && "border-emerald-500/60",
+        busy === id && "border-primary"
+      )}
+    >
+      <StockBadge count={have} className="top-1 left-1" />
+      {busy === id ? (
+        <span className="flex size-11 items-center justify-center">
+          <Spinner className="size-5" />
+        </span>
+      ) : (
+        <ThrowableArt id={id} className="size-11" />
+      )}
+      <span className="line-clamp-1 text-[11px] font-medium">{item.name}</span>
+      {have > 0 ? (
+        <span className="text-[11px] font-bold text-emerald-600 tabular-nums dark:text-emerald-400">{have} left</span>
+      ) : (
+        <Coins amount={item.price} className="text-[11px]" iconClassName="size-3" />
+      )}
+    </button>
   )
 }
 

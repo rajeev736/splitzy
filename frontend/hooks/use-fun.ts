@@ -114,7 +114,8 @@ export function useBadges(uid: string | undefined, loveBonds = 0) {
   return React.useMemo(() => {
     if (!events) return undefined
     const counts: Record<BadgeId, number> = { earlybird: 0, swift: 0, champ: 0, bigheart: 0, lovebird: loveBonds }
-    for (const e of events) if (e.type in counts) counts[e.type] += 1
+    // Streak badges (type "streak") aren't counted here: one each, by days (lib/live/streak)
+    for (const e of events) if (e.type in counts) counts[e.type as BadgeId] += 1
     const summary: BadgeSummary[] = BADGE_IDS.map((id) => ({ id, count: counts[id], tier: badgeTier(id, counts[id]) }))
     const earlyBird = events.find((e) => e.type === "earlybird")?.i
     return { summary, ids: new Set(events.map((e) => e.id)), earlyBird }

@@ -5,6 +5,7 @@ import { toast } from "sonner"
 
 import { Coins } from "@/components/fun/coin"
 import { GiftArt } from "@/components/fun/gift-art"
+import { StockBadge } from "@/components/fun/stock-badge"
 import { MomentArt } from "@/components/fun/moment-art"
 import { BottomSheet } from "@/components/shared/bottom-sheet"
 import { Button } from "@/components/ui/button"
@@ -27,6 +28,7 @@ import {
   type PlanKind,
 } from "@/lib/fun/catalog"
 import type { Burst } from "@/lib/fun/burst"
+import { stockOf } from "@/lib/fun/stock"
 import type { UserProfile } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -88,7 +90,9 @@ export function GiftSheet({
   const first = friend.displayName.split(" ")[0]
   const balance = wallet?.balance ?? 0
   const price = GIFTS[gift].price
-  const short = wallet !== undefined && balance < price
+  // Gifts bought ahead (the inventory) go first: no coins
+  const have = stockOf(wallet, { kind: "g", id: gift })
+  const short = wallet !== undefined && !have && balance < price
 
   const submit = () =>
     send.mutate(
@@ -97,7 +101,12 @@ export function GiftSheet({
         onSuccess: () => {
           onOpenChange(false)
           setNote("")
-          onSent({ kind: "gift", gift, title: `${GIFTS[gift].name} sent to ${first}`, subtitle: `−${price} coins` })
+          onSent({
+            kind: "gift",
+            gift,
+            title: `${GIFTS[gift].name} sent to ${first}`,
+            subtitle: have ? (have - 1 ? `${have - 1} left in your inventory` : "That was your last one") : `−${price} coins`,
+          })
         },
       }
     )
@@ -109,7 +118,7 @@ export function GiftSheet({
       title={`Send ${first} a gift`}
       header={
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>Paid with coins</span>
+          <span>Yours first, then coins</span>
           <span>
             You have <Coins amount={balance} className="text-foreground" iconClassName="size-3.5" />
           </span>
@@ -118,12 +127,20 @@ export function GiftSheet({
       footer={
         <Button className="w-full" disabled={send.isPending || short || wallet === undefined} onClick={submit}>
           {send.isPending && <Spinner />}
-          {short ? `${price - balance} more coins needed` : <>Send {GIFTS[gift].name.toLowerCase()} · <Coins amount={price} iconClassName="size-3.5" /></>}
+          {short ? (
+            `${price - balance} more coins needed`
+          ) : have ? (
+            <>Send {GIFTS[gift].name.toLowerCase()} · 1 of your {have}</>
+          ) : (
+            <>Send {GIFTS[gift].name.toLowerCase()} · <Coins amount={price} iconClassName="size-3.5" /></>
+          )}
         </Button>
       }
     >
       <div className="grid grid-cols-4 gap-2 pb-3" role="radiogroup" aria-label="Gift">
-        {GIFT_IDS.map((id) => (
+        {GIFT_IDS.map((id) => {
+          const left = stockOf(wallet, { kind: "g", id })
+          return (
           <button
             key={id}
             type="button"
@@ -131,15 +148,21 @@ export function GiftSheet({
             aria-checked={gift === id}
             onClick={() => setGift(id)}
             className={cn(
-              "flex min-w-0 flex-col items-center gap-1 rounded-xl border px-1 pt-2 pb-2 transition-colors",
+              "relative flex min-w-0 flex-col items-center gap-1 rounded-xl border px-1 pt-2 pb-2 transition-colors",
               gift === id ? "border-primary bg-primary/5" : "hover:bg-muted/60"
             )}
           >
+            <StockBadge count={left} className="top-1 left-1" />
             <GiftArt gift={id} animate={gift === id} className="size-12" />
             <span className="w-full truncate text-center text-[11px] font-medium">{GIFTS[id].name}</span>
-            <Coins amount={GIFTS[id].price} className="text-[11px] text-muted-foreground" iconClassName="size-3" />
+            {left > 0 ? (
+              <span className="text-[11px] font-bold text-emerald-600 tabular-nums dark:text-emerald-400">{left} left</span>
+            ) : (
+              <Coins amount={GIFTS[id].price} className="text-[11px] text-muted-foreground" iconClassName="size-3" />
+            )}
           </button>
-        ))}
+          )
+        })}
       </div>
       <Input
         value={note}

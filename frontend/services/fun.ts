@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore"
 
 import { AppError } from "@/lib/errors"
+import { STOCK_BUY_MAX, stockKey, stockName, stockOf, stockPrice, type StockItem } from "@/lib/fun/stock"
 import { THROWABLES, type ThrowableId } from "@/lib/live/throwables"
 import { ALL_THEMES } from "@/lib/live/themes"
 import {
@@ -144,17 +145,51 @@ export async function buyFrame(uid: string, frameId: FrameId): Promise<void> {
  * The rules check the price (`throw:<id>:<nonce>`); the throw itself is sent
  * to the room by the caller once this succeeds.
  */
-export async function payForThrow(uid: string, item: ThrowableId, targetName: string): Promise<void> {
+export async function payForThrow(uid: string, item: ThrowableId, targetName: string): Promise<"stock" | "coins"> {
   const price = THROWABLES[item].price
+  const firestore = db()
+  const ref = doc(firestore, "wallets", uid)
+  return runTransaction(firestore, async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists()) throw new AppError("Your coins are still loading — try again in a moment")
+    const wallet = snap.data() as Wallet
+    // One bought ahead (the inventory): taken from those, no coins
+    const left = stockOf(wallet, { kind: "t", id: item })
+    if (left > 0) {
+      tx.update(ref, {
+        [`stock.${stockKey({ kind: "t", id: item })}`]: left - 1,
+        lastTx: `use:t:${item}:${Date.now().toString(36)}`,
+      })
+      return "stock" as const
+    }
+    if (wallet.balance < price) throw new AppError(`You need ${price - wallet.balance} more coins`)
+    tx.update(ref, { balance: wallet.balance - price, lastTx: `throw:${item}:${Date.now().toString(36)}` })
+    const line = coinTx(uid, "throw", -price, `${THROWABLES[item].name} at ${targetName.split(" ")[0]}`, item)
+    tx.set(line.ref, line.data)
+    return "coins" as const
+  })
+}
+
+/**
+ * Buys `count` of a throwable or a gift ahead (the inventory): count × its
+ * price, kept in wallet.stock until used. The rules check the total and the count.
+ */
+export async function buyStock(uid: string, item: StockItem, count: number): Promise<void> {
+  if (!Number.isInteger(count) || count < 1 || count > STOCK_BUY_MAX) throw new AppError(`Pick 1 to ${STOCK_BUY_MAX}`)
+  const total = stockPrice(item) * count
   const firestore = db()
   const ref = doc(firestore, "wallets", uid)
   await runTransaction(firestore, async (tx) => {
     const snap = await tx.get(ref)
     if (!snap.exists()) throw new AppError("Your coins are still loading — try again in a moment")
     const wallet = snap.data() as Wallet
-    if (wallet.balance < price) throw new AppError(`You need ${price - wallet.balance} more coins`)
-    tx.update(ref, { balance: wallet.balance - price, lastTx: `throw:${item}:${Date.now().toString(36)}` })
-    const line = coinTx(uid, "throw", -price, `${THROWABLES[item].name} at ${targetName.split(" ")[0]}`, item)
+    if (wallet.balance < total) throw new AppError(`You need ${total - wallet.balance} more coins`)
+    tx.update(ref, {
+      balance: wallet.balance - total,
+      [`stock.${stockKey(item)}`]: stockOf(wallet, item) + count,
+      lastTx: `buy:${item.kind}:${item.id}:${count}:${Date.now().toString(36)}`,
+    })
+    const line = coinTx(uid, "stock", -total, `${count} × ${stockName(item)}`, stockKey(item))
     tx.set(line.ref, line.data)
   })
 }
@@ -271,13 +306,20 @@ export async function sendMoment(user: UserProfile, friendUid: string, input: Mo
   if (input.type === "gift") {
     const walletRef = doc(firestore, "wallets", user.uid)
     const wallet = await getDoc(walletRef)
-    const balance = wallet.exists() ? (wallet.data() as Wallet).balance : 0
-    if (balance < GIFTS[input.item].price) {
-      throw new AppError(`You need ${GIFTS[input.item].price - balance} more coins — win a game to earn some`)
+    const data = wallet.exists() ? (wallet.data() as Wallet) : null
+    const balance = data?.balance ?? 0
+    const fromStock = { kind: "g", id: input.item } as const
+    if (stockOf(data, fromStock) > 0) {
+      // One bought ahead (the inventory): taken from those, no coins (the rules check it's exactly one)
+      batch.update(walletRef, { [`stock.${stockKey(fromStock)}`]: increment(-1), lastTx: `gift:${fid}:${id}` })
+    } else {
+      if (balance < GIFTS[input.item].price) {
+        throw new AppError(`You need ${GIFTS[input.item].price - balance} more coins — win a game to earn some`)
+      }
+      batch.update(walletRef, { balance: increment(-GIFTS[input.item].price), lastTx: `gift:${fid}:${id}` })
+      const line = coinTx(user.uid, "gift", -GIFTS[input.item].price, `${GIFTS[input.item].name} for ${input.toName ?? "a friend"}`, friendUid)
+      batch.set(line.ref, line.data)
     }
-    batch.update(walletRef, { balance: increment(-GIFTS[input.item].price), lastTx: `gift:${fid}:${id}` })
-    const line = coinTx(user.uid, "gift", -GIFTS[input.item].price, `${GIFTS[input.item].name} for ${input.toName ?? "a friend"}`, friendUid)
-    batch.set(line.ref, line.data)
   }
   try {
     await batch.commit()

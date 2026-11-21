@@ -1,0 +1,458 @@
+/*
+ * The play streak and the daily reward (components/streak): the flame's
+ * flicker, locked medals, the daily track's tiles and the claim moment.
+ * Transform / opacity animations only; all of it stands still with reduced motion.
+ */
+
+/* ── Art ─────────────────────────────────────────────────────────── */
+.stk-flicker {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: stk-flicker 1.6s ease-in-out infinite;
+}
+@keyframes stk-flicker {
+  0%,
+  100% {
+    transform: scale(1, 1) skewX(0deg);
+  }
+  30% {
+    transform: scale(0.96, 1.05) skewX(-2deg);
+  }
+  60% {
+    transform: scale(1.03, 0.97) skewX(1.5deg);
+  }
+}
+.stk-locked {
+  filter: grayscale(1) contrast(0.85) brightness(1.08);
+  opacity: 0.55;
+}
+.stk-shine {
+  animation: stk-shine 3.2s ease-in-out 0.4s infinite;
+}
+@keyframes stk-shine {
+  0% {
+    transform: rotate(20deg) translateX(0);
+  }
+  45%,
+  100% {
+    transform: rotate(20deg) translateX(150px);
+  }
+}
+.stk-seam {
+  animation: stk-seam 1.8s ease-in-out infinite;
+}
+@keyframes stk-seam {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ── The streak card's flame badge ───────────────────────────────── */
+.stk-badge {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  background: radial-gradient(circle at 50% 35%, #fff4cc, #ffd27a 75%);
+  box-shadow:
+    inset 0 -3px 0 #f2a93b,
+    0 3px 0 rgba(160, 80, 10, 0.25);
+}
+.stk-badge[data-out] {
+  background: radial-gradient(circle at 50% 35%, #fafbfd, #e3e6ee 75%);
+  box-shadow:
+    inset 0 -3px 0 #c9cdd8,
+    0 3px 0 rgba(44, 63, 115, 0.16);
+}
+.stk-badge[data-risk] {
+  animation: stk-throb 1.3s ease-in-out infinite;
+}
+@keyframes stk-throb {
+  50% {
+    transform: scale(1.06);
+  }
+}
+.stk-count {
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  min-width: 26px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  padding: 1px 6px 2px;
+  background: #ff6a1f;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  box-shadow:
+    0 0 0 2px #fff,
+    0 2px 0 2px rgba(160, 60, 10, 0.3);
+}
+.stk-badge[data-out] .stk-count {
+  background: #9aa1b2;
+}
+
+/* The milestone progress bar: fire-coloured */
+.stk-bar {
+  position: relative;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--gu-cream-2);
+  box-shadow: inset 0 2px 0 rgba(138, 90, 54, 0.14);
+}
+.stk-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffb02e, #ff6a1f 70%, #f2384a);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.45);
+  transition: width 500ms ease-out;
+}
+
+/* At risk: the warm strip on the hub */
+.stk-risk {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  border-radius: 20px;
+  padding: 10px 10px 10px 12px;
+  color: #fff;
+  background: linear-gradient(135deg, #ff9a3d 0%, #ff5a36 55%, #e8344f 100%);
+  box-shadow:
+    inset 0 -4px 0 rgba(120, 20, 20, 0.28),
+    0 4px 0 #b52a3a,
+    0 10px 20px rgba(150, 30, 40, 0.3);
+}
+.stk-risk::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.08) 0 12px, transparent 12px 24px);
+  pointer-events: none;
+}
+.stk-risk-title {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-shadow: 0 1px 0 rgba(120, 20, 20, 0.45);
+}
+.stk-risk-line {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  opacity: 0.95;
+}
+
+/* ── The daily reward ────────────────────────────────────────────── */
+.ds-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  /* The panel centres itself (margin: auto) and still scrolls on a very short screen */
+  display: flex;
+  justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) 14px max(20px, env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The streak card's chest button */
+.stk-gift {
+  position: relative;
+  flex-shrink: 0;
+}
+.stk-gift > svg {
+  width: 30px;
+  height: 28px;
+}
+.stk-gift[data-ready] > svg {
+  animation: stk-wobble 2.4s ease-in-out infinite;
+  transform-origin: 50% 90%;
+}
+.stk-gift-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--gu-red);
+  box-shadow: 0 0 0 2px #fff;
+}
+@keyframes stk-wobble {
+  0%,
+  60%,
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+  68% {
+    transform: rotate(-9deg) scale(1.08);
+  }
+  76% {
+    transform: rotate(8deg) scale(1.08);
+  }
+  84% {
+    transform: rotate(-5deg) scale(1.04);
+  }
+  92% {
+    transform: rotate(3deg);
+  }
+}
+.ds-scrim {
+  position: fixed;
+  inset: 0;
+  animation: ds-fade 0.25s ease-out both;
+}
+.ds-head {
+  margin-top: 2px;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.05;
+  color: var(--gu-ink);
+}
+.ds-sub {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--gu-ink-soft);
+}
+
+.ds-track {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.ds-tile {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+  min-height: 78px;
+  border-radius: 16px;
+  padding: 6px 2px 7px;
+  background: #fff;
+  box-shadow:
+    inset 0 -3px 0 var(--gu-line),
+    0 3px 0 rgba(44, 63, 115, 0.16);
+}
+.ds-tile[data-big] {
+  grid-column: span 2;
+  flex-direction: row;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: linear-gradient(160deg, #f1e9ff, #e0d0ff);
+  box-shadow:
+    inset 0 -3px 0 #c9b3fb,
+    0 3px 0 rgba(83, 48, 201, 0.25);
+}
+.ds-day {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--gu-brown);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ds-amt {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--gu-ink);
+  font-variant-numeric: tabular-nums;
+}
+.ds-coin {
+  display: flex;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+}
+.ds-coin > svg {
+  width: 26px;
+  height: 26px;
+}
+.ds-coin[data-pile] > svg {
+  width: 22px;
+  height: 22px;
+}
+.ds-coin[data-pile] > svg + svg {
+  margin-left: -12px;
+}
+
+/* Taken: ticked, faded */
+.ds-tile[data-state="done"] {
+  background: var(--gu-cream-2);
+  box-shadow: inset 0 3px 0 rgba(138, 90, 54, 0.1);
+}
+.ds-tile[data-state="done"] > :not(.ds-tick) {
+  opacity: 0.5;
+}
+.ds-tick {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--gu-green);
+  color: #fff;
+  box-shadow:
+    0 0 0 2px #fff,
+    0 2px 0 2px rgba(21, 160, 122, 0.35);
+}
+/* Today: glowing gold, gently breathing */
+.ds-tile[data-state="today"] {
+  z-index: 1;
+  background: linear-gradient(180deg, #fff6cf, #ffd75e);
+  box-shadow:
+    inset 0 -3px 0 #f0a92a,
+    0 0 0 3px #ffb21f,
+    0 3px 0 3px #d98a0b;
+  animation: ds-breathe 1.6s ease-in-out infinite;
+}
+.ds-tile[data-big][data-state="today"] {
+  background: linear-gradient(160deg, #fff6cf, #ffd75e);
+}
+.ds-tile[data-state="today"]::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 19px;
+  box-shadow: 0 0 18px 4px rgba(255, 190, 40, 0.75);
+  opacity: 0.6;
+  animation: ds-halo 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+.ds-tile[data-state="today"] .ds-day {
+  color: var(--gu-orange-deep);
+}
+/* Just claimed */
+.ds-tile[data-state="claimed"] {
+  z-index: 1;
+  background: linear-gradient(180deg, #e4fff4, #b7f3dc);
+  box-shadow:
+    inset 0 -3px 0 #7ddbb8,
+    0 0 0 3px var(--gu-green),
+    0 3px 0 3px var(--gu-green-deep);
+}
+.ds-tile[data-state="claimed"] .ds-tick {
+  animation: ds-stamp 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+.ds-tile[data-state="claimed"] .ds-day {
+  color: var(--gu-green-deep);
+}
+
+/* The result: "+150" and the new balance */
+.ds-won {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: ds-rise 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.ds-plus {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+  color: #ffd23f;
+  letter-spacing: 0.01em;
+  text-shadow:
+    0 3px 0 #b9660a,
+    0 0 2px #7a3e00,
+    0 6px 14px rgba(120, 60, 0, 0.3);
+}
+.ds-rays {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 240px;
+  height: 240px;
+  margin: -120px 0 0 -120px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 196, 40, 0.3) 0deg 10deg, transparent 10deg 24deg);
+  -webkit-mask: radial-gradient(circle, #000 18%, transparent 64%);
+  mask: radial-gradient(circle, #000 18%, transparent 64%);
+  animation: ds-spin 14s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes ds-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes ds-breathe {
+  50% {
+    transform: translateY(-2px) scale(1.04);
+  }
+}
+@keyframes ds-halo {
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes ds-stamp {
+  from {
+    opacity: 0;
+    transform: scale(2.2) rotate(-25deg);
+  }
+}
+@keyframes ds-rise {
+  from {
+    opacity: 0;
+    transform: scale(0.5) translateY(14px);
+  }
+}
+@keyframes ds-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 359px) {
+  .ds-track {
+    gap: 6px;
+  }
+  .ds-tile {
+    min-height: 70px;
+  }
+  .ds-amt {
+    font-size: 13px;
+  }
+  .ds-day {
+    font-size: 10px;
+  }
+  .ds-head {
+    font-size: 23px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stk-flicker,
+  .stk-shine,
+  .stk-seam,
+  .stk-badge[data-risk],
+  .stk-gift[data-ready] > svg,
+  .ds-scrim,
+  .ds-tile[data-state="today"],
+  .ds-tile[data-state="today"]::after,
+  .ds-tile[data-state="claimed"] .ds-tick,
+  .ds-won,
+  .ds-rays {
+    animation: none;
+  }
+}

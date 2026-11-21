@@ -302,7 +302,7 @@ export const FLORA: CharacterDef = {
   name: "Flora",
   tagline: "Brings a little spring to every game",
   tier: "legend",
-  price: 9000,
+  price: 0, // level 30 only: never sold
   earn: { level: 30 },
   accent: ACCENT,
   Art,

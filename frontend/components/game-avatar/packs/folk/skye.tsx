@@ -244,7 +244,7 @@ export const SKYE: CharacterDef = {
   name: "Skye",
   tagline: "Flies straight to the finish",
   tier: "premium",
-  price: 3500,
+  price: 0, // level 17 only: never sold
   earn: { level: 17 },
   accent: ACCENT,
   Art,

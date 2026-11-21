@@ -10,6 +10,7 @@ import { WelcomeTour } from "@/components/fun/welcome-tour"
 import { useSession } from "@/components/providers/session-provider"
 import { flyCoins } from "@/components/rewards/coin-burst"
 import { gameToast } from "@/components/rewards/reward-notice"
+import { DailyRewardHost } from "@/components/streak/daily-reward"
 import { useBadges, useFriendships, useMyPlayed, useWallet } from "@/hooks/use-fun"
 import { FRAME_IDS, FRAMES } from "@/lib/fun/catalog"
 import { useChallenges, useExpenseHistory, useFriends, useNotifications } from "@/hooks/queries"
@@ -256,6 +257,8 @@ export function FunSync() {
       <React.Suspense fallback={null}>
         <WelcomeTour />
         <GamesWelcome />
+        {/* Then, the first Games visit each day: the daily reward */}
+        <DailyRewardHost />
       </React.Suspense>
       {/* One overlay for every hug / kiss / wish / gift animation in the app */}
       <MomentBurst

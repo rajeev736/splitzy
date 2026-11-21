@@ -4,10 +4,12 @@ import { FieldValue, getFirestore } from "firebase-admin/firestore"
 
 import { countLiveGame, liveGameId, type LiveOutcome } from "@/lib/live/achievements"
 import { LIVE_GAMES } from "@/lib/live/games"
+import { dayKey } from "@/lib/live/streak"
 import type { LiveGameId, RoomMeta, RoomPlayer } from "@/lib/live/types"
 import { VERIFIERS } from "@/lib/live/verify"
 import type { Challenge, Wallet } from "@/lib/types"
 import { notifyFromServer } from "./push"
+import { notifyStreakBadges, playStreakStep, streakBonus, unearnedStreakBadges, writeStreakBadges } from "./streak"
 
 /** What a finished game was found to be (liveGames/{code}_{startedAt}; written once, by the server). */
 export interface LiveGameRecord {
@@ -120,7 +122,7 @@ function decide(code: string, meta: RoomMeta, players: RoomPlayer[], state: unkn
     : { ...base, winners: [], verified: false, voided: true, reason: result.reason.slice(0, 200) }
 }
 
-const COUNTERS = ["livePlayed", "liveWins", "streak", "bestStreak"] as const
+const COUNTERS = ["livePlayed", "liveWins", "streak", "bestStreak", "playStreak"] as const
 type LiveCounters = Partial<Record<(typeof COUNTERS)[number], number>>
 const countersOf = (w: Partial<Wallet>): LiveCounters =>
   Object.fromEntries(COUNTERS.map((k) => [k, (w as Record<string, number | undefined>)[k] ?? 0]))
@@ -129,6 +131,10 @@ const countersOf = (w: Partial<Wallet>): LiveCounters =>
  * One player's wallet: the game's counters, once. The record keeps the
  * counters before and after, so that player's own device can show what the
  * game brought them (takeYours) even when someone else's device settled it.
+ *
+ * Also the daily play streak (lib/server/streak): the first game of an IST day
+ * moves it; reaching 7, 30, 50, 100 or 365 days earns that streak badge and its
+ * coins, once ever, in the same transaction — and then a notification.
  */
 async function countFor(
   app: App,
@@ -141,11 +147,14 @@ async function countFor(
   const fs = getFirestore(app)
   const walletRef = fs.doc(`wallets/${uid}`)
   const recordRef = fs.doc(`users/${uid}/live/${id}`)
-  await fs.runTransaction(async (tx) => {
+  const earned = await fs.runTransaction(async (tx) => {
     const [w, r] = await Promise.all([tx.get(walletRef), tx.get(recordRef)])
-    if (!w.exists || r.exists) return
+    if (!w.exists || r.exists) return []
     const before = w.data() as Wallet
-    const next = countLiveGame(before, outcome)
+    const play = playStreakStep(before, dayKey(Date.now()))
+    const badges = await unearnedStreakBadges(tx, fs, uid, play.crossed)
+    const next = { ...countLiveGame(before, outcome), ...play.fields }
+    const bonus = streakBonus(badges)
     tx.set(recordRef, {
       game,
       result: outcome,
@@ -155,8 +164,16 @@ async function countFor(
       after: countersOf(next),
       seen: false,
     })
-    tx.update(walletRef, { ...next, liveAt: FieldValue.serverTimestamp(), lastTx: `live:${id}:${outcome}` })
+    tx.update(walletRef, {
+      ...next,
+      ...(bonus ? { balance: (before.balance ?? 0) + bonus } : {}),
+      liveAt: FieldValue.serverTimestamp(),
+      lastTx: `live:${id}:${outcome}`,
+    })
+    writeStreakBadges(tx, fs, uid, badges)
+    return badges
   })
+  if (earned.length) await notifyStreakBadges(app, uid, earned)
 }
 
 /**

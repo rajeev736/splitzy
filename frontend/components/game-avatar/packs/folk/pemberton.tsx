@@ -205,7 +205,7 @@ export const PEMBERTON: CharacterDef = {
   name: "Sir Pemberton",
   tagline: "A gentleman never misses a move",
   tier: "legend",
-  price: 8500,
+  price: 0, // level 22 only: never sold
   earn: { level: 22 },
   accent: ACCENT,
   Art,

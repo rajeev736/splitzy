@@ -17,8 +17,9 @@ import { StatusChip, useFriendStatuses } from "@/components/live/friend-status"
 import { useFriendState } from "@/components/profile-peek/friend-action"
 import { GameStat } from "@/components/profile-peek/profile-peek-host"
 import { useSession } from "@/components/providers/session-provider"
+import { StreakCard } from "@/components/streak/streak-card"
 import { Spinner } from "@/components/ui/spinner"
-import { useLiveProfile, useWallet } from "@/hooks/use-fun"
+import { useBadges, useLiveProfile, useWallet } from "@/hooks/use-fun"
 import { gameNameOf } from "@/lib/game-name"
 import { levelInfo } from "@/lib/live/levels"
 import type { UserProfile, Wallet } from "@/lib/types"
@@ -37,6 +38,7 @@ export default function PlayerProfilePage() {
   const { user } = useSession()
   const profile = useLiveProfile(uid)
   const wallet = useWallet(uid)
+  const badges = useBadges(uid)
   const status = useFriendStatuses(uid ? [uid] : [])[uid]
   const friend = useFriendState(uid)
   const self = !!user && uid === user.uid
@@ -62,6 +64,7 @@ export default function PlayerProfilePage() {
         ) : (
           <>
             <Hero profile={profile} wallet={wallet} status={status} />
+            {wallet ? <StreakCard wallet={wallet} earnedIds={badges?.ids} variant="player" /> : null}
             <LevelCard wallet={wallet} />
             {friend.kind === "friend" && (
               <Link href={`${GAME_ROUTES.hub}?tab=fun&invite=${uid}`} className="gu-btn gu-green w-full">

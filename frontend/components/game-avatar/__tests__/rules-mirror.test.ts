@@ -2,8 +2,9 @@
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 
+import { FRAME_IDS, FRAMES } from "../../../lib/fun/catalog"
 import { ACHIEVEMENTS } from "../../../lib/live/achievements"
-import { MAX_LEVEL, XP_PLAY, XP_WIN, levelXp } from "../../../lib/live/levels"
+import { LEVEL_REWARDS, MAX_LEVEL, XP_PLAY, XP_WIN, levelXp } from "../../../lib/live/levels"
 import { earnKey, levelRewards } from "../ownership"
 import { CHARACTERS } from "../registry"
 
@@ -31,6 +32,7 @@ const goals = rulesMap("achievementGoal")
 const frames = rulesMap("achievementFrame")
 const levelFrames = rulesMap("levelFrame")
 const levelCoins = rulesMap("levelBonus")
+const framePrices = rulesMap("framePrice")
 
 const ids = new Set<string>()
 for (const c of CHARACTERS) {
@@ -42,10 +44,20 @@ for (const c of CHARACTERS) {
   assert((earns.get(c.id) ?? "''") === (earn ? `'${earn}'` : "''"), `${c.id}: characterEarn ${earns.get(c.id)}, registry ${earn}`)
   if (c.earn?.achievement) assert(ACHIEVEMENTS.some((a) => a.id === earn), `${c.id}: earned by a known achievement (${earn})`)
   if (c.earn?.level) assert(c.earn.level >= 2 && c.earn.level <= MAX_LEVEL, `${c.id}: earned at a real level (${c.earn.level})`)
-  assert(c.tier !== "basic" || (c.price === 0 && !c.earn), `${c.id}: basic ones are free`)
+  // A level's character is only ever won there: no price here, none in characterPrice (so characterBuyOk refuses it)
+  if (c.earn?.level) assert(c.price === 0 && !prices.has(c.id), `${c.id}: a level prize, never sold`)
+  assert(c.tier !== "basic" || !c.earn, `${c.id}: basic ones aren't rewards`)
   assert(c.tier === "basic" || c.price > 0 || !!c.earn, `${c.id}: premium / legend ones are sold or earned`)
 }
 for (const id of [...prices.keys(), ...earns.keys()]) assert(ids.has(id), `${id}: in the rules but not in the registry`)
+// A free one to start with, and the basic ones cost less than any premium or legend
+const basic = CHARACTERS.filter((c) => c.tier === "basic")
+const fancy = CHARACTERS.filter((c) => c.tier !== "basic" && c.price > 0)
+assert(basic.some((c) => c.price === 0), "at least one free character")
+assert(
+  Math.max(...basic.map((c) => c.price)) < Math.min(...fancy.map((c) => c.price)),
+  "basic characters are cheaper than premium / legend ones"
+)
 
 for (const a of ACHIEVEMENTS) {
   assert(goals.get(a.id) === `['${a.stat}', ${a.goal}]`, `${a.id}: achievementGoal ${goals.get(a.id)}`)
@@ -62,13 +74,24 @@ for (const { achievement: a } of road) {
 assert(levelFrames.size === road.filter((x) => x.achievement.frame).length, "no extra levelFrame entries")
 assert(levelCoins.size === road.filter((x) => x.achievement.coins).length, "no extra levelBonus entries")
 // …and levelRewardOk counts XP and the level's threshold like lib/live/levels
+assert(rules.includes(`let m = int(a.replace('lv', '')) - 1;`), "levelRewardOk: m = level - 1")
 assert(
-  rules.includes(
-    `w.get('livePlayed', 0) * ${XP_PLAY} + w.get('liveWins', 0) * ${XP_WIN} >= 40 * (n - 1) + 15 * (n - 1) * (n - 2)`
-  ),
-  `levelRewardOk: XP = played × ${XP_PLAY} + wins × ${XP_WIN}, threshold 40(n-1) + 15(n-1)(n-2)`
+  rules.includes(`w.get('livePlayed', 0) * ${XP_PLAY} + w.get('liveWins', 0) * ${XP_WIN} >= m * (35 + m * (3 + 2 * m))`),
+  `levelRewardOk: XP = played × ${XP_PLAY} + wins × ${XP_WIN}, threshold m(35 + m(3 + 2m))`
 )
-for (let n = 1; n <= MAX_LEVEL; n++) assert(levelXp(n) === 40 * (n - 1) + 15 * (n - 1) * (n - 2), `levelXp(${n}) matches the rules`)
+for (let n = 1; n <= MAX_LEVEL; n++) {
+  const m = n - 1
+  assert(levelXp(n) === m * (35 + m * (3 + 2 * m)), `levelXp(${n}) matches the rules`)
+}
+
+// Frames: framePrice is the catalog's price for every sold frame, and nothing else — a level's frame
+// (or a milestone) isn't in it, so frameBuyOk refuses it and only levelRewardOk hands it out
+for (const id of FRAME_IDS) {
+  const f = FRAMES[id]
+  assert(Number(framePrices.get(id) ?? 0) === f.price, `${id}: framePrice ${framePrices.get(id) ?? 0}, catalog ${f.price}`)
+}
+for (const id of framePrices.keys()) assert((FRAME_IDS as readonly string[]).includes(id), `${id}: in framePrice but not in the catalog`)
+for (const r of LEVEL_REWARDS) if (r.frame) assert(!framePrices.has(r.frame), `${r.frame}: a level prize, never sold`)
 
 console.log(
   `rules mirror ok: ${CHARACTERS.length} characters, ${ACHIEVEMENTS.length} achievements, ${road.length} reward levels`

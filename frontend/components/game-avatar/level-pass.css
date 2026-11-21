@@ -1,0 +1,609 @@
+/*
+ * The level pass (components/game-avatar/level-pass): a deep violet board, a
+ * gold-filling track up the middle with numbered stops, chunky prize cards
+ * beside them. Like components/game-ui: flat colour and box-shadows; anything
+ * that moves is a transform or an opacity (the fill, the puck, the pulses, the
+ * stretch at the top), so scrolling stays at 60fps.
+ */
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+
+.lp-head {
+  position: relative;
+  border-radius: 22px;
+  padding: 12px 12px 14px;
+  color: #fff;
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(255, 120, 230, 0.28), transparent 60%),
+    linear-gradient(160deg, #6146ea 0%, #4330c4 55%, #2f2496 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -4px 0 rgba(10, 0, 60, 0.25),
+    0 0 0 3px rgba(255, 255, 255, 0.9),
+    0 6px 0 3px #241a7d,
+    0 12px 22px rgba(20, 20, 80, 0.35);
+}
+.lp-head-title {
+  font-weight: 800;
+  font-size: 1.45rem;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-shadow:
+    0 2px 0 #241a7d,
+    0 3px 6px rgba(0, 0, 0, 0.3);
+}
+.lp-head-sub {
+  font-weight: 800;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #ffd54a;
+  text-shadow: 0 1.5px 0 rgba(36, 26, 125, 0.9);
+}
+.lp-jump {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 6px 0 7px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: #fff;
+  background: linear-gradient(180deg, #5df0bd, #19b583);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.5),
+    0 2.5px 0 #0c7d58;
+  transition: transform 90ms ease-out;
+}
+.lp-jump:active {
+  transform: translateY(2px);
+}
+
+/* The next prize, in a little card with its level under it */
+.lp-next {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: center;
+}
+.lp-next-art {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 15px;
+  overflow: hidden;
+}
+.lp-next-lv {
+  margin-top: -9px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 0.68rem;
+  color: #6b3d00;
+  background: linear-gradient(180deg, #fff0a0, #ffc62a);
+  box-shadow: 0 2px 0 #b86b00;
+  white-space: nowrap;
+}
+
+/* XP: a star, the bar with "x / y XP" on it, and the level it's heading for */
+.lp-xp {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 0 0 12px;
+}
+.lp-xp-star {
+  position: absolute;
+  left: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: #8a4a00;
+  background: radial-gradient(circle at 35% 30%, #fff6c0, #ffc62a 60%, #e98d00);
+  box-shadow:
+    0 0 0 2.5px #fff,
+    0 3px 0 2px #b86b00;
+}
+.lp-xp-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin-right: -6px;
+  border-radius: 999px 0 0 999px;
+  overflow: hidden;
+  background: #170f4d;
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.55),
+    0 0 0 2px rgba(255, 255, 255, 0.22);
+}
+.lp-xp-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, #fff09a 0%, #ffc62a 50%, #f39a0b 100%);
+  box-shadow: inset 0 -3px 0 rgba(180, 90, 0, 0.35);
+  transition: transform 900ms cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+.lp-xp-text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding-left: 12px;
+  font-weight: 800;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #fff;
+  text-shadow:
+    0 1.5px 0 #241a7d,
+    1px 0 0 #241a7d,
+    -1px 0 0 #241a7d,
+    0 -1px 0 #241a7d;
+}
+.lp-xp-goal {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: baseline;
+  gap: 1px;
+  height: 28px;
+  padding: 0 9px;
+  align-items: center;
+  border-radius: 9px;
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #fff;
+  background: linear-gradient(180deg, #4e44c8, #2b2290);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.3),
+    0 0 0 2px rgba(255, 255, 255, 0.85),
+    0 3px 0 2px #1a1366;
+}
+.lp-xp-goal small {
+  font-size: 0.6rem;
+  opacity: 0.85;
+}
+
+/* ── The board ──────────────────────────────────────────────────────── */
+
+.lp-scroller {
+  position: relative;
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* No pull-to-refresh, no glow, no scroll chaining: the top stretch is ours */
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  /* Stays put behind the scrolling track (it's the scroller's own background) */
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.035) 0 28px, transparent 28px 56px),
+    radial-gradient(90% 40% at 50% 0%, rgba(255, 120, 230, 0.22), transparent 70%),
+    linear-gradient(180deg, #1e1462 0%, #2f25a0 28%, #3542c4 62%, #3a6fe0 100%);
+  box-shadow: inset 0 10px 14px -8px rgba(5, 0, 40, 0.55);
+}
+.lp-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.lp-content {
+  position: relative;
+  max-width: 30rem;
+  margin: 0 auto;
+}
+
+/* The track up the middle: dark, fading out into the levels to come */
+.lp-rail {
+  position: absolute;
+  left: 50%;
+  width: 16px;
+  margin-left: -8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #150e48;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.13),
+    inset 0 3px 6px rgba(0, 0, 0, 0.5);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 130px);
+  mask-image: linear-gradient(180deg, transparent 0, #000 130px);
+}
+.lp-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e38a00 0%, #ffd24a 30%, #fff3b0 48%, #ffc62a 62%, #e08400 100%);
+  transition: transform 1100ms cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+/* The fill's glowing head */
+.lp-fill::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 22px;
+  border-radius: 999px;
+  background: radial-gradient(60% 50% at 50% 30%, #fff, rgba(255, 255, 255, 0) 100%);
+}
+
+/* A level: absolutely placed at its known top (sizes are fixed, see level-pass.tsx) */
+.lp-level {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+.lp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 60px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  padding: 0 16px;
+}
+.lp-lane {
+  display: flex;
+  min-width: 0;
+  justify-content: flex-start;
+  gap: 6px;
+}
+.lp-lane-left {
+  justify-content: flex-end;
+}
+.lp-node-cell {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+}
+
+/* A stop: a chunky numbered tile — gold once reached, slate ahead, yours bigger and pulsing */
+.lp-node {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  font-weight: 800;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: #fff;
+  background: linear-gradient(180deg, #9da3dc 0%, #6c72b6 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -3px 0 rgba(30, 30, 90, 0.3),
+    0 0 0 3px rgba(255, 255, 255, 0.4),
+    0 5px 0 3px #353a78,
+    0 8px 12px rgba(0, 0, 30, 0.35);
+  text-shadow: 0 1.5px 0 #3b3f80;
+}
+.lp-node[data-state="reached"],
+.lp-node[data-state="here"] {
+  color: #fff;
+  background: linear-gradient(180deg, #fff2a8 0%, #ffc62a 52%, #f39a0b 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.75),
+    inset 0 -3px 0 rgba(170, 90, 0, 0.35),
+    0 0 0 3px #fff6d0,
+    0 5px 0 3px #b86b00,
+    0 8px 14px rgba(0, 0, 30, 0.35);
+  text-shadow:
+    0 1.5px 0 #a35800,
+    1px 0 0 #a35800,
+    -1px 0 0 #a35800;
+}
+.lp-node[data-state="here"] {
+  width: 50px;
+  height: 50px;
+  border-radius: 16px;
+  font-size: 1.35rem;
+}
+.lp-node[data-state="here"]::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: 21px;
+  border: 3px solid #ffe066;
+  animation: lp-ping 1.8s cubic-bezier(0.2, 0.7, 0.3, 1) infinite;
+}
+@keyframes lp-ping {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+/* A new title's ribbon, under its first level */
+.lp-ribbon {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+}
+.lp-ribbon::before {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  top: 50%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35) 30%, rgba(255, 255, 255, 0.35) 70%, transparent);
+}
+.lp-ribbon > span {
+  position: relative;
+  padding: 3px 14px;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #d8dafc;
+  background: #3a3592;
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.2),
+    0 0 0 2px rgba(255, 255, 255, 0.25),
+    0 3px 0 2px #1d1863;
+}
+.lp-ribbon[data-reached] > span {
+  color: #6b3d00;
+  background: linear-gradient(180deg, #fff0a0, #ffc62a);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.6),
+    0 0 0 2px #fff6d0,
+    0 3px 0 2px #b86b00;
+}
+
+/* ── Prize cards ────────────────────────────────────────────────────── */
+
+.lp-tone-violet {
+  --lp-top: #b892ff;
+  --lp-mid: #7d52f2;
+  --lp-low: #5631cf;
+  --lp-deep: #35198f;
+  background: linear-gradient(160deg, var(--lp-top) 0%, var(--lp-mid) 55%, var(--lp-low) 100%);
+}
+.lp-tone-gold {
+  --lp-top: #ffeb8a;
+  --lp-mid: #ffbd2a;
+  --lp-low: #f38f0c;
+  --lp-deep: #b35c00;
+  background: linear-gradient(160deg, var(--lp-top) 0%, var(--lp-mid) 55%, var(--lp-low) 100%);
+}
+
+.lp-card {
+  isolation: isolate;
+  position: relative;
+  display: flex;
+  flex: 1 1 0%;
+  min-width: 0;
+  max-width: 136px;
+  height: 116px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 6px 16px;
+  border-radius: 18px;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -4px 0 rgba(0, 0, 0, 0.16),
+    0 0 0 3px rgba(255, 255, 255, 0.92),
+    0 6px 0 3px var(--lp-deep),
+    0 10px 18px rgba(5, 0, 40, 0.4);
+}
+.lp-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 66px;
+  min-width: 0;
+}
+.lp-label {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 3px;
+  overflow: hidden;
+  font-weight: 800;
+  font-size: 0.8rem;
+  line-height: 1.1;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #fff;
+  text-shadow:
+    0 1.5px 0 var(--lp-deep),
+    1px 0 0 var(--lp-deep),
+    -1px 0 0 var(--lp-deep);
+}
+
+/* Not reached: a shade over it and a padlock */
+.lp-card[data-state="locked"] {
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.35),
+    0 0 0 3px rgba(255, 255, 255, 0.28),
+    0 6px 0 3px var(--lp-deep),
+    0 10px 18px rgba(5, 0, 40, 0.35);
+}
+.lp-card[data-state="locked"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(24, 16, 80, 0.5);
+}
+/* Claimed: a little quieter, with the tick */
+.lp-card[data-state="claimed"] {
+  opacity: 0.88;
+}
+/* Ready: a gold rim, a breathing glow behind and a shine across */
+.lp-card[data-state="ready"] {
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -4px 0 rgba(0, 0, 0, 0.16),
+    0 0 0 3px #fff3a6,
+    0 6px 0 3px var(--lp-deep),
+    0 10px 18px rgba(5, 0, 40, 0.4);
+}
+.lp-glow {
+  position: absolute;
+  inset: -5px;
+  z-index: -1;
+  border-radius: 23px;
+  box-shadow: 0 0 22px 6px rgba(255, 214, 64, 0.85);
+  animation: lp-breathe 1.6s ease-in-out infinite alternate;
+}
+@keyframes lp-breathe {
+  from {
+    opacity: 0.45;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.lp-shine {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+.lp-card[data-state="ready"] .lp-shine::before {
+  content: "";
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 38%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(-140%) skewX(-18deg);
+  animation: lp-shine 2.8s ease-in-out infinite;
+}
+@keyframes lp-shine {
+  0%,
+  55% {
+    transform: translateX(-140%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(330%) skewX(-18deg);
+  }
+}
+
+.lp-badge {
+  position: absolute;
+  top: -8px;
+  right: -6px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+}
+.lp-badge-lock {
+  color: #474c8c;
+  background: linear-gradient(180deg, #ffffff, #dfe2fb);
+  box-shadow:
+    0 2.5px 0 #8f95cc,
+    0 4px 8px rgba(0, 0, 30, 0.35);
+}
+.lp-badge-tick {
+  color: #fff;
+  background: linear-gradient(180deg, #6ff5c4, #17b07f);
+  box-shadow:
+    0 0 0 2.5px #fff,
+    0 3px 0 2.5px #0c7d58,
+    0 5px 8px rgba(0, 0, 30, 0.3);
+}
+
+/* Claim: a chunky green button hanging off the card's bottom edge */
+.lp-claim-wrap {
+  position: absolute;
+  left: 50%;
+  bottom: -16px;
+  z-index: 3;
+  transform: translateX(-50%);
+}
+.gu-btn.lp-claim {
+  height: 32px;
+  min-width: 78px;
+  padding: 0 14px;
+  font-size: 0.88rem;
+}
+
+/* ── The levels to come ─────────────────────────────────────────────── */
+
+/* Mostly above the top edge; faint and blurred, a little clearer as you stretch towards it */
+.lp-teaser {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  opacity: 0.42;
+  filter: blur(2.5px) saturate(0.7);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 70%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 70%);
+  pointer-events: none;
+}
+.lp-teaser .lp-row {
+  width: 100%;
+}
+.lp-teaser .lp-card {
+  height: 104px;
+}
+
+/* You, riding the head of the fill */
+.lp-puck {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #fff;
+  box-shadow:
+    0 0 0 3px #ffc62a,
+    0 3px 0 3px #b86b00,
+    0 0 16px 4px rgba(255, 214, 64, 0.7);
+  transition: transform 1100ms cubic-bezier(0.22, 0.8, 0.24, 1);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-node[data-state="here"]::after,
+  .lp-glow,
+  .lp-card[data-state="ready"] .lp-shine::before {
+    animation: none;
+  }
+  .lp-fill,
+  .lp-puck,
+  .lp-xp-fill {
+    transition: none;
+  }
+}

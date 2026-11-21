@@ -74,6 +74,7 @@ import { characterById } from "@/components/game-avatar/registry"
 import { useStageFit } from "../use-stage-fit"
 import { useWallet } from "@/hooks/use-fun"
 import { useBoardTheme, usePreloadImage } from "@/lib/live/themes"
+import { diceSettlesInMs } from "../dice-settle"
 import { LudoDice } from "./ludo-dice"
 import { STEP_MS, useLudoAnimation } from "./use-ludo-animation"
 import { playSound, useOnChange } from "@/lib/live/sound"
@@ -218,13 +219,10 @@ export function LudoGame({
     } else if (last.type === "power") {
       playSound("power")
     } else if (last.type === "move") {
+      // After the piece has walked there (it sets off once the dice has settled)
+      const walk = diceSettlesInMs() + (last.from < 0 ? 1 : last.to - last.from) * STEP_MS
       if ((last.picked || last.earned) && last.by === uid)
-        window.setTimeout(
-          () => playSound("power"),
-          (last.from < 0 ? 1 : last.to - last.from) * STEP_MS
-        )
-      // After the piece has walked there
-      const walk = (last.from < 0 ? 1 : last.to - last.from) * STEP_MS
+        window.setTimeout(() => playSound("power"), walk)
       if (last.captured?.length) {
         const mine = last.captured.some((c) => c.uid === uid)
         window.setTimeout(() => playSound(mine ? "captured" : "capture"), walk)

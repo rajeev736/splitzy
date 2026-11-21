@@ -66,7 +66,7 @@ export function CharactersTab({
   const [picked, setPicked] = React.useState<CharacterDef | null>(null)
   const [open, setOpen] = React.useState(false)
 
-  // Legends, then premium, then the free ones
+  // Legends, then premium, then the basic ones
   const list = [...characters].sort((a, b) => TIER_ORDER[a.tier] - TIER_ORDER[b.tier]).filter((c) =>
     filter === "owned"
       ? ownsCharacter(c, owned)
@@ -166,11 +166,11 @@ function CharacterCard({
       )}
     >
       <div className="relative p-1.5 pb-0">
-        {/* Not yours yet: soft and muted (tap for the full-colour preview) */}
+        {/* Not yours yet: soft and muted (tap for the full-colour preview); one you still wear from when it was free stays bright */}
         <CharacterFill
           def={def}
           mode={owned && def.tier !== "basic" ? "idle" : "still"}
-          className={cn("rounded-[10px] transition-[filter,opacity]", !owned && "opacity-60 saturate-[.35]")}
+          className={cn("rounded-[10px] transition-[filter,opacity]", !owned && !wearing && "opacity-60 saturate-[.35]")}
         />
         {wearing && (
           <span className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground shadow-sm">

@@ -3,6 +3,7 @@ import * as THREE from "three"
 
 import type { SnakesLast, SnakesState } from "@/lib/live/snakes"
 import type { SnakesSound } from "@/lib/live/sound"
+import { diceSettlesIn } from "../dice-settle"
 import type { EdgePoint } from "../snakes3d/edge-markers"
 import { disposeCharacterCache, disposePiece, makePiece, MARKER_Y, setDim, type Piece } from "./characters"
 import { Fx } from "./fx"
@@ -601,6 +602,7 @@ export class JungleWorld {
       }
       this.place(mover, 0)
       this.tl = this.playBlocked(piece)
+      this.holdForDice(this.tl)
       return
     }
 
@@ -613,6 +615,13 @@ export class JungleWorld {
     this.place(mover, last.from)
     this.shown[mover] = state.players[mover]?.pos ?? last.end
     this.tl = this.playMove(mover, piece, last)
+    this.holdForDice(this.tl)
+  }
+
+  /** The piece never sets off while the dice is still turning: the move plays once it has settled. */
+  private holdForDice(tl: gsap.core.Timeline) {
+    const wait = diceSettlesIn()
+    if (wait > 0) tl.delay(wait)
   }
 
   private refollow() {

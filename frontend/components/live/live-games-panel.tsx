@@ -52,7 +52,7 @@ export function LiveGamesPanel({ invite }: { invite?: string | null }) {
         <JoinRoomCard />
       )}
       {user && <ActiveRooms rooms={rooms.active} uid={user.uid} />}
-      <RoomInvites invites={rooms.invites} now={rooms.now} />
+      <RoomInvites invites={rooms.invites} now={rooms.now} uid={user?.uid} />
 
       <section className="flex flex-col gap-3" data-tour="pick-game">
         <GameSectionTitle>Pick a game</GameSectionTitle>

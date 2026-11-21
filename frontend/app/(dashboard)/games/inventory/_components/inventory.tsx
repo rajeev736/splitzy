@@ -6,8 +6,10 @@ import { GameAvatar } from "@/components/game-avatar/game-avatar"
 import { ownsCharacter } from "@/components/game-avatar/ownership"
 import { CHARACTERS } from "@/components/game-avatar/registry"
 import { GamePanel, GameTabs } from "@/components/game-ui/kit"
+import { hasStreakBadge } from "@/components/streak/use-streak"
 import type { BadgeSummary } from "@/hooks/use-fun"
 import { FRAME_IDS, ownsFrame } from "@/lib/fun/catalog"
+import { STREAK_MILESTONES } from "@/lib/live/streak"
 import { ALL_THEMES, ownsTheme } from "@/lib/live/themes"
 import type { Wallet } from "@/lib/types"
 import { BadgesTab } from "./badges-tab"
@@ -44,11 +46,14 @@ export function Inventory({
   user,
   wallet,
   badges,
+  badgeIds,
   earlyBird,
 }: {
   user: InventoryUser
   wallet: Wallet | null | undefined
   badges: BadgeSummary[] | undefined
+  /** Every badge doc id (the streak badges are read from these). */
+  badgeIds?: ReadonlySet<string>
   earlyBird?: number
 }) {
   const hash = React.useSyncExternalStore(subscribeHash, () => window.location.hash.slice(1), () => "")
@@ -71,7 +76,8 @@ export function Inventory({
     frames: FRAME_IDS.filter((id) => ownsFrame(id, wallet?.frames)).length,
     characters: CHARACTERS.filter((c) => ownsCharacter(c, wallet?.avatars)).length,
     boards: ALL_THEMES.filter((t) => ownsTheme(t, wallet?.themes)).length,
-    badges: badges?.filter((b) => b.tier > 0).length,
+    // The streak badges count with the rest
+    badges: badges && badges.filter((b) => b.tier > 0).length + STREAK_MILESTONES.filter((d) => hasStreakBadge(d, wallet, badgeIds)).length,
   }
 
   return (
@@ -85,7 +91,7 @@ export function Inventory({
           <Stat value={counts.frames} total={FRAME_IDS.length} label="Frames" />
           <Stat value={counts.characters} total={CHARACTERS.length} label="Characters" />
           <Stat value={counts.boards} total={ALL_THEMES.length} label="Boards" />
-          <Stat value={counts.badges} total={badges?.length} label="Badges" />
+          <Stat value={counts.badges} total={badges && badges.length + STREAK_MILESTONES.length} label="Badges" />
         </div>
       </section>
 
@@ -114,6 +120,7 @@ export function Inventory({
             user={user}
             wallet={wallet}
             badges={badges}
+            badgeIds={badgeIds}
             earlyBird={earlyBird}
             onShowMilestones={() => {
               setPickedFrames("earn")
@@ -122,7 +129,7 @@ export function Inventory({
             }}
           />
         ) : (
-          <MoreTab />
+          <MoreTab wallet={wallet} />
         )}
       </GamePanel>
     </div>

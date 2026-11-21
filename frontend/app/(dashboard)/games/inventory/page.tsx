@@ -26,7 +26,7 @@ export default function GameInventoryPage() {
     <GameScreen>
       <GameTopBar title="Inventory" subtitle="Characters, frames, boards & more" onBack={back} right={<GameCoinChip />} />
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 px-4 pt-1 pb-4">
-        <Inventory user={user} wallet={wallet} badges={badges?.summary} earlyBird={badges?.earlyBird} />
+        <Inventory user={user} wallet={wallet} badges={badges?.summary} badgeIds={badges?.ids} earlyBird={badges?.earlyBird} />
       </div>
       <GameNavSpacer />
     </GameScreen>

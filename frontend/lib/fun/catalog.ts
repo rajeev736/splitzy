@@ -99,10 +99,12 @@ export type FrameId = (typeof FRAME_IDS)[number]
 export interface FrameInfo {
   name: string
   category: FrameCategory
-  /** 0 = free for everyone (milestone frames are never sold). */
+  /** 0 = free for everyone (milestone and level frames are never sold). */
   price: number
   /** Milestone frames: what unlocks it. */
   milestone?: { stat: MilestoneStat; goal: number }
+  /** Level frames: the level that gives it (lib/live/levels LEVEL_REWARDS) — only ever won there, never sold. */
+  level?: number
 }
 
 /** Lifetime numbers milestones are measured on (kept on the wallet, checked by the rules). */
@@ -122,9 +124,9 @@ export const FRAMES: Record<FrameId, FrameInfo> = {
   laurel: { name: "Laurel", category: "games", price: 300 },
   star_1: { name: "Rising Star", category: "games", price: 400 },
   flame: { name: "Blaze", category: "games", price: 700 },
-  star_3: { name: "Superstar", category: "games", price: 800 },
+  star_3: { name: "Superstar", category: "games", price: 0, level: 5 },
   crystal_wings: { name: "Crystal Wings", category: "games", price: 900 },
-  gold_wings: { name: "Champion Wings", category: "games", price: 1000 },
+  gold_wings: { name: "Champion Wings", category: "games", price: 0, level: 15 },
   royal_crown: { name: "Royal Crown", category: "games", price: 1200 },
 
   bunny: { name: "Bunny", category: "cute", price: 0 },
@@ -141,7 +143,7 @@ export const FRAMES: Record<FrameId, FrameInfo> = {
   rose_vine: { name: "Rose Vine", category: "love", price: 700 },
   love_wings: { name: "Love Wings", category: "love", price: 900 },
 
-  silver_wings: { name: "Silver Wings", category: "games", price: 450 },
+  silver_wings: { name: "Silver Wings", category: "games", price: 0, level: 3 },
   gem_wings: { name: "Amethyst Wings", category: "games", price: 650 },
   inferno: { name: "Inferno Crest", category: "games", price: 1100 },
 
@@ -158,15 +160,15 @@ export const FRAMES: Record<FrameId, FrameInfo> = {
   love_letter: { name: "Love Letter", category: "love", price: 550 },
   party: { name: "Party Time", category: "love", price: 600 },
 
-  deep_blue: { name: "Deep Blue", category: "live", price: 1800 },
+  deep_blue: { name: "Deep Blue", category: "live", price: 0, level: 10 },
   diwali: { name: "Diwali Lights", category: "live", price: 2000 },
   wildfire: { name: "Wildfire", category: "live", price: 2200 },
-  thunder: { name: "Thunderstorm", category: "live", price: 2400 },
+  thunder: { name: "Thunderstorm", category: "live", price: 0, level: 20 },
   neon_beats: { name: "Neon Beats", category: "live", price: 2600 },
   neon_hazard: { name: "Neon Hazard", category: "live", price: 2800 },
-  frost_wings: { name: "Frost Wings", category: "live", price: 3000 },
+  frost_wings: { name: "Frost Wings", category: "live", price: 0, level: 25 },
   spellbound: { name: "Spellbound", category: "live", price: 3200 },
-  cosmic_cat: { name: "Cosmic Kitty", category: "live", price: 3500 },
+  cosmic_cat: { name: "Cosmic Kitty", category: "live", price: 0, level: 28 },
 
   victor: { name: "Victor", category: "milestone", price: 0, milestone: { stat: "wins", goal: 10 } },
   conqueror: { name: "Conqueror", category: "milestone", price: 0, milestone: { stat: "wins", goal: 50 } },
@@ -180,7 +182,9 @@ export const FRAMES: Record<FrameId, FrameInfo> = {
 
 export const isFrameId = (v: unknown): v is FrameId => typeof v === "string" && v in FRAMES
 export const isMilestoneFrame = (id: FrameId) => !!FRAMES[id].milestone
-export const isFreeFrame = (id: FrameId) => FRAMES[id].price === 0 && !isMilestoneFrame(id)
+/** A level's prize (LEVEL_REWARDS): won by reaching the level, never sold. */
+export const isLevelFrame = (id: FrameId) => !!FRAMES[id].level
+export const isFreeFrame = (id: FrameId) => FRAMES[id].price === 0 && !isMilestoneFrame(id) && !isLevelFrame(id)
 /** Free, bought or claimed (`owned` = the wallet's frames): the one ownership check every screen uses. */
 export const ownsFrame = (id: FrameId, owned: string[] | undefined) => isFreeFrame(id) || !!owned?.includes(id)
 

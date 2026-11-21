@@ -5,6 +5,7 @@ import { ArrowLeft01Icon, Cancel01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 
 import { cn } from "@/lib/utils"
+import { useMarkGamesSide } from "./games-side"
 
 /**
  * The Games side's building blocks (styles in ./game-ui.css). Every screen
@@ -22,6 +23,8 @@ export function GameScreen({
   children,
   ...props
 }: React.ComponentProps<"div">) {
+  // While it's up, app-wide bits (toasts, reward notices) take the game's look
+  useMarkGamesSide()
   return (
     <div className={cn("gu relative isolate flex min-h-svh w-full flex-col bg-[#6aa9f2]", className)} {...props}>
       {/* The sky is pinned to the screen, not stretched over the page: it doesn't
@@ -171,7 +174,7 @@ export function GamePanel({
           tone="red"
           size="sm"
           onClick={onClose}
-          className="absolute -top-3 -right-3 z-10"
+          className="!absolute -top-3 -right-3 z-10"
         />
       ) : null}
       <div className={cn("p-4", title && "pt-8", bodyClassName)}>{children}</div>

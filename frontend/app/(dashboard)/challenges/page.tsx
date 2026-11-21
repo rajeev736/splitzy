@@ -7,6 +7,7 @@ import { useRouter } from "nextjs-toploader/app"
 import { Notification01Icon, PercentCircleIcon } from "@hugeicons/core-free-icons"
 
 import { Coins } from "@/components/fun/coin"
+import { visibleMark } from "@/components/fun/tour-kit"
 import { GameAvatar } from "@/components/game-avatar/game-avatar"
 import { LevelBadge, XpBar } from "@/components/game-avatar/level-badge"
 import { GameButton, GameIconButton, GameNote, GameScreen, GameSectionTitle, GameTabs } from "@/components/game-ui/kit"
@@ -17,6 +18,7 @@ import { ModeBar } from "@/components/layout/mode-switch"
 import { LiveGameLogo } from "@/components/live/live-game-logo"
 import { LiveGamesPanel } from "@/components/live/live-games-panel"
 import { useSession } from "@/components/providers/session-provider"
+import { StreakCard, StreakRiskBanner } from "@/components/streak/streak-card"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Spinner } from "@/components/ui/spinner"
 import { useChallenges, useFriends, useNotifications } from "@/hooks/queries"
@@ -128,6 +130,13 @@ function ChallengesContent() {
       <HubTopBar />
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-5 px-4 pt-1 pb-6">
         <PlayerCard />
+        <StreakSection
+          onPlay={() => {
+            // To the games: For fun's list, scrolled into view
+            setPicked("fun")
+            window.setTimeout(() => visibleMark("pick-game")?.scrollIntoView({ behavior: "smooth", block: "center" }), 80)
+          }}
+        />
 
         <div data-tour="game-tabs">
           <GameTabs
@@ -224,6 +233,19 @@ function PlayerCard() {
           ) : null}
         </span>
       </Link>
+    </div>
+  )
+}
+
+/** Your play streak (and the daily reward's chest); a "save your streak" strip on top while it's at risk. */
+function StreakSection({ onPlay }: { onPlay: () => void }) {
+  const wallet = useWallet()
+  // Its room is kept while the wallet loads, so nothing below jumps
+  if (wallet === undefined) return <div className="gu-panel-flat -mt-1 h-[88px] opacity-70" aria-hidden />
+  return (
+    <div className="-mt-1 flex flex-col gap-3">
+      <StreakRiskBanner wallet={wallet} onPlay={onPlay} />
+      <StreakCard wallet={wallet} variant="hub" />
     </div>
   )
 }

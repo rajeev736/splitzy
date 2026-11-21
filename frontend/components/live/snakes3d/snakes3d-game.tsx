@@ -13,6 +13,7 @@ import { playSound, useOnChange, type SnakesSound } from "@/lib/live/sound"
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import { TOKEN_COLOURS } from "../ludo/ludo-board"
+import { diceSettlesInMs } from "../dice-settle"
 import { LudoDice } from "../ludo/ludo-dice"
 import { useSnakesGame } from "../snakes/use-snakes-game"
 import { ThrowOverlay, ThrowPicker } from "../throwables"
@@ -104,7 +105,7 @@ export function Snakes3DTable({ code, uid, me, state, myTurn, canRoll, rolling, 
     if (!l || l.type !== "move" || !l.finished) return
     const who = l.by === uid ? "You" : nameOf(l.by)
     const place = state.players[l.by]?.place ?? 1
-    const delay = 400 + Math.abs(l.to - l.from) * 240
+    const delay = diceSettlesInMs() + 400 + Math.abs(l.to - l.from) * 240
     window.setTimeout(() => setBanner(`${who} reached the summit — ${ordinal(place)}!`), delay)
     window.setTimeout(() => setBanner(null), delay + BANNER_MS)
   })

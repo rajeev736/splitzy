@@ -11,8 +11,12 @@ import type * as React from "react"
  * - in a live room, each player entry carries `avatar` (character id) and
  *   `frame` (frame id) so every device can draw everyone without lookups.
  *
- * Tiers: "basic" (free, still art), "premium" (bought with coins, animated),
- * "legend" (bought or earned, animated with a signature intro effect).
+ * Tiers: "basic" (still art; Foxy and Bao free, the rest a few coins),
+ * "premium" (bought with coins, animated), "legend" (bought or earned,
+ * animated with a signature intro effect).
+ *
+ * A character put on while it was free stays on (rules check `gameAvatar`
+ * only when it changes); once you switch away, it's bought like any other.
  */
 
 export type CharacterTier = "basic" | "premium" | "legend"
@@ -41,7 +45,7 @@ export interface CharacterDef {
   /** One short line: who they are ("Throws a mean shuriken"). */
   tagline: string
   tier: CharacterTier
-  /** Coins; 0 for basic ones and for earn-only legends. */
+  /** Coins; 0 for the free basic ones and for earn-only ones (level rewards are never sold). */
   price: number
   /**
    * Unlocked as a reward instead of (or as well as) bought: an achievement

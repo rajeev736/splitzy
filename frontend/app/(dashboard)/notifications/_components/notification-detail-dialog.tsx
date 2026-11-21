@@ -12,6 +12,7 @@ import {
   useDeclineGroupInvite,
 } from "@/hooks/mutations"
 import { useFriendRequests, useGroupInvites, useGroups } from "@/hooks/queries"
+import { notificationHref } from "@/lib/system-notifications"
 import type { AppNotification } from "@/lib/types"
 import { NotificationIcon } from "./notification-icon"
 import { RoomInviteAction } from "./room-invite-action"
@@ -167,8 +168,16 @@ function NotificationCta({ notif, onClose }: { notif: AppNotification; onClose: 
 
   if (notif.type === "BADGE") {
     return (
-      <Button size="lg" className={CTA} onClick={() => go(data?.frame ? "/games/inventory#milestones" : "/profile#badges")}>
+      <Button size="lg" className={CTA} onClick={() => go(notificationHref(notif))}>
         {data?.frame ? "Claim your frame" : "See your badges"}
+      </Button>
+    )
+  }
+
+  if (notif.type === "STREAK_REMINDER") {
+    return (
+      <Button size="lg" className={CTA} onClick={() => go(notificationHref(notif))}>
+        Play a game
       </Button>
     )
   }

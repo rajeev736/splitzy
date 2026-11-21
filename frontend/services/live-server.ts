@@ -54,3 +54,22 @@ export interface SettleResponse {
 /** Asks the server to check and count a finished game (or your forfeit of one being played). */
 export const settleOnServer = (code: string, forfeit = false) =>
   call<SettleResponse>("/api/live/settle", { code, forfeit }, { keepalive: forfeit })
+
+/** What taking the daily reward answers (app/api/games/daily). `claimed: false`: it was already taken today. */
+export interface DailyClaim {
+  ok: true
+  claimed: boolean
+  coins: number
+  /** The day of the 7-day cycle (1–7) this was. */
+  day: number
+  /** Days in a row the reward has been taken. */
+  run: number
+  balance: number
+}
+
+/** Takes today's daily reward on the Games side (lib/live/streak's 7-day cycle; the server pays it). */
+export async function claimDailyReward(): Promise<DailyClaim> {
+  const res = await call<DailyClaim | { ok: false; reason?: string }>("/api/games/daily", {})
+  if (!res.ok) throw new AppError(res.reason ?? "Couldn't take today's reward — try again")
+  return res
+}

@@ -10,6 +10,7 @@ import { SQUARE_GEO, type LudoPlayer } from "@/lib/live/ludo"
 import type { LiveGameProps, RoomPlayer } from "@/lib/live/types"
 import { cn } from "@/lib/utils"
 import { Piece, PieceDefs, TOKEN_COLOURS } from "../ludo/ludo-board"
+import { diceSettlesInMs } from "../dice-settle"
 import { LudoDice } from "../ludo/ludo-dice"
 import { Seat } from "../ludo/ludo-game"
 import { ThrowOverlay, ThrowPicker } from "../throwables"
@@ -53,6 +54,8 @@ function useWalk(state: SnakesState | null | undefined, onSound: (s: SnakesSound
     const last = state.last
     const frames: Frame[] = []
     if (shown && last?.type === "move" && shown[last.by] === last.from) {
+      // A hold where it stands: the walk sets off once the dice has settled (below)
+      frames.push({ pos: shown, ms: 0 })
       let cur = shown
       for (let p = last.from + 1; p <= last.to; p++) {
         cur = { ...cur, [last.by]: p }
@@ -69,9 +72,11 @@ function useWalk(state: SnakesState | null | undefined, onSound: (s: SnakesSound
   }
   React.useEffect(() => {
     if (!anim || anim.step >= anim.frames.length - 1) return
+    // The piece never sets off while the dice is still turning
+    const wait = anim.step === 0 ? diceSettlesInMs() : 0
     const id = window.setTimeout(
       () => setAnim((a) => (a && a.seq === anim.seq ? { ...a, step: a.step + 1 } : a)),
-      anim.frames[anim.step].ms
+      anim.frames[anim.step].ms + wait
     )
     return () => window.clearTimeout(id)
   }, [anim])

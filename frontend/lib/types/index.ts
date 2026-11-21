@@ -59,13 +59,26 @@ export interface Wallet {
   liveAt?: { toMillis(): number };
   /** Levels whose coins were taken (`lv<n>`, lib/live/levels): each level pays once. */
   levelCoins?: string[];
+  /** Throwables and gifts bought ahead, "<t|g>_<id>" → how many are left (lib/fun/stock). */
+  stock?: Record<string, number>;
+  /**
+   * The daily play streak and the daily reward (lib/live/streak; written only
+   * by the server): days in a row with a live game, the best run, the last
+   * such IST day ("YYYY-MM-DD"); the last day the daily reward was taken and
+   * how many days in a row it has been.
+   */
+  playStreak?: number;
+  bestPlayStreak?: number;
+  playDay?: string;
+  dailyDay?: string;
+  dailyRun?: number;
   createdAt: string;
 }
 
 /** One line of coin history (wallets/{uid}/txs/{id}). */
 export interface CoinTx {
   id: string;
-  kind: "welcome" | "frame" | "gift" | "stake" | "win" | "refund" | "throw" | "theme" | "avatar" | "level";
+  kind: "welcome" | "frame" | "gift" | "stake" | "win" | "refund" | "throw" | "theme" | "avatar" | "level" | "stock" | "daily" | "streak";
   /** Coins in (+) or out (−). */
   amount: number;
   label: string;
@@ -95,10 +108,12 @@ export interface Moment {
 /** One earned achievement (users/{uid}/badges/{type_ref}). */
 export interface BadgeEvent {
   id: string;
-  type: "swift" | "champ" | "bigheart" | "earlybird";
+  type: "swift" | "champ" | "bigheart" | "earlybird" | "streak";
   ref: string;
   /** Swift Payer: the share index. Early Bird: the member number. */
   i?: number;
+  /** A streak badge (streak_<days>, written by the server; ref is the days too): days in a row. */
+  days?: number;
   createdAt: string;
 }
 
@@ -292,7 +307,8 @@ export type NotificationType =
   | "BOND_REQUEST"
   | "BOND_ACCEPTED"
   | "BADGE"
-  | "ROOM_INVITE";
+  | "ROOM_INVITE"
+  | "STREAK_REMINDER";
 
 /**
  * A game between friends. For a discount game the host is owed money by every
@@ -420,6 +436,8 @@ export interface AppNotification {
     /** A badge you unlocked, and its tier. */
     badge?: string;
     tier?: number;
+    /** Play streak days: a streak badge (badge "streak_<n>") or a STREAK_REMINDER. */
+    streak?: number;
     /** A milestone frame you unlocked. */
     frame?: string;
     /** A live game room you were invited to (/play/{code}). */
