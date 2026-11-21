@@ -55,7 +55,24 @@ export function Providers({ children }: { children: React.ReactNode }) {
       lastTouchEnd = now
     }
 
+    // An app, not a web page: long-pressing a link, button or picture never opens the
+    // browser's menu (copy link, open in new tab, save image). Typing fields keep theirs;
+    // anything else can opt back in with data-allow-menu. Our own long-press menus
+    // (chat messages) still run: only the browser's default is stopped.
+    const keepsMenu = (t: EventTarget | null) =>
+      t instanceof Element && !!t.closest("input, textarea, select, [contenteditable=true], [data-allow-menu]")
+    const handleContextMenu = (e: MouseEvent) => {
+      if (!keepsMenu(e.target)) e.preventDefault()
+    }
+    // Dragging a link or picture out (a drag preview, dropping it elsewhere) — not in an app
+    const handleDragStart = (e: DragEvent) => {
+      const t = e.target
+      if (t instanceof Element && t.closest("a, img, svg, button, [role=button]") && !keepsMenu(t)) e.preventDefault()
+    }
+
     document.addEventListener("touchmove", handleTouchMove, { passive: false })
+    document.addEventListener("contextmenu", handleContextMenu)
+    document.addEventListener("dragstart", handleDragStart)
     document.addEventListener("gesturestart", handleGesture)
     document.addEventListener("gesturechange", handleGesture)
     document.addEventListener("gestureend", handleGesture)
@@ -67,6 +84,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
       document.removeEventListener("gesturechange", handleGesture)
       document.removeEventListener("gestureend", handleGesture)
       document.removeEventListener("touchend", handleTouchEnd)
+      document.removeEventListener("contextmenu", handleContextMenu)
+      document.removeEventListener("dragstart", handleDragStart)
     }
   }, [])
 

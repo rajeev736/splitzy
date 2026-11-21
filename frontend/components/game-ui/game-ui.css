@@ -819,3 +819,106 @@
     transition: none;
   }
 }
+
+/* ── Pull to refresh (game-pull-refresh.tsx) ─────────────────────────────
+   A gold coin on a rope drops from the top as you pull (--pull), turning
+   with it (--turn); past the mark it glows and bobs; letting go spins it. */
+.gu-ptr {
+  --pull: 0px;
+  --turn: 0deg;
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 60;
+  width: 64px;
+  height: 0;
+  margin-left: -32px;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+.gu-ptr-rope {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 3px;
+  margin-left: -1.5px;
+  height: calc(env(safe-area-inset-top) + var(--pull) * 0.55 + 6px);
+  border-radius: 0 0 2px 2px;
+  background: repeating-linear-gradient(180deg, #b06a12 0 5px, #e8a33a 5px 10px);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.12);
+}
+.gu-ptr-coin {
+  position: absolute;
+  left: 50%;
+  top: calc(env(safe-area-inset-top) + var(--pull) * 0.55);
+  width: 52px;
+  height: 52px;
+  margin-left: -26px;
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 30%, #fff7d1, #ffd34d 45%, #e59a0b 100%);
+  box-shadow:
+    inset 0 -4px 0 rgb(0 0 0 / 0.18),
+    0 0 0 3px #fff,
+    0 0 0 6px #3d7be0,
+    0 8px 16px rgb(18 45 110 / 0.35);
+  transform: rotateY(var(--turn)) scale(var(--s, 0.6));
+  transform-style: preserve-3d;
+}
+.gu-ptr-face {
+  width: 34px;
+  height: 34px;
+}
+.gu-ptr-glow {
+  position: absolute;
+  inset: -14px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgb(255 220 90 / 0.75), transparent 65%);
+  opacity: 0;
+  transition: opacity 0.18s;
+}
+.gu-ptr[data-armed="true"] .gu-ptr-glow {
+  opacity: 1;
+}
+.gu-ptr[data-armed="true"] .gu-ptr-face {
+  animation: gu-ptr-bob 0.5s ease-in-out infinite alternate;
+}
+.gu-ptr[data-refreshing="true"] .gu-ptr-coin {
+  animation: gu-ptr-spin 0.45s linear infinite;
+}
+.gu-ptr-burst {
+  position: absolute;
+  inset: 0;
+}
+.gu-ptr-burst i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px;
+  border-radius: 2px;
+  background: #ffe066;
+  box-shadow: 0 0 6px #ffcf3a;
+  transform: rotate(var(--a)) translateY(0) scale(1);
+  animation: gu-ptr-burst 0.6s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+@keyframes gu-ptr-bob {
+  from { transform: translateY(-2px) scale(1); }
+  to { transform: translateY(2px) scale(1.08); }
+}
+@keyframes gu-ptr-spin {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(360deg); }
+}
+@keyframes gu-ptr-burst {
+  to { transform: rotate(var(--a)) translateY(-42px) scale(0.3); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gu-ptr[data-armed="true"] .gu-ptr-face,
+  .gu-ptr[data-refreshing="true"] .gu-ptr-coin,
+  .gu-ptr-burst i {
+    animation: none;
+  }
+}

@@ -74,22 +74,98 @@ function blip(
   o.stop(at + d + 0.02)
 }
 
-let lastTap = 0
-/** A short, soft "tock": the classic button click. */
-export function playTap() {
+/** A short burst of filtered noise: the "swish" of a page or a panel sliding. */
+let noiseBuf: AudioBuffer | null = null
+function swish(a: AudioContext, { t = 0, d, from, to, v }: { t?: number; d: number; from: number; to: number; v: number }) {
+  if (!noiseBuf) {
+    noiseBuf = a.createBuffer(1, Math.floor(a.sampleRate * 0.4), a.sampleRate)
+    const ch = noiseBuf.getChannelData(0)
+    for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1
+  }
+  const at = a.currentTime + t
+  const src = a.createBufferSource()
+  src.buffer = noiseBuf
+  const bp = a.createBiquadFilter()
+  bp.type = "bandpass"
+  bp.Q.value = 1.4
+  bp.frequency.setValueAtTime(from, at)
+  bp.frequency.exponentialRampToValueAtTime(to, at + d)
+  const g = a.createGain()
+  g.gain.setValueAtTime(0.0001, at)
+  g.gain.exponentialRampToValueAtTime(v, at + d * 0.35)
+  g.gain.exponentialRampToValueAtTime(0.0001, at + d)
+  src.connect(bp).connect(g).connect(master ?? a.destination)
+  src.start(at)
+  src.stop(at + d + 0.02)
+}
+
+/**
+ * The Games side's UI sounds, each a classic, light game cue:
+ * - tap: a soft "pop" for any button
+ * - tab: a bright double tick for switching tabs
+ * - nav: a quick swish + tick, moving to another screen (bottom bar, links)
+ * - back: the swish going the other way, a little lower
+ * - close: a soft falling "bloop" (✕, cancel, not now)
+ * - toggle: a "click-clack" for switches, checkboxes and picks
+ * - leave: a short falling three-note "bwomp" (leave a room, quit)
+ * - buy: a "cha-ching" when something is bought
+ */
+export type UiSound = "tap" | "tab" | "nav" | "back" | "close" | "toggle" | "leave" | "buy"
+
+let lastUi = 0
+export function playUiSound(kind: UiSound = "tap") {
   if (!soundOn()) return
   const now = performance.now()
-  if (now - lastTap < 45) return
-  lastTap = now
+  if (now - lastUi < 45) return
+  lastUi = now
   const a = audio()
   if (!a) return
   try {
-    blip(a, { f: 640, to: 380, d: 0.05, type: "sine", v: 0.16 })
-    blip(a, { f: 1900, d: 0.012, type: "triangle", v: 0.035 })
+    switch (kind) {
+      case "tab":
+        blip(a, { f: 1250, to: 1100, d: 0.035, type: "triangle", v: 0.09 })
+        blip(a, { f: 1650, to: 1500, t: 0.045, d: 0.035, type: "triangle", v: 0.08 })
+        break
+      case "nav":
+        swish(a, { d: 0.16, from: 900, to: 3200, v: 0.08 })
+        blip(a, { f: 880, to: 1320, t: 0.05, d: 0.06, type: "sine", v: 0.1 })
+        break
+      case "back":
+        swish(a, { d: 0.15, from: 2800, to: 800, v: 0.075 })
+        blip(a, { f: 760, to: 520, t: 0.04, d: 0.06, type: "sine", v: 0.1 })
+        break
+      case "close":
+        blip(a, { f: 720, to: 300, d: 0.11, type: "sine", v: 0.15 })
+        blip(a, { f: 1500, to: 900, d: 0.03, type: "triangle", v: 0.03 })
+        break
+      case "toggle":
+        blip(a, { f: 1900, d: 0.018, type: "square", v: 0.03 })
+        blip(a, { f: 1200, t: 0.05, d: 0.022, type: "square", v: 0.028 })
+        break
+      case "leave":
+        blip(a, { f: 523, d: 0.09, type: "triangle", v: 0.12 })
+        blip(a, { f: 415, t: 0.09, d: 0.09, type: "triangle", v: 0.11 })
+        blip(a, { f: 311, to: 260, t: 0.18, d: 0.2, type: "triangle", v: 0.11 })
+        break
+      case "buy":
+        // Register "cha" (a bright noise hit) then "ching" (a bell chord)
+        swish(a, { d: 0.07, from: 4000, to: 6000, v: 0.09 })
+        blip(a, { f: 2093, t: 0.08, d: 0.35, type: "sine", v: 0.08 })
+        blip(a, { f: 2637, t: 0.08, d: 0.3, type: "sine", v: 0.05 })
+        blip(a, { f: 3136, t: 0.1, d: 0.25, type: "sine", v: 0.04 })
+        break
+      default:
+        // A rounded "pop": a quick pitch drop with a tiny click on top
+        blip(a, { f: 700, to: 360, d: 0.055, type: "sine", v: 0.17 })
+        blip(a, { f: 2100, d: 0.01, type: "triangle", v: 0.035 })
+    }
   } catch {
     /* audio unavailable */
   }
 }
+
+/** The plain button tap. */
+export const playTap = () => playUiSound("tap")
 
 // A pentatonic run upwards, so a stream of coins sounds like a jingle, not a drone
 const TING_NOTES = [1568, 1760, 2093, 2349, 2637, 3136]

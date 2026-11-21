@@ -233,7 +233,8 @@ export function LevelPass({
   )
 
   return (
-    <div ref={scroller} className="lp-scroller">
+    // data-no-ptr: the games' pull-to-refresh leaves this list alone (it has its own top stretch)
+    <div ref={scroller} className="lp-scroller" data-no-ptr>
       {wallet === undefined ? (
         <div className="flex justify-center py-24">
           <Spinner className="size-8 text-white" />

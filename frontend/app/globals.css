@@ -453,3 +453,10 @@ input:autofill {
 svg[data-frame-still] * {
   animation: none !important;
 }
+
+/* No drag preview or iOS link callout on links and pictures (see Providers' contextmenu guard) */
+a,
+img {
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+}

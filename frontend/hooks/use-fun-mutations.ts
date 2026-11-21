@@ -3,6 +3,7 @@
 import { useMutation } from "@tanstack/react-query"
 
 import { useSession } from "@/components/providers/session-provider"
+import { playUiSound } from "@/components/rewards/ui-sounds"
 import { AppError } from "@/lib/errors"
 import type { BondId, FrameId, MoodId } from "@/lib/fun/catalog"
 import type { StockItem } from "@/lib/fun/stock"
@@ -56,7 +57,7 @@ export function useEndBond() {
 
 export function useBuyFrame() {
   const me = useUser()
-  return useMutation({ mutationFn: (frame: FrameId) => fun.buyFrame(me().uid, frame) })
+  return useMutation({ mutationFn: (frame: FrameId) => fun.buyFrame(me().uid, frame), onSuccess: () => playUiSound("buy") })
 }
 
 /**
@@ -71,6 +72,7 @@ export function useBuyTheme() {
       await fun.buyTheme(me().uid, theme.id)
       chooseTheme(theme.game, theme.id)
     },
+    onSuccess: () => playUiSound("buy"),
   })
 }
 
@@ -79,6 +81,7 @@ export function useBuyStock() {
   const me = useUser()
   return useMutation({
     mutationFn: (v: { item: StockItem; count: number }) => fun.buyStock(me().uid, v.item, v.count),
+    onSuccess: () => playUiSound("buy"),
   })
 }
 
@@ -111,7 +114,7 @@ export function useSaveBirthday() {
  */
 export function useBuyCharacter() {
   const me = useUser()
-  return useMutation({ mutationFn: (id: string) => gameProfile.buyCharacter(me().uid, id) })
+  return useMutation({ mutationFn: (id: string) => gameProfile.buyCharacter(me().uid, id), onSuccess: () => playUiSound("buy") })
 }
 
 /** Plays as a character in games (`null`: your photo). */

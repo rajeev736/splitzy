@@ -5,6 +5,7 @@ import { ArrowLeft01Icon, Cancel01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 
 import { cn } from "@/lib/utils"
+import { GamePullRefresh } from "./game-pull-refresh"
 import { useMarkGamesSide } from "./games-side"
 
 /**
@@ -30,6 +31,8 @@ export function GameScreen({
       {/* The sky is pinned to the screen, not stretched over the page: it doesn't
           shift as content loads or the page changes length, and scrolling never repaints it */}
       <div aria-hidden className="gu-sky pointer-events-none fixed inset-0 -z-10" />
+      {/* Pull down at the top to refresh, the game's way (not in live rooms) */}
+      <GamePullRefresh />
       {children}
     </div>
   )
